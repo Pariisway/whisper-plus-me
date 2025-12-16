@@ -1,0 +1,16 @@
+RewriteEngine On
+RewriteBase /
+RewriteRule ^index\.html$ - [L]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule . /index.html [L]
+
+# Enable CORS for fonts
+<FilesMatch "\.(ttf|otf|eot|woff|woff2)$">
+    Header set Access-Control-Allow-Origin "*"
+</FilesMatch>
+
+# Cache static assets
+<FilesMatch "\.(css|js|png|jpg|jpeg|gif|ico|svg)$">
+    Header set Cache-Control "max-age=31536000, public"
+</FilesMatch>
