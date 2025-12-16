@@ -1,4 +1,4 @@
-// Whisper+me - COMPLETELY FIXED VERSION
+// Whisper+me - COMPLETE FIXED VERSION
 console.log('🚀 Whisper+me starting...');
 
 // Configuration
@@ -39,6 +39,54 @@ let waitTimer = null;
 let timeLeft = 0;
 let currentRating = 5;
 let selectedCoinOption = 1;
+let shuffleProfiles = [];
+let shuffleTimer = null;
+let currentShuffleIndex = 0;
+let countdown = 30;
+
+// Shuffle Profiles Data
+const DEMO_PROFILES = [
+  {
+    id: 'demo1',
+    name: 'Alex Johnson',
+    bio: 'Tech entrepreneur & startup advisor. Love discussing innovation and business strategies.',
+    photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop&crop=face',
+    price: 2,
+    social: { twitter: 'https://twitter.com/alex', instagram: 'https://instagram.com/alex' }
+  },
+  {
+    id: 'demo2',
+    name: 'Sam Wilson',
+    bio: 'Fitness coach & nutrition expert. Let\'s talk health, wellness, and motivation!',
+    photo: 'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=400&h=400&fit=crop&crop=face',
+    price: 1,
+    social: { instagram: 'https://instagram.com/samfitness' }
+  },
+  {
+    id: 'demo3',
+    name: 'Taylor Smith',
+    bio: 'Digital artist and creative consultant. Passionate about art, design, and creativity.',
+    photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=400&fit=crop&crop=face',
+    price: 3,
+    social: { twitter: 'https://twitter.com/taylorart', instagram: 'https://instagram.com/taylorart' }
+  },
+  {
+    id: 'demo4',
+    name: 'Jordan Lee',
+    bio: 'Music producer and songwriter. Let\'s create something amazing together!',
+    photo: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&h=400&fit=crop&crop=face',
+    price: 2,
+    social: { instagram: 'https://instagram.com/jordanmusic', tiktok: 'https://tiktok.com/@jordanmusic' }
+  },
+  {
+    id: 'demo5',
+    name: 'Casey Kim',
+    bio: 'Travel blogger and photographer. Love sharing stories from around the world.',
+    photo: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&h=400&fit=crop&crop=face',
+    price: 1,
+    social: { instagram: 'https://instagram.com/caseytravels' }
+  }
+];
 
 // Initialize Firebase
 try {
@@ -75,15 +123,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.log('👤 User logged in:', user.email);
       await setupUser();
       updateUI();
-      loadProfiles(); // FIXED: Now loads profiles
+      loadProfiles();
+      startShuffleMode();
       hideLoading();
-      updatePhoneForLoggedInUser();
     } else {
       // No user logged in
       console.log('👤 No user logged in');
       showGuestUI();
+      loadProfiles();
+      startShuffleMode();
       hideLoading();
-      updatePhoneForGuest();
     }
   });
   
@@ -108,6 +157,14 @@ async function setupUser() {
       console.log('📊 User data loaded:', userData);
       updateUI();
       updateAvailabilityToggle();
+      
+      // Update photo preview
+      if (userData.photoURL) {
+        document.getElementById('photo-preview').innerHTML = `
+          <img src="${userData.photoURL}" style="width: 100px; height: 100px; border-radius: 8px; object-fit: cover; margin-top: 0.5rem;">
+          <p style="color: #10b981; margin-top: 0.5rem; font-size: 0.9rem;">Current photo</p>
+        `;
+      }
     } else {
       // Create new user - NO FREE COINS
       userRef.set({
@@ -138,7 +195,6 @@ function updateUI() {
   
   // Update user info
   document.getElementById('coins-count').textContent = userData.coins || 0;
-  document.getElementById('phone-coins').textContent = userData.coins || 0;
   
   // Update dashboard
   document.getElementById('dash-coins').textContent = userData.coins || 0;
@@ -153,13 +209,6 @@ function updateUI() {
   document.getElementById('profile-twitter').value = userData.social?.twitter || '';
   document.getElementById('profile-instagram').value = userData.social?.instagram || '';
   document.getElementById('profile-tiktok').value = userData.social?.tiktok || '';
-  
-  // Update photo preview if exists
-  if (userData.photoURL) {
-    document.getElementById('photo-preview').innerHTML = `
-      <img src="${userData.photoURL}" style="width: 100px; height: 100px; border-radius: 8px; object-fit: cover; margin-top: 0.5rem;">
-    `;
-  }
 }
 
 // Update availability toggle
@@ -200,17 +249,7 @@ window.toggleAvailability = async function() {
   }
 };
 
-// Update phone display
-function updatePhoneForLoggedInUser() {
-  document.getElementById('phone-controls-guest').style.display = 'none';
-  document.getElementById('phone-controls-user').style.display = 'block';
-}
-
-function updatePhoneForGuest() {
-  document.getElementById('phone-controls-guest').style.display = 'block';
-  document.getElementById('phone-controls-user').style.display = 'none';
-}
-
+// Show guest UI
 function showGuestUI() {
   document.getElementById('guest-menu').style.display = 'block';
   document.getElementById('logged-in-menu').style.display = 'none';
@@ -242,13 +281,20 @@ async function loadProfiles() {
       }
     });
     
-    console.log(`📊 Found ${profiles.length} available profiles`);
+    console.log(`📊 Found ${profiles.length} available profiles from Firebase`);
+    
+    // Add demo profiles if no real profiles
+    if (profiles.length === 0) {
+      console.log('📱 Using demo profiles');
+      profiles.push(...DEMO_PROFILES);
+    }
+    
     displayProfiles(profiles);
     
   } catch (error) {
     console.log('Error loading profiles:', error);
     // Show demo profiles if error
-    displayDemoProfiles();
+    displayProfiles(DEMO_PROFILES);
   }
 }
 
@@ -289,45 +335,134 @@ function displayProfiles(profiles) {
     `;
     container.appendChild(card);
   });
+  
+  // Update shuffle profiles
+  shuffleProfiles = profiles;
+  if (!shuffleTimer) {
+    startShuffleMode();
+  }
 }
 
-// Demo profiles for testing
-function displayDemoProfiles() {
-  const container = document.getElementById('profiles-container');
-  if (!container) return;
+// SHUFFLE MODE FUNCTIONS
+function startShuffleMode() {
+  console.log('🎲 Starting shuffle mode...');
   
-  const demoProfiles = [
-    {
-      id: 'demo1',
-      name: 'Alex Johnson',
-      bio: 'Tech entrepreneur & startup advisor. Love discussing innovation and business strategies.',
-      photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face',
-      price: 2,
-      social: { twitter: 'https://twitter.com/alex', instagram: 'https://instagram.com/alex' }
-    },
-    {
-      id: 'demo2',
-      name: 'Sam Wilson',
-      bio: 'Fitness coach & nutrition expert. Let\'s talk health, wellness, and motivation!',
-      photo: 'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=150&h=150&fit=crop&crop=face',
-      price: 1,
-      social: { instagram: 'https://instagram.com/samfitness' }
-    },
-    {
-      id: 'demo3',
-      name: 'Taylor Smith',
-      bio: 'Digital artist and creative consultant. Passionate about art, design, and creativity.',
-      photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop&crop=face',
-      price: 3,
-      social: { twitter: 'https://twitter.com/taylorart', instagram: 'https://instagram.com/taylorart' }
+  // Clear existing timer
+  if (shuffleTimer) {
+    clearInterval(shuffleTimer);
+  }
+  
+  // Start with first profile
+  updateShuffleProfile();
+  
+  // Start countdown timer
+  startCountdown();
+}
+
+function startCountdown() {
+  countdown = 30;
+  shuffleTimer = setInterval(() => {
+    countdown--;
+    document.getElementById('countdown').textContent = countdown;
+    
+    if (countdown <= 0) {
+      nextShuffleProfile();
+      countdown = 30;
     }
-  ];
-  
-  displayProfiles(demoProfiles);
+  }, 1000);
 }
 
-// FIXED: Save profile function
+window.nextShuffleProfile = function() {
+  if (shuffleProfiles.length === 0) {
+    console.log('No profiles to shuffle');
+    return;
+  }
+  
+  currentShuffleIndex = (currentShuffleIndex + 1) % shuffleProfiles.length;
+  updateShuffleProfile();
+  countdown = 30;
+  document.getElementById('countdown').textContent = countdown;
+};
+
+function updateShuffleProfile() {
+  if (shuffleProfiles.length === 0) {
+    console.log('No profiles available for shuffle');
+    return;
+  }
+  
+  const profile = shuffleProfiles[currentShuffleIndex];
+  
+  document.getElementById('shuffle-img').src = profile.photo;
+  document.getElementById('shuffle-name').textContent = profile.name;
+  document.getElementById('shuffle-price').textContent = profile.price + ' Coin' + (profile.price > 1 ? 's' : '');
+  document.getElementById('shuffle-bio').textContent = profile.bio;
+  
+  // Store for call
+  selectedProfile = profile;
+}
+
+window.startCallFromShuffle = function() {
+  if (!currentUser) {
+    showAuthModal('login');
+    showNotification('Please login to make calls', true);
+    return;
+  }
+  
+  if (!selectedProfile) {
+    showNotification('No profile selected', true);
+    return;
+  }
+  
+  startCall();
+};
+
+// View profile modal
+window.viewProfile = function(profileId) {
+  if (!currentUser) {
+    showAuthModal('login');
+    showNotification('Please login to view profiles', true);
+    return;
+  }
+  
+  // Find profile
+  const profile = DEMO_PROFILES.find(p => p.id === profileId) || 
+                  shuffleProfiles.find(p => p.id === profileId);
+  
+  if (!profile) {
+    showNotification('Profile not found', true);
+    return;
+  }
+  
+  selectedProfile = profile;
+  
+  // Update modal
+  document.getElementById('modal-profile-img').src = profile.photo;
+  document.getElementById('modal-profile-name').textContent = profile.name;
+  document.getElementById('modal-profile-bio').textContent = profile.bio;
+  document.getElementById('modal-profile-price').textContent = profile.price + ' Coin' + (profile.price > 1 ? 's' : '') + ' ($' + (profile.price * 12) + ' earned)';
+  
+  // Update social links
+  const socialLinks = document.getElementById('modal-social-links');
+  socialLinks.innerHTML = '';
+  
+  if (profile.social?.twitter) {
+    socialLinks.innerHTML += `<a href="${profile.social.twitter}" target="_blank" class="social-link"><i class="fab fa-twitter"></i></a>`;
+  }
+  if (profile.social?.instagram) {
+    socialLinks.innerHTML += `<a href="${profile.social.instagram}" target="_blank" class="social-link"><i class="fab fa-instagram"></i></a>`;
+  }
+  if (profile.social?.tiktok) {
+    socialLinks.innerHTML += `<a href="${profile.social.tiktok}" target="_blank" class="social-link"><i class="fab fa-tiktok"></i></a>`;
+  }
+  
+  // Show modal
+  showModal('profile-modal');
+};
+
+// FIXED: Save profile function - NOW WORKING
 window.saveProfile = async function() {
+  console.log('💾 Attempting to save profile...');
+  
   if (!currentUser) {
     showNotification('Please login first', true);
     return;
@@ -342,7 +477,7 @@ window.saveProfile = async function() {
   
   // Validate required fields
   if (!bio) {
-    showNotification('Please enter a bio', true);
+    showNotification('Please enter a bio for your profile', true);
     return;
   }
   
@@ -355,7 +490,7 @@ window.saveProfile = async function() {
   // Check if price changed and user can change it
   const priceChanged = price !== userData.pricePerCall;
   if (priceChanged && !canChangePrice()) {
-    showNotification('You can only change price once per day', true);
+    showNotification('You can only change your price once per day', true);
     return;
   }
   
@@ -377,25 +512,44 @@ window.saveProfile = async function() {
     updates.lastPriceChange = Date.now();
   }
   
-  console.log('💾 Saving profile:', updates);
+  console.log('💾 Saving profile updates:', updates);
   
   try {
+    // Save to Firebase
     await db.ref('users/' + currentUser.uid).update(updates);
+    
+    console.log('✅ Profile saved successfully to Firebase');
     showNotification('✅ Profile saved successfully!');
     
-    // Close modal and return to home page
+    // Close modal IMMEDIATELY
     closeModal('dashboard-modal');
+    
+    // Update local data
+    userData = { ...userData, ...updates };
+    updateUI();
     
     // Reload profiles after a short delay
     setTimeout(() => {
+      console.log('🔄 Reloading profiles after save...');
       loadProfiles();
-    }, 500);
+    }, 1000);
     
   } catch (error) {
-    console.log('Save error:', error);
+    console.error('❌ Save error:', error);
     showNotification('Failed to save profile: ' + error.message, true);
   }
 };
+
+// Helper function to check if user can change price
+function canChangePrice() {
+  if (!userData.lastPriceChange) return true;
+  
+  const now = Date.now();
+  const lastChange = userData.lastPriceChange;
+  const oneDay = 24 * 60 * 60 * 1000;
+  
+  return (now - lastChange) >= oneDay;
+}
 
 // FIXED: Profile photo upload
 document.addEventListener('DOMContentLoaded', function() {
@@ -411,7 +565,7 @@ document.addEventListener('DOMContentLoaded', function() {
       if (!file) return;
       
       if (!file.type.startsWith('image/')) {
-        showNotification('Please upload an image file', true);
+        showNotification('Please upload an image file (JPEG, PNG, etc.)', true);
         return;
       }
       
@@ -421,7 +575,7 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
       }
       
-      showNotification('Uploading photo...');
+      showNotification('📤 Uploading photo...');
       
       try {
         // Create a unique filename
@@ -454,99 +608,59 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 
-// Other existing functions remain the same...
-
-// Helper function to check if user can change price
-function canChangePrice() {
-  if (!userData.lastPriceChange) return true;
-  
-  const now = Date.now();
-  const lastChange = userData.lastPriceChange;
-  const oneDay = 24 * 60 * 60 * 1000;
-  
-  return (now - lastChange) >= oneDay;
-}
-
-// View profile modal
-window.viewProfile = function(profileId) {
-  if (!currentUser) {
-    showAuthModal('login');
-    showNotification('Please login to view profiles', true);
+// Start call function
+window.startCall = function() {
+  if (!selectedProfile) {
+    showNotification('No profile selected', true);
     return;
   }
   
-  // Get profile data (in real app, fetch from Firebase)
-  const profile = getProfileById(profileId);
-  if (!profile) return;
-  
-  selectedProfile = profile;
-  
-  // Update modal
-  document.getElementById('modal-profile-img').src = profile.photo;
-  document.getElementById('modal-profile-name').textContent = profile.name;
-  document.getElementById('modal-profile-bio').textContent = profile.bio;
-  document.getElementById('modal-profile-price').textContent = profile.price + ' Coin' + (profile.price > 1 ? 's' : '') + ' ($' + (profile.price * 12) + ' earned)';
-  
-  // Update social links
-  const socialLinks = document.getElementById('modal-social-links');
-  socialLinks.innerHTML = '';
-  
-  if (profile.social?.twitter) {
-    socialLinks.innerHTML += `<a href="${profile.social.twitter}" target="_blank" class="social-link"><i class="fab fa-twitter"></i></a>`;
-  }
-  if (profile.social?.instagram) {
-    socialLinks.innerHTML += `<a href="${profile.social.instagram}" target="_blank" class="social-link"><i class="fab fa-instagram"></i></a>`;
-  }
-  if (profile.social?.tiktok) {
-    socialLinks.innerHTML += `<a href="${profile.social.tiktok}" target="_blank" class="social-link"><i class="fab fa-tiktok"></i></a>`;
+  if (!currentUser) {
+    showAuthModal('login');
+    return;
   }
   
-  // Show modal
-  showModal('profile-modal');
+  const callPrice = selectedProfile.price;
+  
+  // Check if user has enough coins
+  if (userData.coins < callPrice) {
+    showNotification(`You need ${callPrice} coin${callPrice > 1 ? 's' : ''} to call`, true);
+    showNotification('Please buy more coins from the coins section', true);
+    return;
+  }
+  
+  // Close profile modal
+  closeModal('profile-modal');
+  
+  // Show call interface
+  showNotification('Starting call with ' + selectedProfile.name + '...');
+  
+  // In production, you would start the actual Agora call here
+  // For demo, we'll simulate the call
+  simulateCall(callPrice);
 };
 
-// Get profile by ID
-function getProfileById(id) {
-  // Demo profiles for testing
-  const demoProfiles = {
-    'demo1': {
-      id: 'demo1',
-      name: 'Alex Johnson',
-      bio: 'Tech entrepreneur & startup advisor. Love discussing innovation and business strategies.',
-      photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face',
-      price: 2,
-      social: {
-        twitter: 'https://twitter.com/alex',
-        instagram: 'https://instagram.com/alex'
-      }
-    },
-    'demo2': {
-      id: 'demo2',
-      name: 'Sam Wilson',
-      bio: 'Fitness coach & nutrition expert. Let\'s talk health, wellness, and motivation!',
-      photo: 'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=150&h=150&fit=crop&crop=face',
-      price: 1,
-      social: {
-        instagram: 'https://instagram.com/samfitness'
-      }
-    },
-    'demo3': {
-      id: 'demo3',
-      name: 'Taylor Smith',
-      bio: 'Digital artist and creative consultant. Passionate about art, design, and creativity.',
-      photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop&crop=face',
-      price: 3,
-      social: {
-        twitter: 'https://twitter.com/taylorart',
-        instagram: 'https://instagram.com/taylorart'
-      }
-    }
-  };
-  
-  return demoProfiles[id] || null;
+function simulateCall(callPrice) {
+  // Simulate call process
+  setTimeout(() => {
+    showNotification('🔊 Call connected! Timer started (5 minutes)');
+    
+    // Deduct coins
+    db.ref('users/' + currentUser.uid).update({
+      coins: userData.coins - callPrice
+    });
+    
+    // Simulate call completion after 3 seconds (demo)
+    setTimeout(() => {
+      showNotification('✅ Call completed! Rating modal will appear.');
+      
+      // Show rating modal
+      setTimeout(() => {
+        showModal('rating-modal');
+      }, 1000);
+    }, 3000);
+  }, 2000);
 }
-
-// Rest of the functions (call functions, auth functions, etc.) remain the same...
 
 // Auth functions
 window.showAuthModal = function(tab = 'login') {
@@ -627,14 +741,30 @@ window.logout = async function() {
       endCallCleanup();
     }
     
+    // Stop shuffle timer
+    if (shuffleTimer) {
+      clearInterval(shuffleTimer);
+      shuffleTimer = null;
+    }
+    
     await auth.signOut();
     showNotification('Logged out successfully');
     showGuestUI();
-    updatePhoneForGuest();
+    loadProfiles();
+    startShuffleMode();
   } catch (error) {
     console.log('Logout error:', error);
     showNotification('Logout failed', true);
   }
+};
+
+// Dashboard functions
+window.showDashboard = function() {
+  if (!currentUser) {
+    showAuthModal('login');
+    return;
+  }
+  showModal('dashboard-modal');
 };
 
 // Modal functions
@@ -738,4 +868,78 @@ window.buyCoins = async function() {
   }
 };
 
-console.log('✅ Whisper+me FIXED and ready!');
+// Rating functions
+window.setRating = function(rating) {
+  currentRating = rating;
+  
+  // Update stars
+  const stars = document.querySelectorAll('#rating-modal .fa-star');
+  stars.forEach((star, index) => {
+    if (index < rating) {
+      star.style.color = '#fbbf24';
+    } else {
+      star.style.color = '#666';
+    }
+  });
+};
+
+window.submitRating = async function() {
+  const comment = document.getElementById('rating-comment').value.trim();
+  
+  // Save rating (simulated)
+  showNotification('⭐ Thank you for your rating!');
+  closeModal('rating-modal');
+  
+  // Reset
+  const stars = document.querySelectorAll('#rating-modal .fa-star');
+  stars.forEach(star => star.style.color = '#666');
+  document.getElementById('rating-comment').value = '';
+  currentRating = 5;
+};
+
+// Admin login
+window.showAdminLogin = function() {
+  const password = prompt('Enter admin password:');
+  if (password === CONFIG.adminPassword) {
+    window.location.href = 'admin.html';
+  } else {
+    showNotification('Invalid password', true);
+  }
+};
+
+// Share profile
+window.shareProfile = function() {
+  if (!selectedProfile) return;
+  
+  if (navigator.share) {
+    navigator.share({
+      title: 'Chat with ' + selectedProfile.name + ' on Whisper+me',
+      text: 'Connect with ' + selectedProfile.name + ' for a private audio chat!',
+      url: window.location.href
+    });
+  } else {
+    navigator.clipboard.writeText(window.location.href);
+    showNotification('Profile link copied to clipboard!');
+  }
+};
+
+// End call cleanup
+function endCallCleanup() {
+  clearInterval(waitTimer);
+  clearInterval(callTimer);
+  
+  if (agoraClient) {
+    agoraClient.leave();
+    agoraClient = null;
+  }
+  
+  if (localAudioTrack) {
+    localAudioTrack.stop();
+    localAudioTrack = null;
+  }
+  
+  activeCall = null;
+  selectedProfile = null;
+}
+
+console.log('✅ Whisper+me FIXED and ready with iPhone design!');
