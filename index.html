@@ -1,390 +1,2110 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Whisper+me</title>
-  
-  <!-- Google Adsense -->
-  <meta name="google-adsense-account" content="ca-pub-1184595877548269">
-  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1184595877548269" crossorigin="anonymous"></script>
-  
-  <!-- Font Awesome -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  
-  <!-- Google Fonts -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whisper+me - Live Anonymous Audio Chat</title>
     
-    body {
-      font-family: 'Inter', sans-serif;
-      background: #111827;
-      color: white;
-      min-height: 100vh;
-    }
+    <!-- Google Adsense -->
+    <meta name="google-adsense-account" content="ca-pub-1184595877548269">
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1184595877548269" crossorigin="anonymous"></script>
     
-    #loading-screen {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: #111827;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      z-index: 9999;
-    }
+    <!-- Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-4QYRJLTXTT"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-4QYRJLTXTT');
+    </script>
     
-    .spinner {
-      width: 50px;
-      height: 50px;
-      border: 5px solid rgba(139, 92, 246, 0.3);
-      border-radius: 50%;
-      border-top-color: #8B5CF6;
-      animation: spin 1s linear infinite;
-    }
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
+    <!-- Agora SDK -->
+    <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.18.2.js"></script>
     
-    header {
-      background: #1F2937;
-      padding: 1rem;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-    }
+    <!-- Stripe -->
+    <script src="https://js.stripe.com/v3/"></script>
     
-    .header-content {
-      max-width: 1200px;
-      margin: 0 auto;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    
-    .logo {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      font-size: 1.5rem;
-      font-weight: 700;
-      color: #8B5CF6;
-    }
-    
-    .logo i {
-      font-size: 1.8rem;
-    }
-    
-    .user-menu {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-    }
-    
-    .btn {
-      padding: 0.5rem 1rem;
-      border: none;
-      border-radius: 8px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.3s;
-    }
-    
-    .btn-primary {
-      background: #8B5CF6;
-      color: white;
-    }
-    
-    .btn-primary:hover {
-      background: #7C3AED;
-    }
-    
-    .btn-secondary {
-      background: #6B7280;
-      color: white;
-    }
-    
-    .btn-secondary:hover {
-      background: #5a6268;
-    }
-    
-    main {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 2rem 1rem;
-    }
-    
-    .tabs {
-      display: flex;
-      gap: 1rem;
-      margin-bottom: 2rem;
-      border-bottom: 2px solid #1F2937;
-      padding-bottom: 0.5rem;
-    }
-    
-    .tab-btn {
-      padding: 0.5rem 1.5rem;
-      background: none;
-      border: none;
-      color: #6B7280;
-      font-size: 1rem;
-      cursor: pointer;
-      border-radius: 8px 8px 0 0;
-    }
-    
-    .tab-btn.active {
-      color: #8B5CF6;
-      border-bottom: 3px solid #8B5CF6;
-      background: rgba(139, 92, 246, 0.1);
-    }
-    
-    .profiles-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-      gap: 1.5rem;
-    }
-    
-    .profile-card {
-      background: #1F2937;
-      border-radius: 12px;
-      overflow: hidden;
-      transition: transform 0.3s;
-    }
-    
-    .profile-card:hover {
-      transform: translateY(-5px);
-    }
-    
-    .profile-card-header {
-      padding: 1.5rem;
-      text-align: center;
-    }
-    
-    .profile-card-img {
-      width: 100px;
-      height: 100px;
-      border-radius: 50%;
-      object-fit: cover;
-      margin: 0 auto 1rem;
-      border: 3px solid #8B5CF6;
-    }
-    
-    .profile-card-name {
-      font-size: 1.25rem;
-      font-weight: 600;
-      margin-bottom: 0.5rem;
-    }
-    
-    .status-badge {
-      display: inline-block;
-      padding: 0.25rem 0.75rem;
-      border-radius: 20px;
-      font-size: 0.8rem;
-      font-weight: 600;
-      margin-bottom: 1rem;
-      background: rgba(16, 185, 129, 0.2);
-      color: #10B981;
-    }
-    
-    .profile-card-bio {
-      color: #6B7280;
-      font-size: 0.9rem;
-      margin-bottom: 1rem;
-    }
-    
-    .profile-card-body {
-      padding: 1rem 1.5rem;
-      border-top: 1px solid rgba(255,255,255,0.1);
-    }
-    
-    .social-links {
-      display: flex;
-      justify-content: center;
-      gap: 1rem;
-      margin-bottom: 1rem;
-    }
-    
-    .social-link {
-      color: #6B7280;
-      font-size: 1.2rem;
-    }
-    
-    .social-link:hover {
-      color: #8B5CF6;
-    }
-    
-    .call-btn {
-      width: 100%;
-      padding: 0.75rem;
-      background: #8B5CF6;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      font-size: 1rem;
-      font-weight: 600;
-      cursor: pointer;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 0.5rem;
-    }
-    
-    .call-btn:hover {
-      background: #7C3AED;
-    }
-    
-    .notification {
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      padding: 1rem 1.5rem;
-      background: #8B5CF6;
-      color: white;
-      border-radius: 8px;
-      box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-      z-index: 1000;
-      display: none;
-    }
-    
-    .notification.show {
-      display: block;
-      animation: slideIn 0.3s ease-out;
-    }
-    
-    @keyframes slideIn {
-      from { transform: translateX(100%); }
-      to { transform: translateX(0); }
-    }
-    
-    footer {
-      background: #1F2937;
-      padding: 2rem 1rem;
-      text-align: center;
-      margin-top: 3rem;
-    }
-    
-    .footer-links {
-      display: flex;
-      justify-content: center;
-      gap: 2rem;
-      margin-bottom: 1rem;
-    }
-    
-    .footer-links a {
-      color: #6B7280;
-      text-decoration: none;
-    }
-    
-    .footer-links a:hover {
-      color: #8B5CF6;
-    }
-    
-    @media (max-width: 768px) {
-      .profiles-grid {
-        grid-template-columns: 1fr;
-      }
-      
-      .header-content {
-        flex-direction: column;
-        gap: 1rem;
-      }
-    }
-  </style>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        
+        body {
+            background: #000;
+            color: white;
+            min-height: 100vh;
+        }
+        
+        /* Loading Screen */
+        .loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid #333;
+            border-top-color: #7c3aed;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Header */
+        header {
+            background: #111;
+            padding: 1rem;
+            border-bottom: 1px solid #222;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #7c3aed;
+        }
+        
+        .btn {
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary {
+            background: #7c3aed;
+            color: white;
+        }
+        
+        .btn-secondary {
+            background: #333;
+            color: white;
+        }
+        
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+        
+        /* VISUAL PHONE SECTION - TOP OF PAGE */
+        .phone-container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+        }
+        
+        .phone-wrapper {
+            position: relative;
+            background: linear-gradient(135deg, #111, #000);
+            border-radius: 24px;
+            padding: 2rem;
+            border: 1px solid #333;
+            box-shadow: 0 10px 30px rgba(124, 58, 237, 0.2);
+            min-height: 300px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .phone-screen {
+            width: 100%;
+            height: 200px;
+            background: #000;
+            border-radius: 12px;
+            border: 2px solid #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 2rem;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .phone-screen::before {
+            content: '';
+            position: absolute;
+            top: 10px;
+            width: 100px;
+            height: 4px;
+            background: #333;
+            border-radius: 2px;
+        }
+        
+        .phone-icon {
+            font-size: 4rem;
+            color: #7c3aed;
+            margin-bottom: 1rem;
+        }
+        
+        .phone-title {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+            text-align: center;
+        }
+        
+        .phone-subtitle {
+            color: #888;
+            text-align: center;
+            max-width: 400px;
+        }
+        
+        .phone-controls {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+        
+        .phone-home {
+            display: block;
+        }
+        
+        .phone-call {
+            display: none;
+        }
+        
+        /* Phone in call mode (full screen) */
+        .phone-call-active {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #000;
+            z-index: 1000;
+            border-radius: 0;
+            margin: 0;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        
+        .phone-call-active .phone-screen {
+            height: 60vh;
+            border: 3px solid #7c3aed;
+        }
+        
+        /* Profiles Grid */
+        .profiles-section {
+            max-width: 1200px;
+            margin: 3rem auto;
+            padding: 0 1rem;
+        }
+        
+        .section-title {
+            font-size: 1.5rem;
+            margin-bottom: 1.5rem;
+            color: #fff;
+        }
+        
+        .profiles-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1rem;
+        }
+        
+        .profile-card {
+            background: #111;
+            border-radius: 12px;
+            padding: 1rem;
+            border: 1px solid #222;
+            transition: transform 0.3s ease, border-color 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .profile-card:hover {
+            transform: translateY(-5px);
+            border-color: #7c3aed;
+        }
+        
+        .profile-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .profile-img {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #7c3aed;
+        }
+        
+        .profile-info h3 {
+            font-size: 1.1rem;
+            margin-bottom: 0.25rem;
+        }
+        
+        .profile-price {
+            color: #7c3aed;
+            font-weight: 600;
+        }
+        
+        .profile-bio {
+            color: #aaa;
+            font-size: 0.9rem;
+            line-height: 1.4;
+            margin-bottom: 1rem;
+        }
+        
+        /* Coins Section */
+        .coins-section {
+            max-width: 1200px;
+            margin: 3rem auto;
+            padding: 0 1rem;
+        }
+        
+        .coins-options {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin: 2rem 0;
+        }
+        
+        .coin-option {
+            background: #111;
+            border: 2px solid #333;
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .coin-option.selected {
+            border-color: #7c3aed;
+            background: rgba(124, 58, 237, 0.1);
+            transform: scale(1.05);
+        }
+        
+        .coin-amount {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #7c3aed;
+            margin-bottom: 0.5rem;
+        }
+        
+        .coin-price {
+            color: #10b981;
+            font-weight: 600;
+        }
+        
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.95);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            padding: 1rem;
+        }
+        
+        .modal {
+            background: #111;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 500px;
+            border: 1px solid #333;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        
+        .modal-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid #222;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .modal-body {
+            padding: 1.5rem;
+        }
+        
+        .close-btn {
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0;
+        }
+        
+        /* Profile Modal */
+        .profile-modal-img {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid #7c3aed;
+            margin: 0 auto 1rem;
+            display: block;
+        }
+        
+        .social-links {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin: 1rem 0;
+        }
+        
+        .social-link {
+            color: #7c3aed;
+            font-size: 1.5rem;
+            transition: transform 0.3s ease;
+        }
+        
+        .social-link:hover {
+            transform: scale(1.2);
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+        
+        /* Call Timer */
+        .call-timer {
+            font-size: 3rem;
+            font-weight: 700;
+            color: #7c3aed;
+            text-align: center;
+            margin: 2rem 0;
+            font-family: monospace;
+        }
+        
+        .call-status {
+            color: #888;
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        .call-actions {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+        }
+        
+        /* Dashboard Modal */
+        .dashboard-stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+        
+        .stat-card {
+            background: #1a1a1a;
+            padding: 1rem;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #7c3aed;
+        }
+        
+        .stat-label {
+            color: #888;
+            font-size: 0.8rem;
+            margin-top: 0.25rem;
+        }
+        
+        /* Availability Toggle */
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 30px;
+            margin: 0 10px;
+        }
+        
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #333;
+            transition: .4s;
+            border-radius: 34px;
+        }
+        
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        
+        input:checked + .toggle-slider {
+            background-color: #7c3aed;
+        }
+        
+        input:checked + .toggle-slider:before {
+            transform: translateX(30px);
+        }
+        
+        /* Form Styles */
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        
+        .form-group label {
+            display: block;
+            color: #888;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+        }
+        
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 0.75rem;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            color: white;
+        }
+        
+        .form-group textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+        
+        /* User Menu */
+        .user-menu {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #7c3aed;
+            cursor: pointer;
+        }
+        
+        .coins-badge {
+            background: rgba(124, 58, 237, 0.2);
+            color: #7c3aed;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        /* Notification */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #10b981;
+            color: white;
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            display: none;
+            z-index: 2000;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            animation: slideIn 0.3s ease;
+        }
+        
+        .notification.show {
+            display: block;
+        }
+        
+        .notification.error {
+            background: #ef4444;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .profiles-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .coins-options {
+                grid-template-columns: 1fr;
+            }
+            
+            .action-buttons {
+                flex-direction: column;
+            }
+            
+            .call-actions {
+                flex-direction: column;
+            }
+            
+            .phone-wrapper {
+                padding: 1rem;
+            }
+            
+            .phone-call-active {
+                padding: 1rem;
+            }
+        }
+    </style>
 </head>
 <body>
-  <!-- Loading Screen -->
-  <div id="loading-screen">
-    <div class="spinner"></div>
-    <p style="margin-top: 1rem;">Loading Whisper+me...</p>
-  </div>
-  
-  <!-- Header -->
-  <header>
-    <div class="header-content">
-      <div class="logo">
-        <i class="fas fa-comment-alt"></i>
-        <span>Whisper+me</span>
-      </div>
-      
-      <div class="user-menu">
-        <button id="auth-btn" class="btn btn-secondary">Sign In</button>
-      </div>
-    </div>
-  </header>
-  
-  <!-- Main Content -->
-  <main id="main-content" style="display: none;">
-    <div class="tabs">
-      <button class="tab-btn active" data-tab="whispers">Available Whispers</button>
-      <button class="tab-btn" data-tab="popular">Most Popular</button>
+    <!-- Loading Screen -->
+    <div class="loading-screen" id="loading-screen">
+        <div class="spinner"></div>
     </div>
     
-    <div id="profiles-container" class="profiles-grid">
-      <!-- Profiles will be loaded here -->
-    </div>
-  </main>
-  
-  <!-- Notification -->
-  <div id="notification" class="notification">
-    <div id="notification-message">Test notification</div>
-  </div>
-  
-  <!-- Footer -->
-  <footer id="main-footer" style="display: none;">
-    <div class="footer-links">
-      <a href="#" onclick="showTab('home')">Home</a>
-      <a href="#" id="share-profile">Share Profile</a>
-      <a href="#" id="support-link">Support</a>
-    </div>
-    <p style="color: #6B7280;">© 2024 Whisper+me. All rights reserved.</p>
-  </footer>
-  
-  <!-- Load Firebase -->
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
-  
-  <!-- Load App -->
-  <script src="app.js"></script>
-  
-  <script>
-    // Simple backup in case Firebase fails
-    setTimeout(() => {
-      const loadingScreen = document.getElementById('loading-screen');
-      const mainContent = document.getElementById('main-content');
-      const mainFooter = document.getElementById('main-footer');
-      
-      if (loadingScreen && loadingScreen.style.display !== 'none' && 
-          mainContent && mainContent.style.display === 'none') {
-        console.log('Fallback: Showing content after timeout');
-        loadingScreen.style.display = 'none';
-        mainContent.style.display = 'block';
-        if (mainFooter) mainFooter.style.display = 'block';
-        
-        // Load sample profiles
-        const profilesContainer = document.getElementById('profiles-container');
-        if (profilesContainer && profilesContainer.innerHTML === '') {
-          profilesContainer.innerHTML = `
-            <div style="grid-column: 1/-1; text-align: center; padding: 2rem;">
-              <h3>Welcome to Whisper+me!</h3>
-              <p style="color: #6B7280; margin: 1rem 0;">Sign in to start buying and selling 5-minute chats</p>
-              <button class="btn btn-primary" onclick="document.getElementById('auth-btn').click()">
-                Sign In to Get Started
-              </button>
+    <!-- Header -->
+    <header>
+        <div class="header-content">
+            <div class="logo">
+                <i class="fas fa-comment-alt"></i>
+                <span>Whisper+me</span>
             </div>
-          `;
+            
+            <div id="user-menu">
+                <!-- Guest Menu -->
+                <div id="guest-menu">
+                    <button class="btn btn-primary" onclick="showAuthModal('login')">
+                        <i class="fas fa-sign-in-alt"></i> Login
+                    </button>
+                    <button class="btn btn-secondary" onclick="showAuthModal('signup')" style="margin-left: 0.5rem;">
+                        <i class="fas fa-user-plus"></i> Sign Up
+                    </button>
+                </div>
+                
+                <!-- Logged In Menu -->
+                <div id="logged-in-menu" style="display: none;">
+                    <div class="user-menu">
+                        <div class="coins-badge" onclick="showDashboard()">
+                            <i class="fas fa-coins"></i> <span id="coins-count">0</span>
+                        </div>
+                        <button class="btn btn-secondary" onclick="showDashboard()">
+                            <i class="fas fa-user"></i> Dashboard
+                        </button>
+                        <button class="btn btn-danger" onclick="logout()" style="font-size: 0.9rem;">
+                            <i class="fas fa-sign-out-alt"></i> Logout
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+    
+    <!-- Main Content -->
+    <main>
+        <!-- VISUAL PHONE AT TOP -->
+        <section class="phone-container">
+            <div class="phone-wrapper" id="phone-wrapper">
+                <div class="phone-screen">
+                    <!-- Home Screen -->
+                    <div class="phone-home" id="phone-home">
+                        <div class="phone-icon">
+                            <i class="fas fa-phone-alt"></i>
+                        </div>
+                        <h2 class="phone-title">Whisper+me Phone</h2>
+                        <p class="phone-subtitle">Ready to connect with interesting people</p>
+                        <div class="phone-controls" id="phone-controls-guest">
+                            <button class="btn btn-primary" onclick="showAuthModal('login')">
+                                <i class="fas fa-sign-in-alt"></i> Login to Start
+                            </button>
+                        </div>
+                        <div class="phone-controls" id="phone-controls-user" style="display: none;">
+                            <div style="color: #7c3aed; margin-bottom: 1rem;">
+                                <i class="fas fa-coins"></i> <strong id="phone-coins">0</strong> coins available
+                            </div>
+                            <p style="color: #888; font-size: 0.9rem;">
+                                Select a whisper profile below to start a call
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <!-- Call Screen -->
+                    <div class="phone-call" id="phone-call">
+                        <div id="call-waiting">
+                            <div class="phone-icon">
+                                <i class="fas fa-phone-alt"></i>
+                            </div>
+                            <h3 class="phone-title" id="caller-name-display"></h3>
+                            <p class="call-status" id="call-status">Connecting...</p>
+                            <div class="call-timer" id="call-timer">02:00</div>
+                            <div class="call-actions">
+                                <button class="btn btn-danger" onclick="endCallEarly()">
+                                    <i class="fas fa-phone-slash"></i> End Call (Refund)
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div id="call-active" style="display: none;">
+                            <div class="phone-icon">
+                                <i class="fas fa-microphone"></i>
+                            </div>
+                            <h3 class="phone-title" id="active-caller-name"></h3>
+                            <p class="call-status">Call in progress...</p>
+                            <div class="call-timer" id="active-call-timer">05:00</div>
+                            <div class="call-actions">
+                                <button class="btn btn-danger" onclick="endCall()">
+                                    <i class="fas fa-phone-slash"></i> End Call (No Refund)
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Profiles Grid -->
+        <section class="profiles-section">
+            <h2 class="section-title">Available Whispers</h2>
+            <div class="profiles-grid" id="profiles-container">
+                <!-- Profiles will be loaded here -->
+                <div class="profile-card" onclick="viewProfile('demo1')">
+                    <div class="profile-header">
+                        <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face" alt="Alex Johnson" class="profile-img">
+                        <div class="profile-info">
+                            <h3>Alex Johnson</h3>
+                            <div class="profile-price">2 Coins</div>
+                        </div>
+                    </div>
+                    <p class="profile-bio">Tech entrepreneur & startup advisor. Love discussing innovation and business strategies.</p>
+                    <button class="btn btn-primary" onclick="event.stopPropagation(); viewProfile('demo1')" style="width: 100%;">
+                        <i class="fas fa-phone-alt"></i> Call
+                    </button>
+                </div>
+                
+                <div class="profile-card" onclick="viewProfile('demo2')">
+                    <div class="profile-header">
+                        <img src="https://images.unsplash.com/photo-1494790108755-2616b612b786?w=150&h=150&fit=crop&crop=face" alt="Sam Wilson" class="profile-img">
+                        <div class="profile-info">
+                            <h3>Sam Wilson</h3>
+                            <div class="profile-price">1 Coin</div>
+                        </div>
+                    </div>
+                    <p class="profile-bio">Fitness coach & nutrition expert. Let's talk health, wellness, and motivation!</p>
+                    <button class="btn btn-primary" onclick="event.stopPropagation(); viewProfile('demo2')" style="width: 100%;">
+                        <i class="fas fa-phone-alt"></i> Call
+                    </button>
+                </div>
+                
+                <div class="profile-card" onclick="viewProfile('demo3')">
+                    <div class="profile-header">
+                        <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop&crop=face" alt="Taylor Smith" class="profile-img">
+                        <div class="profile-info">
+                            <h3>Taylor Smith</h3>
+                            <div class="profile-price">3 Coins</div>
+                        </div>
+                    </div>
+                    <p class="profile-bio">Digital artist and creative consultant. Passionate about art, design, and creativity.</p>
+                    <button class="btn btn-primary" onclick="event.stopPropagation(); viewProfile('demo3')" style="width: 100%;">
+                        <i class="fas fa-phone-alt"></i> Call
+                    </button>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Coins Purchase Section -->
+        <section class="coins-section">
+            <h2 class="section-title">Buy Whisper Coins</h2>
+            <p style="text-align: center; color: #888; margin-bottom: 1rem;">
+                1 Coin = $15 • Each call costs 1-3 coins • Whispers earn $12 per coin
+            </p>
+            
+            <div class="coins-options">
+                <div class="coin-option selected" onclick="selectCoinOption(1)">
+                    <div class="coin-amount">1 Coin</div>
+                    <div class="coin-price">$15</div>
+                </div>
+                <div class="coin-option" onclick="selectCoinOption(3)">
+                    <div class="coin-amount">3 Coins</div>
+                    <div class="coin-price">$45</div>
+                </div>
+                <div class="coin-option" onclick="selectCoinOption(5)">
+                    <div class="coin-amount">5 Coins</div>
+                    <div class="coin-price">$75</div>
+                </div>
+            </div>
+            
+            <button class="btn btn-primary" onclick="buyCoins()" style="width: 100%; padding: 1rem; font-size: 1.1rem;">
+                <i class="fas fa-shopping-cart"></i> Buy Coins Now
+            </button>
+        </section>
+    </main>
+    
+    <!-- Footer -->
+    <footer style="background: #111; padding: 2rem 1rem; margin-top: 3rem; text-align: center; border-top: 1px solid #222;">
+        <div style="max-width: 1200px; margin: 0 auto;">
+            <div class="logo" style="justify-content: center; margin-bottom: 1rem;">
+                <i class="fas fa-comment-alt"></i>
+                <span>Whisper+me</span>
+            </div>
+            <p style="color: #666; font-size: 0.9rem;">
+                © 2024 Whisper+me. Live anonymous audio chat.
+            </p>
+            <button onclick="showAdminLogin()" style="background: none; border: none; color: #ef4444; margin-top: 1rem; cursor: pointer; font-size: 0.8rem;">
+                Admin Login
+            </button>
+        </div>
+    </footer>
+    
+    <!-- MODALS -->
+    
+    <!-- Auth Modal -->
+    <div class="modal-overlay" id="auth-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="auth-modal-title">Login to Whisper+me</h3>
+                <button class="close-btn" onclick="closeModal('auth-modal')">×</button>
+            </div>
+            <div class="modal-body">
+                <!-- Login Form -->
+                <div class="auth-form active" id="login-form">
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="login-email" placeholder="your@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="login-password" placeholder="••••••••">
+                    </div>
+                    <button class="btn btn-primary" onclick="login()" style="width: 100%; padding: 1rem;">
+                        <i class="fas fa-sign-in-alt"></i> Login
+                    </button>
+                    <p style="text-align: center; color: #888; margin-top: 1rem;">
+                        Don't have an account? <a href="#" onclick="switchAuthTab('signup')" style="color: #7c3aed; text-decoration: none;">Sign up</a>
+                    </p>
+                </div>
+                
+                <!-- Signup Form -->
+                <div class="auth-form" id="signup-form" style="display: none;">
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="signup-email" placeholder="your@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Password (min 6 characters)</label>
+                        <input type="password" id="signup-password" placeholder="••••••••">
+                    </div>
+                    <div class="form-group">
+                        <label>Confirm Password</label>
+                        <input type="password" id="signup-confirm" placeholder="••••••••">
+                    </div>
+                    <button class="btn btn-primary" onclick="signup()" style="width: 100%; padding: 1rem;">
+                        <i class="fas fa-user-plus"></i> Sign Up
+                    </button>
+                    <p style="text-align: center; color: #888; margin-top: 1rem;">
+                        Already have an account? <a href="#" onclick="switchAuthTab('login')" style="color: #7c3aed; text-decoration: none;">Login</a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Profile Modal -->
+    <div class="modal-overlay" id="profile-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Whisper Profile</h3>
+                <button class="close-btn" onclick="closeModal('profile-modal')">×</button>
+            </div>
+            <div class="modal-body">
+                <img src="" alt="" class="profile-modal-img" id="modal-profile-img">
+                <h3 id="modal-profile-name" style="text-align: center; margin-bottom: 0.5rem;"></h3>
+                <p id="modal-profile-price" style="text-align: center; color: #7c3aed; font-weight: 600; margin-bottom: 1rem;"></p>
+                <p id="modal-profile-bio" style="color: #aaa; text-align: center; margin-bottom: 1rem; line-height: 1.5;"></p>
+                
+                <div class="social-links" id="modal-social-links">
+                    <!-- Social links here -->
+                </div>
+                
+                <div class="action-buttons">
+                    <button class="btn btn-secondary" onclick="shareProfile()" style="flex: 1;">
+                        <i class="fas fa-share-alt"></i> Share
+                    </button>
+                    <button class="btn btn-primary" onclick="startCall()" style="flex: 2;">
+                        <i class="fas fa-phone-alt"></i> Call Now
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Dashboard Modal -->
+    <div class="modal-overlay" id="dashboard-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>My Dashboard</h3>
+                <button class="close-btn" onclick="closeModal('dashboard-modal')">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="dashboard-stats">
+                    <div class="stat-card">
+                        <div class="stat-value" id="dash-coins">0</div>
+                        <div class="stat-label">Coins</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="dash-earnings">$0</div>
+                        <div class="stat-label">Earnings</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="dash-calls">0</div>
+                        <div class="stat-label">Calls</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="dash-rating">5.0</div>
+                        <div class="stat-label">Rating</div>
+                    </div>
+                </div>
+                
+                <!-- AVAILABILITY TOGGLE -->
+                <div style="display: flex; align-items: center; justify-content: center; margin: 1.5rem 0; padding: 1rem; background: #1a1a1a; border-radius: 8px;">
+                    <span style="margin-right: 1rem;">Available to receive calls:</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="availability-toggle" onchange="toggleAvailability()">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                
+                <h4 style="margin: 1.5rem 0 1rem;">Edit Profile</h4>
+                
+                <div class="form-group">
+                    <label>Profile Bio (shown on your profile card)</label>
+                    <textarea id="profile-bio" placeholder="Tell people about yourself..."></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label>Set Your Call Price (1-3 coins, can change once per day)</label>
+                    <select id="profile-price">
+                        <option value="1">1 Coin ($12 earned)</option>
+                        <option value="2">2 Coins ($24 earned)</option>
+                        <option value="3">3 Coins ($36 earned)</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Social Media Links (for your profile)</label>
+                    <input type="text" id="profile-twitter" placeholder="Twitter URL">
+                    <input type="text" id="profile-instagram" placeholder="Instagram URL" style="margin-top: 0.5rem;">
+                    <input type="text" id="profile-tiktok" placeholder="TikTok URL" style="margin-top: 0.5rem;">
+                </div>
+                
+                <div class="form-group">
+                    <label>Profile Photo</label>
+                    <input type="file" id="profile-photo" accept="image/*">
+                    <div id="photo-preview" style="margin-top: 1rem;"></div>
+                </div>
+                
+                <div class="form-group">
+                    <label>PayPal Email for Payouts</label>
+                    <input type="email" id="paypal-email" placeholder="your.paypal@email.com">
+                </div>
+                
+                <button class="btn btn-primary" onclick="saveProfile()" style="width: 100%; padding: 1rem; margin-top: 1rem;">
+                    <i class="fas fa-save"></i> Save Profile & Return Home
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Rating Modal -->
+    <div class="modal-overlay" id="rating-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Rate Your Call</h3>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 1rem;">How was your call experience?</p>
+                <div style="display: flex; justify-content: center; gap: 0.5rem; margin-bottom: 1.5rem;">
+                    <i class="fas fa-star" onclick="setRating(1)" style="font-size: 2rem; color: #666; cursor: pointer;"></i>
+                    <i class="fas fa-star" onclick="setRating(2)" style="font-size: 2rem; color: #666; cursor: pointer;"></i>
+                    <i class="fas fa-star" onclick="setRating(3)" style="font-size: 2rem; color: #666; cursor: pointer;"></i>
+                    <i class="fas fa-star" onclick="setRating(4)" style="font-size: 2rem; color: #666; cursor: pointer;"></i>
+                    <i class="fas fa-star" onclick="setRating(5)" style="font-size: 2rem; color: #666; cursor: pointer;"></i>
+                </div>
+                
+                <div class="form-group">
+                    <label>Feedback (sent to admin)</label>
+                    <textarea id="rating-comment" placeholder="Share your experience..."></textarea>
+                </div>
+                
+                <button class="btn btn-primary" onclick="submitRating()" style="width: 100%; padding: 1rem;">
+                    Submit Rating
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Notification -->
+    <div class="notification" id="notification"></div>
+    
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+    
+    <!-- App Script -->
+    <script>
+        // Whisper+me - Complete Production Version with Visual Phone
+        console.log('🚀 Whisper+me starting with visual phone...');
+
+        // Configuration - NO FREE COINS
+        const CONFIG = {
+          coinPrice: 15, // $15 per coin - NO DISCOUNTS
+          whisperEarning: 12, // $12 per coin earned
+          siteFee: 3, // $3 site fee per coin
+          callDuration: 300, // 5 minutes
+          waitDuration: 120, // 2 minutes waiting
+          adminEmail: 'ifanifwasafifth@gmail.com',
+          adminPassword: '068790Pw!',
+          agoraAppId: '966c8e41da614722a88d4372c3d95dba',
+          stripeKey: 'pk_test_51SPYHwRvETRK3Zx7mnVDTNyPB3mxT8vbSIcSVQURp8irweK0lGznwFrW9sjgju2GFgmDiQ5GkWYVlUQZZVNrXkJb00q2QOCC3I'
+        };
+
+        // State
+        let currentUser = null;
+        let userData = {
+          coins: 0,
+          earnings: 0,
+          callsCompleted: 0,
+          rating: 5.0,
+          bio: '',
+          photoURL: '',
+          pricePerCall: 1,
+          lastPriceChange: 0,
+          paypalEmail: '',
+          isWhisper: false,
+          isAvailable: false,
+          social: {}
+        };
+        let selectedProfile = null;
+        let activeCall = null;
+        let agoraClient = null;
+        let localAudioTrack = null;
+        let callTimer = null;
+        let waitTimer = null;
+        let timeLeft = 0;
+        let currentRating = 5;
+        let selectedCoinOption = 1;
+
+        // Initialize Firebase
+        try {
+          firebase.initializeApp({
+            apiKey: "AIzaSyALbIJSI2C-p6IyMtj_F0ZqGyN1i79jOd4",
+            authDomain: "whisper-chat-live.firebaseapp.com",
+            databaseURL: "https://whisper-chat-live-default-rtdb.fireio.com",
+            projectId: "whisper-chat-live",
+            storageBucket: "whisper-chat-live.firebasestorage.app",
+            messagingSenderId: "302894848452",
+            appId: "1:302894848452:web:61a7ab21a269533c426c91"
+          });
+          console.log('✅ Firebase connected');
+        } catch (error) {
+          console.log('Firebase error:', error);
         }
-      }
-    }, 8000); // 8 second timeout
-  </script>
+
+        const auth = firebase.auth();
+        const db = firebase.database();
+        const storage = firebase.storage();
+
+        // Initialize Stripe
+        const stripe = Stripe(CONFIG.stripeKey);
+
+        // When page loads
+        document.addEventListener('DOMContentLoaded', async () => {
+          console.log('📱 Page loaded');
+          
+          // Setup auth state listener
+          auth.onAuthStateChanged(async (user) => {
+            if (user) {
+              // User is logged in
+              currentUser = user;
+              console.log('👤 User logged in:', user.email);
+              await setupUser();
+              updateUI();
+              loadProfiles();
+              hideLoading();
+              updatePhoneForLoggedInUser();
+            } else {
+              // No user logged in
+              console.log('👤 No user logged in');
+              showGuestUI();
+              hideLoading();
+              updatePhoneForGuest();
+            }
+          });
+          
+          // Setup event listeners
+          setupEventListeners();
+          
+          // Initialize coin selection
+          selectCoinOption(1);
+        });
+
+        // Setup user
+        async function setupUser() {
+          const userRef = db.ref('users/' + currentUser.uid);
+          
+          // Listen for user data changes
+          userRef.on('value', (snap) => {
+            if (snap.exists()) {
+              const data = snap.val();
+              userData = { ...userData, ...data };
+              updateUI();
+              updateAvailabilityToggle();
+            } else {
+              // Create new user - NO FREE COINS
+              userRef.set({
+                email: currentUser.email,
+                coins: 0, // NO FREE COINS
+                earnings: 0,
+                callsCompleted: 0,
+                rating: 5.0,
+                bio: '',
+                photoURL: '',
+                pricePerCall: 1,
+                lastPriceChange: Date.now(),
+                paypalEmail: '',
+                isWhisper: false,
+                isAvailable: false,
+                social: {},
+                createdAt: Date.now()
+              });
+            }
+          });
+        }
+
+        // Update UI
+        function updateUI() {
+          // Show logged in menu
+          document.getElementById('guest-menu').style.display = 'none';
+          document.getElementById('logged-in-menu').style.display = 'block';
+          
+          // Update user info
+          document.getElementById('coins-count').textContent = userData.coins;
+          document.getElementById('phone-coins').textContent = userData.coins;
+          
+          // Update dashboard
+          document.getElementById('dash-coins').textContent = userData.coins;
+          document.getElementById('dash-earnings').textContent = '$' + (userData.earnings || 0);
+          document.getElementById('dash-calls').textContent = userData.callsCompleted || 0;
+          document.getElementById('dash-rating').textContent = userData.rating ? userData.rating.toFixed(1) : '5.0';
+          
+          // Update profile form
+          document.getElementById('profile-bio').value = userData.bio || '';
+          document.getElementById('profile-price').value = userData.pricePerCall || 1;
+          document.getElementById('paypal-email').value = userData.paypalEmail || '';
+          document.getElementById('profile-twitter').value = userData.social?.twitter || '';
+          document.getElementById('profile-instagram').value = userData.social?.instagram || '';
+          document.getElementById('profile-tiktok').value = userData.social?.tiktok || '';
+        }
+
+        // Update availability toggle
+        function updateAvailabilityToggle() {
+          const toggle = document.getElementById('availability-toggle');
+          if (toggle) {
+            toggle.checked = userData.isAvailable || false;
+          }
+        }
+
+        // Toggle availability
+        window.toggleAvailability = async function() {
+          if (!currentUser) return;
+          
+          const toggle = document.getElementById('availability-toggle');
+          const isAvailable = toggle.checked;
+          
+          try {
+            await db.ref('users/' + currentUser.uid).update({
+              isAvailable: isAvailable,
+              isWhisper: isAvailable // Also set isWhisper when available
+            });
+            
+            showNotification(isAvailable ? '✅ You are now available to receive calls' : '⏸️ You are now unavailable');
+            
+            // Reload profiles to reflect availability
+            loadProfiles();
+            
+          } catch (error) {
+            console.log('Toggle error:', error);
+            showNotification('Failed to update availability', true);
+          }
+        };
+
+        // Update phone display for logged in user
+        function updatePhoneForLoggedInUser() {
+          document.getElementById('phone-controls-guest').style.display = 'none';
+          document.getElementById('phone-controls-user').style.display = 'block';
+        }
+
+        // Update phone display for guest
+        function updatePhoneForGuest() {
+          document.getElementById('phone-controls-guest').style.display = 'block';
+          document.getElementById('phone-controls-user').style.display = 'none';
+        }
+
+        // Show guest UI
+        function showGuestUI() {
+          document.getElementById('guest-menu').style.display = 'block';
+          document.getElementById('logged-in-menu').style.display = 'none';
+        }
+
+        // Load profiles from Firebase
+        async function loadProfiles() {
+          if (!currentUser) {
+            return; // Demo profiles are already in HTML
+          }
+          
+          try {
+            const snapshot = await db.ref('users').once('value');
+            const profiles = [];
+            
+            snapshot.forEach(child => {
+              const user = child.val();
+              if (user.bio && child.key !== currentUser.uid && user.isAvailable === true) {
+                profiles.push({
+                  id: child.key,
+                  name: user.bio.split(' ').slice(0, 2).join(' ') || 'Anonymous',
+                  bio: user.bio,
+                  photo: user.photoURL || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(user.bio.split(' ')[0] || 'User'),
+                  price: user.pricePerCall || 1,
+                  social: user.social || {},
+                  rating: user.rating || 5.0,
+                  calls: user.callsCompleted || 0,
+                  isAvailable: user.isAvailable || false
+                });
+              }
+            });
+            
+            displayProfiles(profiles);
+            
+          } catch (error) {
+            console.log('Error loading profiles:', error);
+          }
+        }
+
+        // Display profiles
+        function displayProfiles(profiles) {
+          const container = document.getElementById('profiles-container');
+          if (!container) return;
+          
+          // Clear demo profiles if we have real profiles
+          if (profiles.length > 0) {
+            container.innerHTML = '';
+            
+            profiles.forEach(profile => {
+              const card = document.createElement('div');
+              card.className = 'profile-card';
+              card.onclick = () => viewProfile(profile.id);
+              card.innerHTML = `
+                <div class="profile-header">
+                  <img src="${profile.photo}" alt="${profile.name}" class="profile-img">
+                  <div class="profile-info">
+                    <h3>${profile.name}</h3>
+                    <div class="profile-price">${profile.price} Coin${profile.price > 1 ? 's' : ''}</div>
+                  </div>
+                </div>
+                <p class="profile-bio">${profile.bio.substring(0, 80)}${profile.bio.length > 80 ? '...' : ''}</p>
+                <button class="btn btn-primary" onclick="event.stopPropagation(); viewProfile('${profile.id}')" style="width: 100%;">
+                  <i class="fas fa-phone-alt"></i> Call
+                </button>
+              `;
+              container.appendChild(card);
+            });
+          }
+        }
+
+        // View profile modal
+        window.viewProfile = function(profileId) {
+          if (!currentUser) {
+            showAuthModal('login');
+            showNotification('Please login to view profiles', true);
+            return;
+          }
+          
+          // Get profile data
+          const profile = getProfileById(profileId);
+          if (!profile) return;
+          
+          selectedProfile = profile;
+          
+          // Update modal
+          document.getElementById('modal-profile-img').src = profile.photo;
+          document.getElementById('modal-profile-name').textContent = profile.name;
+          document.getElementById('modal-profile-bio').textContent = profile.bio;
+          document.getElementById('modal-profile-price').textContent = profile.price + ' Coin' + (profile.price > 1 ? 's' : '') + ' ($' + (profile.price * 12) + ' earned)';
+          
+          // Update social links
+          const socialLinks = document.getElementById('modal-social-links');
+          socialLinks.innerHTML = '';
+          
+          if (profile.social?.twitter) {
+            socialLinks.innerHTML += `<a href="${profile.social.twitter}" target="_blank" class="social-link"><i class="fab fa-twitter"></i></a>`;
+          }
+          if (profile.social?.instagram) {
+            socialLinks.innerHTML += `<a href="${profile.social.instagram}" target="_blank" class="social-link"><i class="fab fa-instagram"></i></a>`;
+          }
+          if (profile.social?.tiktok) {
+            socialLinks.innerHTML += `<a href="${profile.social.tiktok}" target="_blank" class="social-link"><i class="fab fa-tiktok"></i></a>`;
+          }
+          
+          // Show modal
+          showModal('profile-modal');
+        };
+
+        // Get profile by ID
+        function getProfileById(id) {
+          // Demo profiles
+          const demoProfiles = {
+            'demo1': {
+              id: 'demo1',
+              name: 'Alex Johnson',
+              bio: 'Tech entrepreneur & startup advisor. Love discussing innovation and business strategies.',
+              photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face',
+              price: 2,
+              social: {
+                twitter: 'https://twitter.com/alex',
+                instagram: 'https://instagram.com/alex'
+              },
+              rating: 4.8,
+              calls: 24
+            },
+            'demo2': {
+              id: 'demo2',
+              name: 'Sam Wilson',
+              bio: 'Fitness coach & nutrition expert. Let\'s talk health, wellness, and motivation!',
+              photo: 'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=150&h=150&fit=crop&crop=face',
+              price: 1,
+              social: {
+                instagram: 'https://instagram.com/samfitness'
+              },
+              rating: 4.9,
+              calls: 42
+            },
+            'demo3': {
+              id: 'demo3',
+              name: 'Taylor Smith',
+              bio: 'Digital artist and creative consultant. Passionate about art, design, and creativity.',
+              photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop&crop=face',
+              price: 3,
+              social: {
+                twitter: 'https://twitter.com/taylorart',
+                instagram: 'https://instagram.com/taylorart'
+              },
+              rating: 4.7,
+              calls: 18
+            }
+          };
+          
+          return demoProfiles[id] || null;
+        }
+
+        // Share profile
+        window.shareProfile = function() {
+          if (!selectedProfile) return;
+          
+          if (navigator.share) {
+            navigator.share({
+              title: 'Chat with ' + selectedProfile.name + ' on Whisper+me',
+              text: 'Connect with ' + selectedProfile.name + ' for a private audio chat!',
+              url: window.location.href + '?profile=' + selectedProfile.id
+            });
+          } else {
+            navigator.clipboard.writeText(window.location.href + '?profile=' + selectedProfile.id);
+            showNotification('Profile link copied to clipboard!');
+          }
+        };
+
+        // Start call - TRANSFORM PHONE TO FULL SCREEN
+        window.startCall = function() {
+          if (!selectedProfile) return;
+          
+          if (!currentUser) {
+            showAuthModal('login');
+            return;
+          }
+          
+          const callPrice = selectedProfile.price;
+          
+          // Check if user has enough coins
+          if (userData.coins < callPrice) {
+            showNotification(`You need ${callPrice} coin${callPrice > 1 ? 's' : ''} to call`, true);
+            showNotification('Please buy more coins', true);
+            return;
+          }
+          
+          // Close profile modal
+          closeModal('profile-modal');
+          
+          // Transform phone to full screen call mode
+          transformPhoneToCallMode();
+          
+          // Start call process
+          startCallProcess(callPrice);
+        };
+
+        // Transform phone to full screen call mode
+        function transformPhoneToCallMode() {
+          const phoneWrapper = document.getElementById('phone-wrapper');
+          const phoneHome = document.getElementById('phone-home');
+          const phoneCall = document.getElementById('phone-call');
+          
+          // Add full screen class
+          phoneWrapper.classList.add('phone-call-active');
+          
+          // Switch to call screen
+          phoneHome.style.display = 'none';
+          phoneCall.style.display = 'block';
+          
+          // Update call display
+          document.getElementById('caller-name-display').textContent = selectedProfile.name;
+          document.getElementById('active-caller-name').textContent = selectedProfile.name;
+          document.getElementById('call-status').textContent = 'Calling ' + selectedProfile.name + '...';
+          
+          // Scroll to top
+          window.scrollTo(0, 0);
+        }
+
+        // Transform phone back to normal mode
+        function transformPhoneToNormalMode() {
+          const phoneWrapper = document.getElementById('phone-wrapper');
+          const phoneHome = document.getElementById('phone-home');
+          const phoneCall = document.getElementById('phone-call');
+          
+          // Remove full screen class
+          phoneWrapper.classList.remove('phone-call-active');
+          
+          // Switch back to home screen
+          phoneHome.style.display = 'block';
+          phoneCall.style.display = 'none';
+          
+          // Reset call sections
+          document.getElementById('call-waiting').style.display = 'block';
+          document.getElementById('call-active').style.display = 'none';
+        }
+
+        // Start call process
+        async function startCallProcess(callPrice) {
+          showNotification('Starting call with ' + selectedProfile.name + '...');
+          
+          // Deduct coins immediately
+          await db.ref('users/' + currentUser.uid).update({
+            coins: userData.coins - callPrice
+          });
+          
+          // Create call record
+          const callRef = db.ref('calls').push();
+          const callId = callRef.key;
+          
+          await callRef.set({
+            callerId: currentUser.uid,
+            whisperId: selectedProfile.id,
+            coins: callPrice,
+            status: 'waiting',
+            createdAt: Date.now(),
+            channel: 'call_' + callId
+          });
+          
+          // Set active call
+          activeCall = {
+            id: callId,
+            whisperId: selectedProfile.id,
+            coins: callPrice,
+            channel: 'call_' + callId,
+            started: false,
+            refundable: true
+          };
+          
+          // Start 2-minute wait timer
+          startWaitTimer();
+          
+          // Simulate call acceptance (for demo)
+          setTimeout(() => {
+            if (activeCall && activeCall.id === callId && !activeCall.started) {
+              startAudioCall(callId);
+            }
+          }, 3000);
+          
+          // Auto-timeout after 2 minutes
+          setTimeout(async () => {
+            if (activeCall && activeCall.id === callId && !activeCall.started) {
+              await refundCall();
+              showNotification('Call timed out. Coins refunded.', true);
+              endCallCleanup();
+            }
+          }, CONFIG.waitDuration * 1000);
+        }
+
+        // Start wait timer
+        function startWaitTimer() {
+          timeLeft = CONFIG.waitDuration;
+          updateCallTimer();
+          
+          waitTimer = setInterval(() => {
+            timeLeft--;
+            updateCallTimer();
+            
+            if (timeLeft <= 0) {
+              clearInterval(waitTimer);
+            }
+          }, 1000);
+        }
+
+        // Start audio call
+        async function startAudioCall(callId) {
+          // Clear wait timer
+          clearInterval(waitTimer);
+          
+          // Switch to active call display
+          document.getElementById('call-waiting').style.display = 'none';
+          document.getElementById('call-active').style.display = 'block';
+          
+          // Mark call as started (no refund)
+          activeCall.started = true;
+          activeCall.refundable = false;
+          
+          // Update call status
+          await db.ref('calls/' + callId).update({
+            status: 'active',
+            startedAt: Date.now()
+          });
+          
+          // Start 5-minute timer
+          startCallTimer();
+          
+          // Initialize Agora (demo mode)
+          try {
+            if (typeof AgoraRTC !== 'undefined') {
+              agoraClient = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+              
+              // Request microphone permission
+              const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+              localAudioTrack = stream.getAudioTracks()[0];
+              
+              showNotification('✅ Call connected! Timer started.');
+            }
+          } catch (error) {
+            console.log('Agora error:', error);
+            showNotification('Call connected (demo mode)');
+          }
+        }
+
+        // Start 5-minute call timer
+        function startCallTimer() {
+          timeLeft = CONFIG.callDuration;
+          updateActiveCallTimer();
+          
+          callTimer = setInterval(async () => {
+            timeLeft--;
+            updateActiveCallTimer();
+            
+            if (timeLeft <= 0) {
+              clearInterval(callTimer);
+              await completeCall();
+            }
+          }, 1000);
+        }
+
+        // Update timers
+        function updateCallTimer() {
+          const minutes = Math.floor(timeLeft / 60);
+          const seconds = timeLeft % 60;
+          document.getElementById('call-timer').textContent = 
+            `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        function updateActiveCallTimer() {
+          const minutes = Math.floor(timeLeft / 60);
+          const seconds = timeLeft % 60;
+          document.getElementById('active-call-timer').textContent = 
+            `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        // End call early (refund)
+        window.endCallEarly = async function() {
+          if (!activeCall) return;
+          
+          if (activeCall.refundable) {
+            await refundCall();
+            showNotification('Call ended. Coins refunded.');
+          } else {
+            showNotification('Call already started. No refund available.', true);
+          }
+          
+          endCallCleanup();
+        };
+
+        // End call
+        window.endCall = async function() {
+          if (callTimer) clearInterval(callTimer);
+          
+          if (agoraClient) {
+            agoraClient.leave();
+            agoraClient = null;
+          }
+          
+          if (localAudioTrack) {
+            localAudioTrack.stop();
+            localAudioTrack = null;
+          }
+          
+          showNotification('Call ended.');
+          endCallCleanup();
+        };
+
+        // End call cleanup
+        function endCallCleanup() {
+          clearInterval(waitTimer);
+          clearInterval(callTimer);
+          
+          if (agoraClient) {
+            agoraClient.leave();
+            agoraClient = null;
+          }
+          
+          if (localAudioTrack) {
+            localAudioTrack.stop();
+            localAudioTrack = null;
+          }
+          
+          // Transform phone back to normal
+          transformPhoneToNormalMode();
+          
+          activeCall = null;
+          selectedProfile = null;
+        }
+
+        // Complete call
+        async function completeCall() {
+          if (callTimer) clearInterval(callTimer);
+          
+          // Update call as completed
+          if (activeCall && activeCall.id) {
+            await db.ref('calls/' + activeCall.id).update({
+              status: 'completed',
+              completedAt: Date.now(),
+              duration: CONFIG.callDuration
+            });
+            
+            // Pay whisper
+            await payWhisper(activeCall.whisperId, activeCall.coins);
+            
+            // Clean up
+            if (agoraClient) {
+              agoraClient.leave();
+              agoraClient = null;
+            }
+            
+            if (localAudioTrack) {
+              localAudioTrack.stop();
+              localAudioTrack = null;
+            }
+            
+            // Transform phone back to normal
+            transformPhoneToNormalMode();
+            
+            // Show rating modal
+            setTimeout(() => {
+              showModal('rating-modal');
+            }, 500);
+          }
+        }
+
+        // Refund call
+        async function refundCall() {
+          if (!activeCall || !activeCall.refundable) return;
+          
+          await db.ref('users/' + currentUser.uid).update({
+            coins: userData.coins + activeCall.coins
+          });
+          
+          activeCall.refundable = false;
+        }
+
+        // Pay whisper
+        async function payWhisper(whisperId, coins) {
+          const earnings = coins * CONFIG.whisperEarning;
+          
+          // Update whisper's earnings
+          const whisperRef = db.ref('users/' + whisperId);
+          const snapshot = await whisperRef.once('value');
+          const whisperData = snapshot.val() || {};
+          
+          await whisperRef.update({
+            earnings: (whisperData.earnings || 0) + earnings,
+            callsCompleted: (whisperData.callsCompleted || 0) + 1
+          });
+          
+          // Create payout record
+          await db.ref('payouts').push().set({
+            whisperId: whisperId,
+            amount: earnings,
+            coins: coins,
+            date: Date.now(),
+            status: 'pending'
+          });
+          
+          // Send to admin
+          sendToAdmin('Call completed', 
+            `Call ID: ${activeCall.id}\n` +
+            `Whisper: ${whisperId}\n` +
+            `Coins: ${coins}\n` +
+            `Payout: $${earnings}\n` +
+            `Caller: ${currentUser.email}`);
+        }
+
+        // Coin purchase functions
+        window.selectCoinOption = function(coins) {
+          selectedCoinOption = coins;
+          
+          // Update UI
+          document.querySelectorAll('.coin-option').forEach(option => {
+            option.classList.remove('selected');
+          });
+          
+          // Find and select clicked option
+          document.querySelectorAll('.coin-option').forEach(option => {
+            if (option.querySelector('.coin-amount').textContent.includes(coins.toString())) {
+              option.classList.add('selected');
+            }
+          });
+        };
+
+        window.buyCoins = async function() {
+          if (!currentUser) {
+            showAuthModal('login');
+            showNotification('Please login to buy coins', true);
+            return;
+          }
+          
+          const amount = selectedCoinOption * CONFIG.coinPrice;
+          showNotification(`Processing $${amount} purchase...`);
+          
+          try {
+            // Simulate Stripe payment
+            // In production: const session = await createStripeCheckout(selectedCoinOption);
+            // await stripe.redirectToCheckout({ sessionId: session.id });
+            
+            // For demo, add coins directly
+            setTimeout(async () => {
+              await db.ref('users/' + currentUser.uid).update({
+                coins: userData.coins + selectedCoinOption
+              });
+              
+              // Record purchase
+              await db.ref('purchases').push().set({
+                userId: currentUser.uid,
+                coins: selectedCoinOption,
+                amount: amount,
+                date: Date.now()
+              });
+              
+              showNotification(`✅ Added ${selectedCoinOption} coin${selectedCoinOption > 1 ? 's' : ''} to your account!`);
+            }, 1500);
+            
+          } catch (error) {
+            console.log('Payment error:', error);
+            showNotification('Payment failed. Please try again.', true);
+          }
+        };
+
+        // Rating functions
+        window.setRating = function(rating) {
+          currentRating = rating;
+          
+          // Update stars
+          const stars = document.querySelectorAll('#rating-modal .fa-star');
+          stars.forEach((star, index) => {
+            if (index < rating) {
+              star.style.color = '#fbbf24';
+            } else {
+              star.style.color = '#666';
+            }
+          });
+        };
+
+        window.submitRating = async function() {
+          const comment = document.getElementById('rating-comment').value.trim();
+          
+          if (!activeCall) return;
+          
+          // Save rating
+          await db.ref('ratings/' + activeCall.id).set({
+            from: currentUser.uid,
+            rating: currentRating,
+            comment: comment,
+            timestamp: Date.now()
+          });
+          
+          // Send to admin
+          sendToAdmin('New rating received', 
+            `Call ID: ${activeCall.id}\n` +
+            `Rating: ${currentRating}/5\n` +
+            `Comment: ${comment || 'None'}\n` +
+            `From: ${currentUser.email}`);
+          
+          showNotification('⭐ Thank you for your rating!');
+          closeModal('rating-modal');
+          
+          // Reset
+          const stars = document.querySelectorAll('#rating-modal .fa-star');
+          stars.forEach(star => star.style.color = '#666');
+          document.getElementById('rating-comment').value = '';
+          currentRating = 5;
+        };
+
+        // Send to admin
+        function sendToAdmin(subject, body) {
+          // Save to admin notifications
+          db.ref('admin/notifications').push().set({
+            subject: subject,
+            body: body,
+            timestamp: Date.now(),
+            read: false
+          });
+          
+          // In production, you would send email here
+          console.log('📧 To admin:', subject, '\n', body);
+        }
+
+        // Dashboard functions
+        window.showDashboard = function() {
+          if (!currentUser) {
+            showAuthModal('login');
+            return;
+          }
+          showModal('dashboard-modal');
+        };
+
+        // Save profile
+        window.saveProfile = async function() {
+          if (!currentUser) return;
+          
+          const bio = document.getElementById('profile-bio').value.trim();
+          const price = parseInt(document.getElementById('profile-price').value);
+          const paypalEmail = document.getElementById('paypal-email').value.trim();
+          const twitter = document.getElementById('profile-twitter').value.trim();
+          const instagram = document.getElementById('profile-instagram').value.trim();
+          const tiktok = document.getElementById('profile-tiktok').value.trim();
+          
+          // Validate price (1-3 coins)
+          if (price < 1 || price > 3) {
+            showNotification('Price must be between 1-3 coins', true);
+            return;
+          }
+          
+          // Check if price changed and user can change it
+          const priceChanged = price !== userData.pricePerCall;
+          if (priceChanged && !canChangePrice()) {
+            showNotification('You can only change price once per day', true);
+            return;
+          }
+          
+          // Prepare updates
+          const updates = {
+            bio: bio,
+            paypalEmail: paypalEmail,
+            social: {
+              twitter: twitter,
+              instagram: instagram,
+              tiktok: tiktok
+            },
+            isWhisper: true
+          };
+          
+          if (priceChanged) {
+            updates.pricePerCall = price;
+            updates.lastPriceChange = Date.now();
+          }
+          
+          try {
+            await db.ref('users/' + currentUser.uid).update(updates);
+            showNotification('✅ Profile saved successfully!');
+            
+            // Close modal and return to home page
+            closeModal('dashboard-modal');
+            
+            // Reload profiles
+            loadProfiles();
+            
+          } catch (error) {
+            console.log('Save error:', error);
+            showNotification('Failed to save profile', true);
+          }
+        };
+
+        // Check if user can change price
+        function canChangePrice() {
+          if (!userData.lastPriceChange) return true;
+          
+          const now = Date.now();
+          const lastChange = userData.lastPriceChange;
+          const oneDay = 24 * 60 * 60 * 1000;
+          
+          return (now - lastChange) >= oneDay;
+        }
+
+        // Profile photo upload
+        document.getElementById('profile-photo')?.addEventListener('change', async function(e) {
+          if (!currentUser) return;
+          
+          const file = e.target.files[0];
+          if (!file) return;
+          
+          if (!file.type.startsWith('image/')) {
+            showNotification('Please upload an image file', true);
+            return;
+          }
+          
+          showNotification('Uploading photo...');
+          
+          try {
+            const storageRef = storage.ref('profile-photos/' + currentUser.uid);
+            const snapshot = await storageRef.put(file);
+            const downloadURL = await snapshot.ref.getDownloadURL();
+            
+            // Update user profile
+            await db.ref('users/' + currentUser.uid).update({ 
+              photoURL: downloadURL 
+            });
+            
+            // Show preview
+            document.getElementById('photo-preview').innerHTML = `
+              <img src="${downloadURL}" style="width: 100px; height: 100px; border-radius: 8px; object-fit: cover; margin-top: 0.5rem;">
+            `;
+            
+            showNotification('✅ Photo uploaded successfully!');
+            
+          } catch (error) {
+            console.log('Upload error:', error);
+            showNotification('Failed to upload photo', true);
+          }
+        });
+
+        // Auth functions
+        window.showAuthModal = function(tab = 'login') {
+          switchAuthTab(tab);
+          showModal('auth-modal');
+        };
+
+        window.closeAuthModal = function() {
+          closeModal('auth-modal');
+        };
+
+        window.switchAuthTab = function(tab) {
+          document.getElementById('auth-modal-title').textContent = tab === 'login' ? 'Login to Whisper+me' : 'Sign Up for Whisper+me';
+          
+          // Hide all forms
+          document.getElementById('login-form').style.display = tab === 'login' ? 'block' : 'none';
+          document.getElementById('signup-form').style.display = tab === 'signup' ? 'block' : 'none';
+        };
+
+        window.login = async function() {
+          const email = document.getElementById('login-email').value.trim();
+          const password = document.getElementById('login-password').value;
+          
+          if (!email || !password) {
+            showNotification('Please enter email and password', true);
+            return;
+          }
+          
+          showNotification('Logging in...');
+          
+          try {
+            await auth.signInWithEmailAndPassword(email, password);
+            showNotification('✅ Login successful!');
+            closeModal('auth-modal');
+          } catch (error) {
+            console.log('Login error:', error);
+            showNotification('Login failed. Please check your credentials.', true);
+          }
+        };
+
+        window.signup = async function() {
+          const email = document.getElementById('signup-email').value.trim();
+          const password = document.getElementById('signup-password').value;
+          const confirm = document.getElementById('signup-confirm').value;
+          
+          if (!email || !password || !confirm) {
+            showNotification('Please fill all fields', true);
+            return;
+          }
+          
+          if (password.length < 6) {
+            showNotification('Password must be at least 6 characters', true);
+            return;
+          }
+          
+          if (password !== confirm) {
+            showNotification('Passwords do not match', true);
+            return;
+          }
+          
+          showNotification('Creating account...');
+          
+          try {
+            await auth.createUserWithEmailAndPassword(email, password);
+            showNotification('✅ Account created successfully!');
+            closeModal('auth-modal');
+          } catch (error) {
+            console.log('Signup error:', error);
+            showNotification('Signup failed. Email might already be in use.', true);
+          }
+        };
+
+        // Logout function
+        window.logout = async function() {
+          try {
+            // End any active call
+            if (activeCall) {
+              endCallCleanup();
+            }
+            
+            await auth.signOut();
+            showNotification('Logged out successfully');
+            showGuestUI();
+            updatePhoneForGuest();
+          } catch (error) {
+            console.log('Logout error:', error);
+            showNotification('Logout failed', true);
+          }
+        };
+
+        // Admin login
+        window.showAdminLogin = function() {
+          const password = prompt('Enter admin password:');
+          if (password === CONFIG.adminPassword) {
+            window.location.href = 'admin.html';
+          } else {
+            showNotification('Invalid password', true);
+          }
+        };
+
+        // Modal functions
+        function showModal(modalId) {
+          document.getElementById(modalId).style.display = 'flex';
+        }
+
+        function closeModal(modalId) {
+          document.getElementById(modalId).style.display = 'none';
+        }
+
+        // Hide loading
+        function hideLoading() {
+          document.getElementById('loading-screen').style.display = 'none';
+        }
+
+        // Show notification
+        function showNotification(message, isError = false) {
+          const notification = document.getElementById('notification');
+          notification.textContent = message;
+          notification.className = 'notification show';
+          
+          if (isError) {
+            notification.classList.add('error');
+          }
+          
+          setTimeout(() => {
+            notification.classList.remove('show');
+          }, 3000);
+        }
+
+        // Setup event listeners
+        function setupEventListeners() {
+          // Close modals when clicking outside
+          document.querySelectorAll('.modal-overlay').forEach(modal => {
+            modal.addEventListener('click', function(e) {
+              if (e.target === this) {
+                this.style.display = 'none';
+              }
+            });
+          });
+          
+          // Enter key in auth forms
+          document.getElementById('login-password')?.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') login();
+          });
+          
+          document.getElementById('signup-confirm')?.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') signup();
+          });
+        }
+
+        // Make functions global
+        window.loadProfiles = loadProfiles;
+
+        console.log('✅ Whisper+me ready with VISUAL PHONE transformation');
+    </script>
 </body>
 </html>

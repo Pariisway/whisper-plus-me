@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Whisper+me</title>
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        
+        body {
+            background: #000;
+            color: white;
+            min-height: 100vh;
+        }
+        
+        /* Login Screen */
+        .login-screen {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: #000;
+        }
+        
+        .login-box {
+            background: #111;
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 2rem;
+            width: 90%;
+            max-width: 400px;
+        }
+        
+        .login-title {
+            text-align: center;
+            color: #ef4444;
+            margin-bottom: 2rem;
+            font-size: 1.5rem;
+        }
+        
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        
+        .form-group label {
+            display: block;
+            color: #888;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 0.75rem;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            color: white;
+        }
+        
+        .login-btn {
+            width: 100%;
+            padding: 1rem;
+            background: #ef4444;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 1rem;
+        }
+        
+        .error-message {
+            color: #ef4444;
+            text-align: center;
+            margin-top: 1rem;
+            display: none;
+        }
+        
+        /* Admin Dashboard */
+        .admin-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+        
+        .admin-header {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid #ef4444;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .admin-header h1 {
+            color: #ef4444;
+            margin-bottom: 0.5rem;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .stat-card {
+            background: #111;
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #7c3aed;
+            margin-bottom: 0.25rem;
+        }
+        
+        .stat-label {
+            color: #888;
+            font-size: 0.9rem;
+        }
+        
+        .admin-section {
+            background: #111;
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .section-title {
+            font-size: 1.25rem;
+            margin-bottom: 1rem;
+            color: #7c3aed;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        th, td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid #333;
+        }
+        
+        th {
+            color: #888;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        
+        .btn {
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+        }
+        
+        .btn-primary {
+            background: #7c3aed;
+            color: white;
+        }
+        
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+        
+        .logout-btn {
+            background: #ef4444;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 1rem;
+        }
+        
+        @media (max-width: 768px) {
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            table {
+                display: block;
+                overflow-x: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="login-screen" class="login-screen">
+        <div class="login-box">
+            <h2 class="login-title">Admin Login</h2>
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" id="admin-email" value="ifanifwasafifth@gmail.com" readonly>
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="admin-password" placeholder="Enter admin password">
+            </div>
+            <button class="login-btn" onclick="adminLogin()">
+                <i class="fas fa-sign-in-alt"></i> Login
+            </button>
+            <div class="error-message" id="login-error"></div>
+            <a href="index.html" style="display: block; text-align: center; margin-top: 1.5rem; color: #7c3aed; text-decoration: none;">
+                ← Back to Main Site
+            </a>
+        </div>
+    </div>
+    
+    <!-- Admin Dashboard -->
+    <div id="admin-dashboard" style="display: none;">
+        <div class="admin-container">
+            <div class="admin-header">
+                <h1>Whisper+me Admin Dashboard</h1>
+                <p style="color: #888;">Logged in as: ifanifwasafifth@gmail.com</p>
+                <button class="logout-btn" onclick="adminLogout()">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </button>
+            </div>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value" id="total-users">0</div>
+                    <div class="stat-label">Total Users</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="total-calls">0</div>
+                    <div class="stat-label">Total Calls</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="total-revenue">$0</div>
+                    <div class="stat-label">Total Revenue</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="pending-payouts">$0</div>
+                    <div class="stat-label">Pending Payouts</div>
+                </div>
+            </div>
+            
+            <div class="admin-section">
+                <h3 class="section-title">Give Free Coins</h3>
+                <div class="form-group">
+                    <label>User ID</label>
+                    <input type="text" id="user-id" placeholder="Enter user ID">
+                </div>
+                <div class="form-group">
+                    <label>Number of Coins</label>
+                    <input type="number" id="free-coins" min="1" max="100" value="10">
+                </div>
+                <button class="btn btn-primary" onclick="giveFreeCoins()">
+                    Give Free Coins
+                </button>
+            </div>
+            
+            <div class="admin-section">
+                <h3 class="section-title">Recent Calls</h3>
+                <div id="calls-table">
+                    <p style="color: #888;">Loading calls...</p>
+                </div>
+            </div>
+            
+            <div class="admin-section">
+                <h3 class="section-title">User Ratings & Feedback</h3>
+                <div id="ratings-list">
+                    <p style="color: #888;">Loading ratings...</p>
+                </div>
+            </div>
+            
+            <div class="admin-section">
+                <h3 class="section-title">Pending Payouts</h3>
+                <div id="payouts-list">
+                    <p style="color: #888;">Loading payouts...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    
+    <script>
+        // Firebase config
+        firebase.initializeApp({
+            apiKey: "AIzaSyALbIJSI2C-p6IyMtj_F0ZqGyN1i79jOd4",
+            authDomain: "whisper-chat-live.firebaseapp.com",
+            databaseURL: "https://whisper-chat-live-default-rtdb.fireio.com",
+            projectId: "whisper-chat-live",
+            storageBucket: "whisper-chat-live.firebasestorage.app",
+            messagingSenderId: "302894848452",
+            appId: "1:302894848452:web:61a7ab21a269533c426c91"
+        });
+        
+        const db = firebase.database();
+        const ADMIN_PASSWORD = '068790Pw!';
+        
+        // Admin login function
+        function adminLogin() {
+            const password = document.getElementById('admin-password').value;
+            const errorEl = document.getElementById('login-error');
+            
+            if (password === ADMIN_PASSWORD) {
+                // Success - show dashboard
+                document.getElementById('login-screen').style.display = 'none';
+                document.getElementById('admin-dashboard').style.display = 'block';
+                loadAdminData();
+            } else {
+                errorEl.textContent = 'Incorrect password';
+                errorEl.style.display = 'block';
+            }
+        }
+        
+        // Admin logout function
+        function adminLogout() {
+            document.getElementById('admin-dashboard').style.display = 'none';
+            document.getElementById('login-screen').style.display = 'flex';
+            document.getElementById('admin-password').value = '';
+        }
+        
+        // Load admin data
+        async function loadAdminData() {
+            try {
+                // Load stats
+                const usersSnap = await db.ref('users').once('value');
+                document.getElementById('total-users').textContent = usersSnap.numChildren();
+                
+                const callsSnap = await db.ref('calls').once('value');
+                document.getElementById('total-calls').textContent = callsSnap.numChildren();
+                
+                // Calculate revenue
+                const purchasesSnap = await db.ref('purchases').once('value');
+                let revenue = 0;
+                purchasesSnap.forEach(child => {
+                    revenue += child.val().amount || 0;
+                });
+                document.getElementById('total-revenue').textContent = '$' + revenue.toFixed(2);
+                
+                // Calculate pending payouts
+                const payoutsSnap = await db.ref('payouts').orderByChild('status').equalTo('pending').once('value');
+                let pending = 0;
+                payoutsSnap.forEach(child => {
+                    pending += child.val().amount || 0;
+                });
+                document.getElementById('pending-payouts').textContent = '$' + pending.toFixed(2);
+                
+                // Load recent calls
+                loadRecentCalls();
+                
+                // Load ratings
+                loadRatings();
+                
+                // Load payouts
+                loadPayouts();
+                
+            } catch (error) {
+                console.log('Load error:', error);
+            }
+        }
+        
+        // Load recent calls
+        async function loadRecentCalls() {
+            try {
+                const snapshot = await db.ref('calls').orderByChild('createdAt').limitToLast(50).once('value');
+                const calls = [];
+                
+                snapshot.forEach(child => {
+                    calls.push({ id: child.key, ...child.val() });
+                });
+                
+                calls.reverse();
+                
+                let html = '<table><thead><tr><th>Date</th><th>Caller</th><th>Whisper</th><th>Coins</th><th>Status</th></tr></thead><tbody>';
+                
+                calls.forEach(call => {
+                    const date = new Date(call.createdAt).toLocaleDateString();
+                    const status = call.status || 'unknown';
+                    const statusColor = status === 'completed' ? '#10b981' : '#ef4444';
+                    
+                    html += `
+                        <tr>
+                            <td>${date}</td>
+                            <td>${call.callerId?.substring(0, 8)}...</td>
+                            <td>${call.whisperId?.substring(0, 8)}...</td>
+                            <td>${call.coins || 1}</td>
+                            <td style="color: ${statusColor}">${status}</td>
+                        </tr>
+                    `;
+                });
+                
+                html += '</tbody></table>';
+                document.getElementById('calls-table').innerHTML = html;
+                
+            } catch (error) {
+                document.getElementById('calls-table').innerHTML = '<p style="color: #ef4444;">Error loading calls</p>';
+            }
+        }
+        
+        // Load ratings
+        async function loadRatings() {
+            try {
+                const snapshot = await db.ref('ratings').orderByChild('timestamp').limitToLast(50).once('value');
+                const ratings = [];
+                
+                snapshot.forEach(child => {
+                    ratings.push({ id: child.key, ...child.val() });
+                });
+                
+                ratings.reverse();
+                
+                let html = '';
+                
+                ratings.forEach(rating => {
+                    const date = new Date(rating.timestamp).toLocaleString();
+                    const stars = '★'.repeat(Math.floor(rating.rating)) + '☆'.repeat(5-Math.floor(rating.rating));
+                    
+                    html += `
+                        <div style="background: #1a1a1a; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                            <div style="display: flex; justify-content: space-between;">
+                                <span>${date}</span>
+                                <span style="color: #fbbf24;">${stars} (${rating.rating}/5)</span>
+                            </div>
+                            <div style="color: #888; margin: 0.5rem 0;">From: ${rating.from?.substring(0, 8)}...</div>
+                            ${rating.comment ? `<div style="color: white; font-style: italic;">"${rating.comment}"</div>` : ''}
+                        </div>
+                    `;
+                });
+                
+                document.getElementById('ratings-list').innerHTML = html || '<p style="color: #888;">No ratings yet</p>';
+                
+            } catch (error) {
+                document.getElementById('ratings-list').innerHTML = '<p style="color: #ef4444;">Error loading ratings</p>';
+            }
+        }
+        
+        // Load payouts
+        async function loadPayouts() {
+            try {
+                const snapshot = await db.ref('payouts').orderByChild('status').equalTo('pending').once('value');
+                const payouts = [];
+                
+                snapshot.forEach(child => {
+                    payouts.push({ id: child.key, ...child.val() });
+                });
+                
+                let html = '';
+                
+                payouts.forEach(payout => {
+                    const date = new Date(payout.date).toLocaleDateString();
+                    
+                    html += `
+                        <div style="background: #1a1a1a; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                            <div style="display: flex; justify-content: space-between;">
+                                <span>Whisper: ${payout.whisperId?.substring(0, 8)}...</span>
+                                <span style="color: #10b981; font-weight: 600;">$${payout.amount}</span>
+                            </div>
+                            <div style="color: #888; margin: 0.5rem 0;">${date} • ${payout.coins} coin${payout.coins > 1 ? 's' : ''}</div>
+                            <button class="btn btn-primary" onclick="markPaid('${payout.id}')" style="margin-right: 0.5rem;">
+                                Mark as Paid
+                            </button>
+                            <button class="btn" onclick="viewUser('${payout.whisperId}')" style="background: #333; color: white;">
+                                View User
+                            </button>
+                        </div>
+                    `;
+                });
+                
+                document.getElementById('payouts-list').innerHTML = html || '<p style="color: #888;">No pending payouts</p>';
+                
+            } catch (error) {
+                document.getElementById('payouts-list').innerHTML = '<p style="color: #ef4444;">Error loading payouts</p>';
+            }
+        }
+        
+        // Give free coins
+        async function giveFreeCoins() {
+            const userId = document.getElementById('user-id').value.trim();
+            const coins = parseInt(document.getElementById('free-coins').value);
+            
+            if (!userId || !coins || coins < 1) {
+                alert('Please enter valid user ID and number of coins');
+                return;
+            }
+            
+            try {
+                // Add coins to user
+                const userRef = db.ref('users/' + userId);
+                const snapshot = await userRef.once('value');
+                
+                if (snapshot.exists()) {
+                    const currentCoins = snapshot.val().coins || 0;
+                    await userRef.update({ coins: currentCoins + coins });
+                    
+                    // Record admin action
+                    await db.ref('admin/actions').push().set({
+                        type: 'free_coins',
+                        userId: userId,
+                        coins: coins,
+                        date: Date.now()
+                    });
+                    
+                    alert(`✅ ${coins} free coins added to user`);
+                    document.getElementById('user-id').value = '';
+                    
+                    // Reload stats
+                    loadAdminData();
+                } else {
+                    alert('User not found');
+                }
+                
+            } catch (error) {
+                console.log('Error:', error);
+                alert('Error giving coins');
+            }
+        }
+        
+        // Mark payout as paid
+        async function markPaid(payoutId) {
+            if (confirm('Mark this payout as paid?')) {
+                await db.ref('payouts/' + payoutId).update({
+                    status: 'paid',
+                    paidAt: Date.now()
+                });
+                alert('✅ Payout marked as paid');
+                loadPayouts();
+                loadAdminData();
+            }
+        }
+        
+        // View user
+        function viewUser(userId) {
+            alert(`User ID: ${userId}\n\nYou can view this user in Firebase console.`);
+        }
+        
+        // Enter key in password field
+        document.getElementById('admin-password').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') adminLogin();
+        });
+        
+        console.log('✅ Admin dashboard loaded');
+    </script>
+</body>
+</html>
