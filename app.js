@@ -1,18 +1,15 @@
-// Whisper+me - PRODUCTION READY VERSION
-// NO MOCK DATA - REAL AGORA IMPLEMENTATION
-console.log('🚀 Whisper+me starting...');
+// Whisper+me - LAUNCH READY VERSION
+console.log('🚀 Whisper+me LAUNCH READY starting...');
 
-// Configuration
+// Configuration - SIMPLIFIED
 const CONFIG = {
-  coinPrice: 15,
-  whisperEarning: 12,
-  siteFee: 3,
-  callDuration: 300,
-  waitDuration: 120,
+  coinPrice: 15, // $15 per coin
+  agoraAppId: '966c8e41da614722a88d4372c3d95dba',
+  stripeKey: 'pk_test_51SPYHwRvETRK3Zx7mnVDTNyPB3mxT8vbSIcSVQURp8irweK0lGznwFrW9sjgju2GFgmDiQ5GkWYVlUQZZVNrXkJb00q2QOCC3I',
   adminEmail: 'ifanifwasafifth@gmail.com',
   adminPassword: '068790Pw!',
-  agoraAppId: '966c8e41da614722a88d4372c3d95dba',
-  stripeKey: 'pk_test_51SPYHwRvETRK3Zx7mnVDTNyPB3mxT8vbSIcSVQURp8irweK0lGznwFrW9sjgju2GFgmDiQ5GkWYVlUQZZVNrXkJb00q2QOCC3I'
+  callDuration: 300, // 5 minutes
+  ringDuration: 30   // 30 seconds to answer
 };
 
 // State
@@ -24,11 +21,10 @@ let userData = {
   rating: 5.0,
   bio: '',
   photoURL: '',
-  pricePerCall: 1,
-  lastPriceChange: 0,
   paypalEmail: '',
   isWhisper: false,
   isAvailable: false,
+  whisperId: '', // User's public whisper ID
   social: {}
 };
 let selectedProfile = null;
@@ -37,18 +33,18 @@ let activeCall = null;
 // Agora State
 let agoraClient = null;
 let localAudioTrack = null;
-let remoteAudioTracks = {};
-let callTimer = null;
-let waitTimer = null;
-let timeLeft = 0;
-let currentRating = 5;
-let selectedCoinOption = 1;
 
-// Shuffle State
+// Shuffle State - SIMPLIFIED (no timer)
 let shuffleProfiles = [];
-let shuffleTimer = null;
 let currentShuffleIndex = 0;
-let countdown = 30;
+
+// Call State
+let incomingCall = null;
+let callStatus = 'idle';
+
+// Timer State
+let callTimerInterval = null;
+let timeLeft = 300;
 
 // Initialize Firebase
 try {
@@ -70,9 +66,6 @@ const auth = firebase.auth();
 const db = firebase.database();
 const storage = firebase.storage();
 
-// Initialize Stripe
-const stripe = Stripe(CONFIG.stripeKey);
-
 // When page loads
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('📱 Page loaded');
@@ -84,60 +77,141 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.log('👤 User logged in:', user.email);
       await setupUser();
       updateUI();
-      loadProfiles();
-      startShuffleMode();
+      await loadProfiles();
+      setupCallListeners();
       hideLoading();
     } else {
       console.log('👤 No user logged in');
       showGuestUI();
+      await loadProfiles();
       hideLoading();
     }
   });
   
   setupEventListeners();
-  selectCoinOption(1);
+  setupCoinOption();
+  
+  // Initialize phone interface
+  initPhoneInterface();
 });
 
-// Setup user
+// Setup user with whisper ID
 async function setupUser() {
   if (!currentUser) return;
   
   const userRef = db.ref('users/' + currentUser.uid);
   
-  userRef.on('value', (snap) => {
+  userRef.on('value', async (snap) => {
     if (snap.exists()) {
       const data = snap.val();
       userData = { ...userData, ...data };
+      
+      // Generate whisper ID if not exists
+      if (!userData.whisperId) {
+        const whisperId = generateWhisperId();
+        await userRef.update({ whisperId: whisperId });
+        userData.whisperId = whisperId;
+      }
+      
       console.log('📊 User data loaded:', userData);
       updateUI();
       updateAvailabilityToggle();
+    }
+  });
+}
+
+// Generate short whisper ID (5-digit number)
+function generateWhisperId() {
+  return Math.floor(10000 + Math.random() * 90000).toString();
+}
+
+// Initialize phone interface - SIMPLIFIED
+function initPhoneInterface() {
+  console.log('📱 Initializing phone interface...');
+  
+  const iphoneScreen = document.querySelector('.iphone-screen');
+  if (!iphoneScreen) {
+    console.log('❌ iPhone screen not found');
+    return;
+  }
+  
+  // Set basic structure
+  iphoneScreen.innerHTML = `
+    <div class="phone-status-bar">
+      <span>9:41 AM</span>
+      <span>Whisper+me</span>
+    </div>
+    
+    <div class="phone-content">
+      <div class="shuffle-indicator">
+        <i class="fas fa-random"></i> SHUFFLE MODE
+      </div>
       
-      // Update photo preview
-      if (userData.photoURL) {
-        document.getElementById('photo-preview').innerHTML = `
-          <img src="${userData.photoURL}" style="width: 100px; height: 100px; border-radius: 8px; object-fit: cover; margin-top: 0.5rem;">
-          <p style="color: #10b981; margin-top: 0.5rem; font-size: 0.9rem;">Current photo</p>
-        `;
+      <div class="shuffle-profile" id="shuffle-profile">
+        <img src="https://ui-avatars.com/api/?name=User&background=7c3aed&color=fff" alt="Profile" class="shuffle-profile-img" id="shuffle-img">
+        <h3 class="shuffle-profile-name" id="shuffle-name">Loading...</h3>
+        <div class="shuffle-profile-price">1 Coin ($15)</div>
+        <div class="whisper-id-display" id="shuffle-id">ID: Loading...</div>
+        <p class="shuffle-profile-bio" id="shuffle-bio">Loading profiles...</p>
+      </div>
+      
+      <div class="phone-controls">
+        <button class="phone-btn phone-btn-next" onclick="nextShuffleProfile()">
+          <i class="fas fa-arrow-right"></i>
+        </button>
+        <button class="phone-btn phone-btn-call" onclick="startCallFromShuffle()">
+          <i class="fas fa-phone-alt"></i>
+        </button>
+      </div>
+      
+      <div style="margin-top: 1rem; font-size: 0.9rem; color: #888;">
+        Tap arrow to see next whisper
+      </div>
+    </div>
+  `;
+  
+  // Update with current shuffle profile
+  if (shuffleProfiles.length > 0) {
+    updateShuffleProfile();
+  }
+}
+
+// Setup call listeners
+function setupCallListeners() {
+  if (!currentUser) return;
+  
+  console.log('🔔 Setting up call listeners for user:', currentUser.uid);
+  
+  // Listen for incoming calls
+  db.ref('calls').orderByChild('whisperId').equalTo(currentUser.uid).on('child_added', (snap) => {
+    const call = snap.val();
+    const callId = snap.key;
+    
+    if (call.status === 'ringing' && callStatus === 'idle') {
+      handleIncomingCall(callId, call);
+    }
+  });
+  
+  // Listen for call updates
+  db.ref('calls').on('child_changed', (snap) => {
+    const call = snap.val();
+    const callId = snap.key;
+    
+    // If we're the caller and whisper answered
+    if (activeCall && activeCall.id === callId && call.callerId === currentUser.uid) {
+      if (call.status === 'answered' && callStatus === 'waiting') {
+        startAudioCall(callId);
+      } else if (call.status === 'declined' && callStatus === 'waiting') {
+        endCallEarly(true);
+        showNotification('Call declined. Coin refunded.');
       }
-    } else {
-      // Create new user
-      userRef.set({
-        email: currentUser.email,
-        coins: 0,
-        earnings: 0,
-        callsCompleted: 0,
-        rating: 5.0,
-        bio: '',
-        photoURL: '',
-        pricePerCall: 1,
-        lastPriceChange: Date.now(),
-        paypalEmail: '',
-        isWhisper: false,
-        isAvailable: false,
-        social: {},
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      });
+    }
+    
+    // If we're the whisper and call was cancelled
+    if (incomingCall && incomingCall.id === callId && call.whisperId === currentUser.uid) {
+      if (call.status === 'cancelled' || call.status === 'ended') {
+        declineCallCleanup();
+      }
     }
   });
 }
@@ -160,11 +234,12 @@ function updateUI() {
   document.getElementById('dash-earnings').textContent = '$' + (userData.earnings || 0);
   document.getElementById('dash-calls').textContent = userData.callsCompleted || 0;
   document.getElementById('dash-rating').textContent = userData.rating ? userData.rating.toFixed(1) : '5.0';
+  document.getElementById('dash-id').textContent = userData.whisperId || 'Not set';
   
   // Update profile form
   document.getElementById('profile-bio').value = userData.bio || '';
-  document.getElementById('profile-price').value = userData.pricePerCall || 1;
-  document.getElementById('paypal-email').value = userData.paypalEmail || '';
+  document.getElementById('profile-paypal').value = userData.paypalEmail || '';
+  document.getElementById('profile-id').value = userData.whisperId || '';
   document.getElementById('profile-twitter').value = userData.social?.twitter || '';
   document.getElementById('profile-instagram').value = userData.social?.instagram || '';
   document.getElementById('profile-tiktok').value = userData.social?.tiktok || '';
@@ -180,10 +255,7 @@ function updateAvailabilityToggle() {
 
 // Toggle availability
 window.toggleAvailability = async function() {
-  if (!currentUser) {
-    showNotification('Please login first', true);
-    return;
-  }
+  if (!currentUser) return;
   
   const toggle = document.getElementById('availability-toggle');
   const isAvailable = toggle.checked;
@@ -229,7 +301,7 @@ async function loadProfiles() {
           name: user.bio.split(' ').slice(0, 2).join(' ') || user.email?.split('@')[0] || 'Anonymous',
           bio: user.bio,
           photo: user.photoURL || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(user.email?.split('@')[0] || 'User') + '&background=7c3aed&color=fff&size=150',
-          price: user.pricePerCall || 1,
+          whisperId: user.whisperId || '00000',
           social: user.social || {},
           rating: user.rating || 5.0,
           calls: user.callsCompleted || 0,
@@ -283,7 +355,8 @@ function displayProfiles(profiles) {
                onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(profile.name)}&background=7c3aed&color=fff'">
           <div class="profile-info">
             <h3>${profile.name} ${isCurrentUser ? '<span style="color: #7c3aed; font-size: 0.8rem;">(YOU)</span>' : ''}</h3>
-            <div class="profile-price">${profile.price} Coin${profile.price > 1 ? 's' : ''}</div>
+            <div class="profile-price">1 Coin ($15)</div>
+            <div class="whisper-id-small">ID: ${profile.whisperId}</div>
             ${profile.isAvailable ? '<span style="color: #10b981; font-size: 0.8rem;">● Online</span>' : 
               '<span style="color: #888; font-size: 0.8rem;">● Offline</span>'}
           </div>
@@ -299,7 +372,7 @@ function displayProfiles(profiles) {
   
   container.innerHTML = html;
   
-  // Update shuffle profiles (exclude current user)
+  // Update shuffle profiles
   shuffleProfiles = profiles.filter(p => !p.isCurrentUser && p.isAvailable);
   if (shuffleProfiles.length === 0) {
     shuffleProfiles = profiles.filter(p => !p.isCurrentUser);
@@ -307,45 +380,16 @@ function displayProfiles(profiles) {
   
   console.log(`🎲 ${shuffleProfiles.length} profiles in shuffle mode`);
   
-  // Start shuffle mode
-  if (!shuffleTimer && shuffleProfiles.length > 0) {
-    startShuffleMode();
-  }
+  // Update shuffle display
+  updateShuffleProfile();
 }
 
-// Shuffle Mode Functions
-function startShuffleMode() {
-  if (shuffleTimer) clearInterval(shuffleTimer);
-  
-  if (shuffleProfiles.length > 0) {
-    updateShuffleProfile();
-    startCountdown();
-  } else {
-    console.log('No profiles available for shuffle');
-    document.getElementById('shuffle-timer').innerHTML = 'No profiles available';
-  }
-}
-
-function startCountdown() {
-  countdown = 30;
-  shuffleTimer = setInterval(() => {
-    countdown--;
-    document.getElementById('countdown').textContent = countdown;
-    
-    if (countdown <= 0) {
-      nextShuffleProfile();
-      countdown = 30;
-    }
-  }, 1000);
-}
-
+// Shuffle Functions - SIMPLIFIED (no timer)
 window.nextShuffleProfile = function() {
-  if (shuffleProfiles.length === 0) return;
+  if (shuffleProfiles.length === 0 || callStatus !== 'idle') return;
   
   currentShuffleIndex = (currentShuffleIndex + 1) % shuffleProfiles.length;
   updateShuffleProfile();
-  countdown = 30;
-  document.getElementById('countdown').textContent = countdown;
 };
 
 function updateShuffleProfile() {
@@ -353,10 +397,16 @@ function updateShuffleProfile() {
   
   const profile = shuffleProfiles[currentShuffleIndex];
   
-  document.getElementById('shuffle-img').src = profile.photo;
-  document.getElementById('shuffle-name').textContent = profile.name;
-  document.getElementById('shuffle-price').textContent = profile.price + ' Coin' + (profile.price > 1 ? 's' : '');
-  document.getElementById('shuffle-bio').textContent = profile.bio;
+  // Update DOM elements
+  const shuffleImg = document.getElementById('shuffle-img');
+  const shuffleName = document.getElementById('shuffle-name');
+  const shuffleBio = document.getElementById('shuffle-bio');
+  const shuffleId = document.getElementById('shuffle-id');
+  
+  if (shuffleImg) shuffleImg.src = profile.photo;
+  if (shuffleName) shuffleName.textContent = profile.name;
+  if (shuffleBio) shuffleBio.textContent = profile.bio.substring(0, 100) + (profile.bio.length > 100 ? '...' : '');
+  if (shuffleId) shuffleId.textContent = `ID: ${profile.whisperId}`;
   
   selectedProfile = profile;
 }
@@ -369,7 +419,6 @@ window.viewProfile = function(profileId) {
     return;
   }
   
-  // Find profile from shuffleProfiles or load from Firebase
   let profile = shuffleProfiles.find(p => p.id === profileId);
   
   if (!profile) {
@@ -384,7 +433,8 @@ window.viewProfile = function(profileId) {
   document.getElementById('modal-profile-img').src = profile.photo;
   document.getElementById('modal-profile-name').textContent = profile.name + (isCurrentUser ? ' (YOU)' : '');
   document.getElementById('modal-profile-bio').textContent = profile.bio;
-  document.getElementById('modal-profile-price').textContent = profile.price + ' Coin' + (profile.price > 1 ? 's' : '') + ' ($' + (profile.price * 12) + ' earned)';
+  document.getElementById('modal-profile-id').textContent = `Whisper ID: ${profile.whisperId}`;
+  document.getElementById('modal-profile-price').textContent = '1 Coin ($15)';
   
   // Update social links
   const socialLinks = document.getElementById('modal-social-links');
@@ -410,7 +460,7 @@ window.viewProfile = function(profileId) {
       callButton.classList.add('btn-secondary');
       callButton.onclick = null;
     } else {
-      callButton.innerHTML = '<i class="fas fa-phone-alt"></i> Call Now';
+      callButton.innerHTML = '<i class="fas fa-phone-alt"></i> Call Now (1 Coin)';
       callButton.disabled = false;
       callButton.classList.remove('btn-secondary');
       callButton.classList.add('btn-primary');
@@ -421,71 +471,7 @@ window.viewProfile = function(profileId) {
   showModal('profile-modal');
 };
 
-// REAL AGORA CALL FUNCTIONS
-async function initializeAgora() {
-  if (!agoraClient && typeof AgoraRTC !== 'undefined') {
-    agoraClient = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
-    console.log('✅ Agora client initialized');
-  }
-  return agoraClient;
-}
-
-async function joinAgoraChannel(channelName) {
-  try {
-    await initializeAgora();
-    
-    // Get microphone permission and create local audio track
-    localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
-    
-    // Generate unique user ID
-    const uid = currentUser ? currentUser.uid : Math.floor(Math.random() * 100000);
-    
-    // Join the channel
-    await agoraClient.join(CONFIG.agoraAppId, channelName, null, uid);
-    
-    // Publish local audio track
-    await agoraClient.publish([localAudioTrack]);
-    
-    console.log('✅ Joined Agora channel:', channelName);
-    
-    // Listen for remote users
-    agoraClient.on('user-published', async (user, mediaType) => {
-      if (mediaType === 'audio') {
-        const remoteTrack = await agoraClient.subscribe(user, mediaType);
-        remoteAudioTracks[user.uid] = remoteTrack;
-        remoteTrack.play();
-        console.log('🎧 Remote user connected:', user.uid);
-      }
-    });
-    
-    agoraClient.on('user-unpublished', (user) => {
-      delete remoteAudioTracks[user.uid];
-      console.log('🎧 Remote user disconnected:', user.uid);
-    });
-    
-    return true;
-  } catch (error) {
-    console.error('❌ Agora join error:', error);
-    return false;
-  }
-}
-
-async function leaveAgoraChannel() {
-  if (localAudioTrack) {
-    localAudioTrack.close();
-    localAudioTrack = null;
-  }
-  
-  if (agoraClient) {
-    await agoraClient.leave();
-    agoraClient = null;
-  }
-  
-  remoteAudioTracks = {};
-  console.log('✅ Left Agora channel');
-}
-
-// Start call from profile modal
+// Start call
 window.startCall = async function() {
   if (!selectedProfile) {
     showNotification('No profile selected', true);
@@ -497,57 +483,581 @@ window.startCall = async function() {
     return;
   }
   
-  const callPrice = selectedProfile.price;
+  // Check coins - 1 coin required
+  if (userData.coins < 1) {
+    showNotification('You need 1 coin ($15) to call', true);
+    return;
+  }
   
-  // Check coins
-  if (userData.coins < callPrice) {
-    showNotification(`You need ${callPrice} coin${callPrice > 1 ? 's' : ''} to call`, true);
+  // Check if whisper is available
+  if (!selectedProfile.isAvailable) {
+    showNotification('This whisper is currently unavailable', true);
     return;
   }
   
   closeModal('profile-modal');
-  showNotification('Starting call with ' + selectedProfile.name + '...');
-  
-  // Deduct coins
-  await db.ref('users/' + currentUser.uid).update({
-    coins: userData.coins - callPrice
-  });
+  showNotification('Calling ' + selectedProfile.name + '...');
   
   // Create call record
   const callRef = db.ref('calls').push();
   const callId = callRef.key;
   const channelName = 'call_' + callId;
   
-  await callRef.set({
+  const callData = {
+    id: callId,
     callerId: currentUser.uid,
+    callerEmail: currentUser.email,
+    callerName: userData.bio || currentUser.email.split('@')[0],
     whisperId: selectedProfile.uid,
-    coins: callPrice,
-    status: 'waiting',
+    whisperName: selectedProfile.name,
+    whisperIdNum: selectedProfile.whisperId,
+    coins: 1,
+    status: 'ringing',
     channel: channelName,
     createdAt: Date.now()
+  };
+  
+  console.log('📞 Creating call record:', callData);
+  await callRef.set(callData);
+  
+  // Deduct 1 coin
+  await db.ref('users/' + currentUser.uid).update({
+    coins: (userData.coins || 0) - 1
   });
   
   // Set active call
   activeCall = {
     id: callId,
     whisperId: selectedProfile.uid,
-    coins: callPrice,
+    whisperName: selectedProfile.name,
+    whisperPhoto: selectedProfile.photo,
+    coins: 1,
     channel: channelName,
-    started: false,
-    refundable: true
+    status: 'ringing'
   };
   
-  // Show call interface
-  showCallInterface();
-  startWaitTimer();
+  // Update call status
+  callStatus = 'waiting';
   
-  // Listen for whisper to join (simulate for now)
-  setTimeout(async () => {
-    if (activeCall && activeCall.id === callId && !activeCall.started) {
-      await startAudioCall(callId);
-    }
-  }, 5000); // Wait 5 seconds for whisper to join
+  // Show caller waiting interface
+  showCallerWaitingInterface();
 };
+
+// Show caller waiting interface
+function showCallerWaitingInterface() {
+  const iphoneScreen = document.querySelector('.iphone-screen');
+  if (!iphoneScreen) return;
+  
+  iphoneScreen.innerHTML = `
+    <div class="phone-status-bar">
+      <span>9:41 AM</span>
+      <span>Calling...</span>
+    </div>
+    
+    <div class="phone-content">
+      <img src="${selectedProfile.photo}" alt="${selectedProfile.name}" 
+           class="shuffle-profile-img" style="width: 120px; height: 120px; border-radius: 50%; border: 3px solid #7c3aed;">
+      <h3 class="shuffle-profile-name">${selectedProfile.name}</h3>
+      <p style="color: #666; margin: 0.5rem 0;">ID: ${selectedProfile.whisperId}</p>
+      <p class="call-status" id="call-status" style="color: #fbbf24; margin: 1rem 0;">
+        <i class="fas fa-phone-alt"></i> Ringing... Waiting for answer
+      </p>
+      
+      <div class="phone-controls">
+        <button class="phone-btn phone-btn-hangup" onclick="cancelCall()" style="background: #ef4444;">
+          <i class="fas fa-phone-slash"></i>
+        </button>
+      </div>
+      
+      <p style="font-size: 0.9rem; color: #888; margin-top: 1rem;">
+        1 coin ($15) deducted
+      </p>
+    </div>
+  `;
+}
+
+// Handle incoming call
+async function handleIncomingCall(callId, call) {
+  if (callStatus !== 'idle') return;
+  
+  // Get caller info
+  const callerSnap = await db.ref('users/' + call.callerId).once('value');
+  const callerData = callerSnap.val() || {};
+  
+  incomingCall = {
+    id: callId,
+    callerId: call.callerId,
+    callerName: callerData.bio || call.callerName || 'Anonymous',
+    callerPhoto: callerData.photoURL || 'https://ui-avatars.com/api/?name=Caller&background=7c3aed&color=fff',
+    coins: 1,
+    channel: call.channel
+  };
+  
+  // Update call status
+  callStatus = 'ringing';
+  
+  // Show incoming call interface
+  showIncomingCallInterface();
+}
+
+// Show incoming call interface
+function showIncomingCallInterface() {
+  const iphoneScreen = document.querySelector('.iphone-screen');
+  if (!iphoneScreen) return;
+  
+  iphoneScreen.innerHTML = `
+    <div class="phone-status-bar">
+      <span>9:41 AM</span>
+      <span style="color: #fbbf24;">Incoming Call</span>
+    </div>
+    
+    <div class="phone-content">
+      <img src="${incomingCall.callerPhoto}" alt="${incomingCall.callerName}" 
+           class="shuffle-profile-img" style="width: 140px; height: 140px; border-radius: 50%; border: 5px solid #fbbf24;">
+      
+      <h3 class="shuffle-profile-name" style="margin-top: 1rem;">${incomingCall.callerName}</h3>
+      <p class="call-status" id="call-status" style="color: #10b981; margin: 0.5rem 0;">INCOMING CALL</p>
+      <div class="call-price" style="margin: 1rem 0; font-size: 1.5rem; color: #10b981; font-weight: bold;">
+        1 Coin ($15) Earned
+      </div>
+      
+      <div class="phone-controls">
+        <button class="phone-btn phone-btn-accept" onclick="answerCall()" style="background: #10b981;">
+          <i class="fas fa-phone-alt"></i>
+        </button>
+        <button class="phone-btn phone-btn-hangup" onclick="declineCall()" style="background: #ef4444;">
+          <i class="fas fa-phone-slash"></i>
+        </button>
+      </div>
+      
+      <div class="ring-timer" style="margin-top: 1rem; font-size: 0.9rem; color: #888;">
+        Tap to answer
+      </div>
+    </div>
+  `;
+}
+
+// Whisper answers the call
+window.answerCall = async function() {
+  if (!incomingCall) return;
+  
+  console.log('✅ Whisper answering call:', incomingCall.id);
+  
+  // Update call status
+  await db.ref('calls/' + incomingCall.id).update({
+    status: 'answered',
+    answeredAt: Date.now()
+  });
+  
+  // Set active call for whisper
+  activeCall = {
+    id: incomingCall.id,
+    callerId: incomingCall.callerId,
+    callerName: incomingCall.callerName,
+    callerPhoto: incomingCall.callerPhoto,
+    channel: incomingCall.channel,
+    coins: 1
+  };
+  
+  callStatus = 'active';
+  
+  // Show call in progress interface
+  showCallInProgressInterface(true);
+  
+  // Join Agora channel
+  const joined = await joinAgoraChannel(incomingCall.channel, true);
+  if (joined) {
+    console.log('✅ Whisper joined Agora channel');
+    startCallTimer();
+    showNotification('✅ Connected! Speak now.');
+  }
+  
+  incomingCall = null;
+};
+
+// AGORA Functions
+async function initializeAgora() {
+  if (!agoraClient && typeof AgoraRTC !== 'undefined') {
+    agoraClient = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+    console.log('✅ Agora client initialized');
+  }
+  return agoraClient;
+}
+
+async function joinAgoraChannel(channelName, isWhisper = false) {
+  try {
+    await initializeAgora();
+    
+    const localUid = currentUser ? currentUser.uid : Math.floor(Math.random() * 100000).toString();
+    
+    try {
+      localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+      console.log('🎤 Microphone track created');
+    } catch (micError) {
+      showNotification('Microphone permission required', true);
+      return false;
+    }
+    
+    await agoraClient.join(CONFIG.agoraAppId, channelName, null, localUid);
+    await agoraClient.publish([localAudioTrack]);
+    
+    agoraClient.on('user-published', async (user, mediaType) => {
+      if (mediaType === 'audio') {
+        try {
+          const remoteTrack = await agoraClient.subscribe(user, mediaType);
+          remoteTrack.play();
+          remoteTrack.setVolume(100);
+          showNotification('✅ Audio connected!');
+        } catch (error) {
+          console.error('Subscribe error:', error);
+        }
+      }
+    });
+    
+    return true;
+  } catch (error) {
+    console.error('❌ Agora error:', error);
+    showNotification('Failed to connect audio', true);
+    return false;
+  }
+}
+
+async function leaveAgoraChannel() {
+  try {
+    if (localAudioTrack) {
+      localAudioTrack.close();
+      localAudioTrack = null;
+    }
+    
+    if (agoraClient) {
+      await agoraClient.leave();
+      agoraClient = null;
+    }
+  } catch (error) {
+    console.error('Error leaving channel:', error);
+  }
+}
+
+// Whisper declines the call
+window.declineCall = async function() {
+  if (!incomingCall) return;
+  
+  console.log('❌ Whisper declining call:', incomingCall.id);
+  
+  await db.ref('calls/' + incomingCall.id).update({
+    status: 'declined',
+    declinedAt: Date.now()
+  });
+  
+  // Refund caller
+  const callerSnap = await db.ref('users/' + incomingCall.callerId).once('value');
+  const callerData = callerSnap.val() || {};
+  
+  await db.ref('users/' + incomingCall.callerId).update({
+    coins: (callerData.coins || 0) + 1
+  });
+  
+  declineCallCleanup();
+  showNotification('Call declined. Coin refunded.');
+};
+
+// Cleanup for declined call
+function declineCallCleanup() {
+  resetPhoneInterface();
+  incomingCall = null;
+  callStatus = 'idle';
+}
+
+// Caller cancels the call
+window.cancelCall = async function() {
+  if (!activeCall) return;
+  
+  console.log('❌ Caller cancelling call:', activeCall.id);
+  
+  await db.ref('calls/' + activeCall.id).update({
+    status: 'cancelled',
+    cancelledAt: Date.now()
+  });
+  
+  // Refund 1 coin
+  await db.ref('users/' + currentUser.uid).update({
+    coins: (userData.coins || 0) + 1
+  });
+  
+  endCallCleanup();
+  resetPhoneInterface();
+  
+  showNotification('Call cancelled. 1 coin refunded.');
+};
+
+// Start audio call (when whisper answers)
+async function startAudioCall(callId) {
+  console.log('🎧 Starting audio call...');
+  
+  await db.ref('calls/' + activeCall.id).update({
+    status: 'active',
+    startedAt: Date.now()
+  });
+  
+  callStatus = 'active';
+  
+  // Update UI
+  showCallInProgressInterface(false);
+  
+  // Join Agora channel
+  const joined = await joinAgoraChannel(activeCall.channel, false);
+  if (joined) {
+    console.log('✅ Caller joined Agora channel');
+    showNotification('✅ Call connected!');
+    startCallTimer();
+  }
+}
+
+// Show call in progress interface
+function showCallInProgressInterface(isWhisper = false) {
+  const iphoneScreen = document.querySelector('.iphone-screen');
+  if (!iphoneScreen) return;
+  
+  const otherUser = isWhisper 
+    ? { name: activeCall?.callerName || 'Caller', photo: activeCall?.callerPhoto }
+    : { name: selectedProfile?.name || 'Whisper', photo: selectedProfile?.photo };
+  
+  iphoneScreen.innerHTML = `
+    <div class="phone-status-bar">
+      <span>9:41 AM</span>
+      <span style="color: #10b981;">Live Call</span>
+    </div>
+    
+    <div class="phone-content">
+      <img src="${otherUser.photo}" alt="${otherUser.name}" 
+           class="shuffle-profile-img" style="width: 120px; height: 120px; border-radius: 50%; border: 3px solid #10b981;">
+      <h3 class="shuffle-profile-name">${otherUser.name}</h3>
+      <p class="call-status" id="call-status" style="color: #10b981;">
+        <i class="fas fa-circle" style="font-size: 0.8rem; margin-right: 0.5rem;"></i> Connected
+      </p>
+      <div class="call-timer" id="call-timer" style="font-size: 2rem; font-weight: bold; margin: 1rem 0; color: #7c3aed;">05:00</div>
+      
+      <div class="phone-controls">
+        <button class="phone-btn phone-btn-hangup" onclick="endCall()" style="background: #ef4444;">
+          <i class="fas fa-phone-slash"></i>
+        </button>
+      </div>
+      
+      <div class="mic-status" style="margin-top: 1rem; font-size: 0.9rem; color: #10b981;">
+        <i class="fas fa-microphone"></i> Microphone is live
+      </div>
+    </div>
+  `;
+}
+
+// Start call timer (5 minutes)
+function startCallTimer() {
+  if (callTimerInterval) {
+    clearInterval(callTimerInterval);
+  }
+  
+  timeLeft = CONFIG.callDuration;
+  updateCallTimer();
+  
+  callTimerInterval = setInterval(async () => {
+    timeLeft--;
+    updateCallTimer();
+    
+    if (timeLeft <= 0) {
+      clearInterval(callTimerInterval);
+      callTimerInterval = null;
+      await completeCall();
+    }
+  }, 1000);
+}
+
+// Update call timer display
+function updateCallTimer() {
+  const timerEl = document.getElementById('call-timer');
+  if (!timerEl) return;
+  
+  const minutes = Math.floor(timeLeft / 60);
+  const seconds = timeLeft % 60;
+  timerEl.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+}
+
+// End call
+window.endCall = async function() {
+  if (!activeCall) return;
+  
+  console.log('📞 Ending call:', activeCall.id);
+  
+  await db.ref('calls/' + activeCall.id).update({
+    status: 'ended',
+    endedAt: Date.now(),
+    endedBy: currentUser.uid
+  });
+  
+  // Pay whisper $15 if call was active
+  if (callStatus === 'active' && activeCall.whisperId) {
+    await payWhisper(activeCall.whisperId);
+  }
+  
+  // Clear timer
+  if (callTimerInterval) {
+    clearInterval(callTimerInterval);
+    callTimerInterval = null;
+  }
+  
+  // Leave Agora channel
+  await leaveAgoraChannel();
+  
+  // Cleanup
+  endCallCleanup();
+  resetPhoneInterface();
+  
+  showNotification('Call ended');
+  
+  // Show rating modal
+  if (currentUser.uid !== activeCall.whisperId && callStatus === 'active') {
+    setTimeout(() => {
+      showModal('rating-modal');
+    }, 1000);
+  }
+};
+
+// Complete call (5-minute timer ends)
+async function completeCall() {
+  if (activeCall && activeCall.id) {
+    console.log('✅ Call completed by timer');
+    
+    await db.ref('calls/' + activeCall.id).update({
+      status: 'completed',
+      completedAt: Date.now(),
+      duration: CONFIG.callDuration
+    });
+    
+    // Pay whisper $15
+    if (activeCall.whisperId) {
+      await payWhisper(activeCall.whisperId);
+    }
+    
+    await leaveAgoraChannel();
+    endCallCleanup();
+    resetPhoneInterface();
+    
+    showNotification('✅ Call completed!');
+    
+    // Show rating modal
+    if (currentUser.uid !== activeCall.whisperId) {
+      setTimeout(() => {
+        showModal('rating-modal');
+      }, 1000);
+    }
+  }
+}
+
+// End call early
+window.endCallEarly = async function(refund = false) {
+  if (!activeCall) return;
+  
+  if (refund) {
+    await db.ref('users/' + currentUser.uid).update({
+      coins: (userData.coins || 0) + 1
+    });
+  }
+  
+  if (activeCall.id) {
+    await db.ref('calls/' + activeCall.id).update({
+      status: 'ended',
+      endedAt: Date.now(),
+      reason: 'timeout'
+    });
+  }
+  
+  if (callTimerInterval) {
+    clearInterval(callTimerInterval);
+    callTimerInterval = null;
+  }
+  
+  endCallCleanup();
+  resetPhoneInterface();
+};
+
+// Pay whisper $15 per call
+async function payWhisper(whisperId) {
+  const whisperRef = db.ref('users/' + whisperId);
+  const snapshot = await whisperRef.once('value');
+  const whisperData = snapshot.val() || {};
+  
+  await whisperRef.update({
+    earnings: (whisperData.earnings || 0) + 15, // $15 per call
+    callsCompleted: (whisperData.callsCompleted || 0) + 1
+  });
+  
+  // Create payout record
+  await db.ref('payouts').push().set({
+    whisperId: whisperId,
+    whisperIdNum: whisperData.whisperId,
+    amount: 15,
+    date: Date.now(),
+    status: 'pending'
+  });
+}
+
+// End call cleanup
+function endCallCleanup() {
+  leaveAgoraChannel();
+  activeCall = null;
+  selectedProfile = null;
+  incomingCall = null;
+  callStatus = 'idle';
+  
+  if (callTimerInterval) {
+    clearInterval(callTimerInterval);
+    callTimerInterval = null;
+  }
+}
+
+// Reset phone interface to shuffle mode
+function resetPhoneInterface() {
+  const iphoneScreen = document.querySelector('.iphone-screen');
+  if (!iphoneScreen) return;
+  
+  iphoneScreen.innerHTML = `
+    <div class="phone-status-bar">
+      <span>9:41 AM</span>
+      <span>Whisper+me</span>
+    </div>
+    
+    <div class="phone-content">
+      <div class="shuffle-indicator">
+        <i class="fas fa-random"></i> SHUFFLE MODE
+      </div>
+      
+      <div class="shuffle-profile" id="shuffle-profile">
+        <img src="" alt="Profile" class="shuffle-profile-img" id="shuffle-img">
+        <h3 class="shuffle-profile-name" id="shuffle-name"></h3>
+        <div class="shuffle-profile-price">1 Coin ($15)</div>
+        <div class="whisper-id-display" id="shuffle-id">ID: Loading...</div>
+        <p class="shuffle-profile-bio" id="shuffle-bio"></p>
+      </div>
+      
+      <div class="phone-controls">
+        <button class="phone-btn phone-btn-next" onclick="nextShuffleProfile()">
+          <i class="fas fa-arrow-right"></i>
+        </button>
+        <button class="phone-btn phone-btn-call" onclick="startCallFromShuffle()">
+          <i class="fas fa-phone-alt"></i>
+        </button>
+      </div>
+      
+      <div style="margin-top: 1rem; font-size: 0.9rem; color: #888;">
+        Tap arrow to see next whisper
+      </div>
+    </div>
+  `;
+  
+  // Update with current shuffle profile
+  if (shuffleProfiles.length > 0) {
+    updateShuffleProfile();
+  }
+}
 
 // Start call from shuffle
 window.startCallFromShuffle = function() {
@@ -564,264 +1074,18 @@ window.startCallFromShuffle = function() {
   startCall();
 };
 
-// Show call interface
-function showCallInterface() {
-  // Transform phone to call mode
-  const phoneWrapper = document.getElementById('iphone-wrapper');
-  const iphoneScreen = document.querySelector('.iphone-screen');
-  
-  iphoneScreen.innerHTML = `
-    <div class="phone-status-bar">
-      <span>9:41 AM</span>
-      <span>Calling...</span>
-    </div>
-    
-    <div class="phone-content">
-      <img src="${selectedProfile.photo}" alt="${selectedProfile.name}" 
-           class="shuffle-profile-img" style="width: 120px; height: 120px;">
-      <h3 class="shuffle-profile-name">${selectedProfile.name}</h3>
-      <p class="call-status" id="call-status">Connecting to whisper...</p>
-      <div class="call-timer" id="call-timer">02:00</div>
-      
-      <div class="phone-controls">
-        <button class="phone-btn phone-btn-hangup" onclick="endCallEarly()">
-          <i class="fas fa-phone-slash"></i>
-        </button>
-      </div>
-    </div>
-  `;
-}
-
-// Start wait timer
-function startWaitTimer() {
-  timeLeft = CONFIG.waitDuration;
-  updateCallTimer();
-  
-  waitTimer = setInterval(() => {
-    timeLeft--;
-    updateCallTimer();
-    
-    if (timeLeft <= 0) {
-      clearInterval(waitTimer);
-      endCallEarly();
-    }
-  }, 1000);
-}
-
-function updateCallTimer() {
-  const minutes = Math.floor(timeLeft / 60);
-  const seconds = timeLeft % 60;
-  document.getElementById('call-timer').textContent = 
-    `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-}
-
-// Start audio call with Agora
-async function startAudioCall(callId) {
-  clearInterval(waitTimer);
-  
-  // Update call status
-  await db.ref('calls/' + callId).update({
-    status: 'active',
-    startedAt: Date.now()
-  });
-  
-  activeCall.started = true;
-  activeCall.refundable = false;
-  
-  // Update UI
-  const iphoneScreen = document.querySelector('.iphone-screen');
-  if (iphoneScreen) {
-    iphoneScreen.querySelector('.call-status').textContent = 'Call in progress...';
-  }
-  
-  // Join Agora channel
-  const joined = await joinAgoraChannel(activeCall.channel);
-  if (joined) {
-    showNotification('✅ Call connected! Audio is live.');
-  } else {
-    showNotification('⚠️ Call connected but audio failed', true);
-  }
-  
-  // Start 5-minute timer
-  startCallTimer();
-}
-
-// Start call timer
-function startCallTimer() {
-  timeLeft = CONFIG.callDuration;
-  
-  callTimer = setInterval(async () => {
-    timeLeft--;
-    updateCallTimer();
-    
-    if (timeLeft <= 0) {
-      clearInterval(callTimer);
-      await completeCall();
-    }
-  }, 1000);
-}
-
-// End call early (refund)
-window.endCallEarly = async function() {
-  if (!activeCall) return;
-  
-  await leaveAgoraChannel();
-  
-  if (activeCall.refundable) {
-    // Refund coins
-    await db.ref('users/' + currentUser.uid).update({
-      coins: (userData.coins || 0) + activeCall.coins
-    });
-    showNotification('Call ended. Coins refunded.');
-  } else {
-    showNotification('Call ended.');
-  }
-  
-  endCallCleanup();
-};
-
-// Complete call
-async function completeCall() {
-  clearInterval(callTimer);
-  
-  if (activeCall && activeCall.id) {
-    await db.ref('calls/' + activeCall.id).update({
-      status: 'completed',
-      completedAt: Date.now(),
-      duration: CONFIG.callDuration
-    });
-    
-    // Pay whisper
-    await payWhisper(activeCall.whisperId, activeCall.coins);
-    
-    showNotification('✅ Call completed!');
-    
-    // Reset phone interface
-    resetPhoneInterface();
-    
-    // Show rating modal
-    setTimeout(() => {
-      showModal('rating-modal');
-    }, 1000);
-  }
-  
-  await leaveAgoraChannel();
-  endCallCleanup();
-}
-
-// Pay whisper
-async function payWhisper(whisperId, coins) {
-  const earnings = coins * CONFIG.whisperEarning;
-  
-  const whisperRef = db.ref('users/' + whisperId);
-  const snapshot = await whisperRef.once('value');
-  const whisperData = snapshot.val() || {};
-  
-  await whisperRef.update({
-    earnings: (whisperData.earnings || 0) + earnings,
-    callsCompleted: (whisperData.callsCompleted || 0) + 1
-  });
-  
-  // Create payout record
-  await db.ref('payouts').push().set({
-    whisperId: whisperId,
-    amount: earnings,
-    coins: coins,
-    date: Date.now(),
-    status: 'pending'
-  });
-}
-
-// End call cleanup
-function endCallCleanup() {
-  clearInterval(waitTimer);
-  clearInterval(callTimer);
-  
-  if (agoraClient) {
-    agoraClient.leave();
-    agoraClient = null;
-  }
-  
-  if (localAudioTrack) {
-    localAudioTrack.stop();
-    localAudioTrack = null;
-  }
-  
-  activeCall = null;
-  selectedProfile = null;
-}
-
-// Reset phone interface
-function resetPhoneInterface() {
-  const iphoneScreen = document.querySelector('.iphone-screen');
-  if (iphoneScreen) {
-    iphoneScreen.innerHTML = `
-      <div class="phone-status-bar">
-        <span>9:41 AM</span>
-        <span>Whisper+me</span>
-      </div>
-      
-      <div class="phone-content">
-        <div class="shuffle-indicator">
-          <i class="fas fa-random"></i> SHUFFLE MODE
-        </div>
-        
-        <div class="shuffle-profile" id="shuffle-profile">
-          <img src="" alt="Profile" class="shuffle-profile-img" id="shuffle-img">
-          <h3 class="shuffle-profile-name" id="shuffle-name"></h3>
-          <div class="shuffle-profile-price" id="shuffle-price"></div>
-          <p class="shuffle-profile-bio" id="shuffle-bio"></p>
-        </div>
-        
-        <div class="phone-controls">
-          <button class="phone-btn phone-btn-call" onclick="startCallFromShuffle()">
-            <i class="fas fa-phone-alt"></i>
-          </button>
-          <button class="phone-btn phone-btn-hangup" onclick="nextShuffleProfile()">
-            <i class="fas fa-forward"></i>
-          </button>
-        </div>
-        
-        <div class="shuffle-timer" id="shuffle-timer">
-          Next profile in: <span id="countdown">30</span>s
-        </div>
-      </div>
-    `;
-    
-    // Restart shuffle mode
-    if (shuffleProfiles.length > 0) {
-      startShuffleMode();
-    }
-  }
-}
-
 // Profile save function
 window.saveProfile = async function() {
-  if (!currentUser) {
-    showNotification('Please login first', true);
-    return;
-  }
+  if (!currentUser) return;
   
   const bio = document.getElementById('profile-bio').value.trim();
-  const price = parseInt(document.getElementById('profile-price').value);
-  const paypalEmail = document.getElementById('paypal-email').value.trim();
+  const paypalEmail = document.getElementById('profile-paypal').value.trim();
   const twitter = document.getElementById('profile-twitter').value.trim();
   const instagram = document.getElementById('profile-instagram').value.trim();
   const tiktok = document.getElementById('profile-tiktok').value.trim();
   
   if (!bio) {
     showNotification('Please enter a bio', true);
-    return;
-  }
-  
-  if (price < 1 || price > 3) {
-    showNotification('Price must be between 1-3 coins', true);
-    return;
-  }
-  
-  const priceChanged = price !== userData.pricePerCall;
-  if (priceChanged && !canChangePrice()) {
-    showNotification('You can only change price once per day', true);
     return;
   }
   
@@ -837,17 +1101,10 @@ window.saveProfile = async function() {
     updatedAt: Date.now()
   };
   
-  if (priceChanged) {
-    updates.pricePerCall = price;
-    updates.lastPriceChange = Date.now();
-  }
-  
   try {
     await db.ref('users/' + currentUser.uid).update(updates);
     showNotification('✅ Profile saved successfully!');
-    
     closeModal('dashboard-modal');
-    
     setTimeout(() => {
       loadProfiles();
     }, 1000);
@@ -857,61 +1114,6 @@ window.saveProfile = async function() {
     showNotification('Failed to save profile', true);
   }
 };
-
-function canChangePrice() {
-  if (!userData.lastPriceChange) return true;
-  
-  const now = Date.now();
-  const lastChange = userData.lastPriceChange;
-  const oneDay = 24 * 60 * 60 * 1000;
-  
-  return (now - lastChange) >= oneDay;
-}
-
-// Profile photo upload
-document.getElementById('profile-photo')?.addEventListener('change', async function(e) {
-  if (!currentUser) return;
-  
-  const file = e.target.files[0];
-  if (!file) return;
-  
-  if (!file.type.startsWith('image/')) {
-    showNotification('Please upload an image file', true);
-    return;
-  }
-  
-  if (file.size > 5 * 1024 * 1024) {
-    showNotification('File size must be less than 5MB', true);
-    return;
-  }
-  
-  showNotification('Uploading photo...');
-  
-  try {
-    const timestamp = Date.now();
-    const fileExtension = file.name.split('.').pop();
-    const fileName = `${currentUser.uid}_${timestamp}.${fileExtension}`;
-    
-    const storageRef = storage.ref('profile-photos/' + fileName);
-    const snapshot = await storageRef.put(file);
-    const downloadURL = await snapshot.ref.getDownloadURL();
-    
-    await db.ref('users/' + currentUser.uid).update({ 
-      photoURL: downloadURL 
-    });
-    
-    document.getElementById('photo-preview').innerHTML = `
-      <img src="${downloadURL}" style="width: 100px; height: 100px; border-radius: 8px; object-fit: cover; margin-top: 0.5rem;">
-      <p style="color: #10b981; margin-top: 0.5rem; font-size: 0.9rem;">Photo uploaded!</p>
-    `;
-    
-    showNotification('✅ Photo uploaded successfully!');
-    
-  } catch (error) {
-    console.log('Upload error:', error);
-    showNotification('Failed to upload photo', true);
-  }
-});
 
 // Auth functions
 window.showAuthModal = function(tab = 'login') {
@@ -985,19 +1187,14 @@ window.signup = async function() {
 window.logout = async function() {
   try {
     if (activeCall) {
-      await endCallEarly();
-    }
-    
-    if (shuffleTimer) {
-      clearInterval(shuffleTimer);
-      shuffleTimer = null;
+      await endCall();
     }
     
     await auth.signOut();
     showNotification('Logged out successfully');
     showGuestUI();
     loadProfiles();
-    startShuffleMode();
+    resetPhoneInterface();
   } catch (error) {
     console.log('Logout error:', error);
     showNotification('Logout failed', true);
@@ -1015,19 +1212,30 @@ window.showDashboard = function() {
 
 // Modal functions
 function showModal(modalId) {
-  document.getElementById(modalId).style.display = 'flex';
+  const modal = document.getElementById(modalId);
+  if (modal) {
+    modal.style.display = 'flex';
+  }
 }
 
 function closeModal(modalId) {
-  document.getElementById(modalId).style.display = 'none';
+  const modal = document.getElementById(modalId);
+  if (modal) {
+    modal.style.display = 'none';
+  }
 }
 
 function hideLoading() {
-  document.getElementById('loading-screen').style.display = 'none';
+  const loading = document.getElementById('loading-screen');
+  if (loading) {
+    loading.style.display = 'none';
+  }
 }
 
 function showNotification(message, isError = false) {
   const notification = document.getElementById('notification');
+  if (!notification) return;
+  
   notification.textContent = message;
   notification.className = 'notification show';
   
@@ -1063,19 +1271,28 @@ function setupEventListeners() {
   });
 }
 
-// Coin functions
+// Coin functions - SIMPLIFIED (only 1 coin option)
+function setupCoinOption() {
+  // Only show 1 coin for $15
+  const coinContainer = document.querySelector('.coin-options');
+  if (coinContainer) {
+    coinContainer.innerHTML = `
+      <div class="coin-option selected" onclick="selectCoinOption(1)">
+        <div class="coin-icon">
+          <i class="fas fa-coins"></i>
+        </div>
+        <div class="coin-details">
+          <div class="coin-amount">1 Coin</div>
+          <div class="coin-price">$15</div>
+        </div>
+      </div>
+    `;
+  }
+}
+
 window.selectCoinOption = function(coins) {
-  selectedCoinOption = coins;
-  
-  document.querySelectorAll('.coin-option').forEach(option => {
-    option.classList.remove('selected');
-  });
-  
-  document.querySelectorAll('.coin-option').forEach(option => {
-    if (option.querySelector('.coin-amount').textContent.includes(coins.toString())) {
-      option.classList.add('selected');
-    }
-  });
+  // Only 1 coin option
+  selectedCoinOption = 1;
 };
 
 window.buyCoins = async function() {
@@ -1085,23 +1302,15 @@ window.buyCoins = async function() {
     return;
   }
   
-  const amount = selectedCoinOption * CONFIG.coinPrice;
-  showNotification(`Processing $${amount} purchase...`);
+  showNotification(`Processing $15 purchase...`);
   
   try {
     setTimeout(async () => {
       await db.ref('users/' + currentUser.uid).update({
-        coins: (userData.coins || 0) + selectedCoinOption
+        coins: (userData.coins || 0) + 1
       });
       
-      await db.ref('purchases').push().set({
-        userId: currentUser.uid,
-        coins: selectedCoinOption,
-        amount: amount,
-        date: Date.now()
-      });
-      
-      showNotification(`✅ Added ${selectedCoinOption} coin${selectedCoinOption > 1 ? 's' : ''} to your account!`);
+      showNotification(`✅ Added 1 coin ($15) to your account!`);
     }, 1500);
     
   } catch (error) {
@@ -1111,6 +1320,8 @@ window.buyCoins = async function() {
 };
 
 // Rating functions
+let currentRating = 5;
+
 window.setRating = function(rating) {
   currentRating = rating;
   
@@ -1146,30 +1357,15 @@ window.submitRating = async function() {
   currentRating = 5;
 };
 
-// Admin login
+// Admin login - CONNECTED TO ADMIN DASHBOARD
 window.showAdminLogin = function() {
   const password = prompt('Enter admin password:');
   if (password === CONFIG.adminPassword) {
+    // Redirect to admin.html which should have access to all user data
     window.location.href = 'admin.html';
   } else {
     showNotification('Invalid password', true);
   }
 };
 
-// Share profile
-window.shareProfile = function() {
-  if (!selectedProfile) return;
-  
-  if (navigator.share) {
-    navigator.share({
-      title: 'Chat with ' + selectedProfile.name + ' on Whisper+me',
-      text: 'Connect with ' + selectedProfile.name + ' for a private audio chat!',
-      url: window.location.href
-    });
-  } else {
-    navigator.clipboard.writeText(window.location.href);
-    showNotification('Profile link copied to clipboard!');
-  }
-};
-
-console.log('✅ Whisper+me PRODUCTION READY with REAL Agora & Firebase');
+console.log('✅ Whisper+me LAUNCH READY - All calls = 1 coin ($15)');
