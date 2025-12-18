@@ -1,6 +1,13 @@
 // Whisper+me - LAUNCH READY VERSION
 console.log('🚀 Whisper+me LAUNCH READY starting...');
 
+// Check if we're on admin page - if so, don't run main app code
+if (window.location.pathname.includes('admin.html')) {
+    console.log('📊 Admin page detected - skipping main app initialization');
+    // Exit early, admin.html has its own code
+    throw new Error('Admin page - app.js not needed here');
+}
+
 // Configuration - SIMPLIFIED
 const CONFIG = {
   coinPrice: 15, // $15 per coin
@@ -216,33 +223,51 @@ function setupCallListeners() {
   });
 }
 
-// Update UI
+// Update UI - SAFE VERSION (checks elements exist)
 function updateUI() {
   if (currentUser) {
-    document.getElementById('guest-menu').style.display = 'none';
-    document.getElementById('logged-in-menu').style.display = 'block';
+    const guestMenu = document.getElementById('guest-menu');
+    const loggedInMenu = document.getElementById('logged-in-menu');
+    if (guestMenu) guestMenu.style.display = 'none';
+    if (loggedInMenu) loggedInMenu.style.display = 'block';
   } else {
-    document.getElementById('guest-menu').style.display = 'block';
-    document.getElementById('logged-in-menu').style.display = 'none';
+    const guestMenu = document.getElementById('guest-menu');
+    const loggedInMenu = document.getElementById('logged-in-menu');
+    if (guestMenu) guestMenu.style.display = 'block';
+    if (loggedInMenu) loggedInMenu.style.display = 'none';
   }
   
-  // Update user info
-  document.getElementById('coins-count').textContent = userData.coins || 0;
+  // Update user info - check each element exists
+  const coinsCount = document.getElementById('coins-count');
+  if (coinsCount) coinsCount.textContent = userData.coins || 0;
   
-  // Update dashboard
-  document.getElementById('dash-coins').textContent = userData.coins || 0;
-  document.getElementById('dash-earnings').textContent = '$' + (userData.earnings || 0);
-  document.getElementById('dash-calls').textContent = userData.callsCompleted || 0;
-  document.getElementById('dash-rating').textContent = userData.rating ? userData.rating.toFixed(1) : '5.0';
-  document.getElementById('dash-id').textContent = userData.whisperId || 'Not set';
+  // Update dashboard - check each element exists
+  const dashCoins = document.getElementById('dash-coins');
+  const dashEarnings = document.getElementById('dash-earnings');
+  const dashCalls = document.getElementById('dash-calls');
+  const dashRating = document.getElementById('dash-rating');
+  const dashId = document.getElementById('dash-id');
   
-  // Update profile form
-  document.getElementById('profile-bio').value = userData.bio || '';
-  document.getElementById('profile-paypal').value = userData.paypalEmail || '';
-  document.getElementById('profile-id').value = userData.whisperId || '';
-  document.getElementById('profile-twitter').value = userData.social?.twitter || '';
-  document.getElementById('profile-instagram').value = userData.social?.instagram || '';
-  document.getElementById('profile-tiktok').value = userData.social?.tiktok || '';
+  if (dashCoins) dashCoins.textContent = userData.coins || 0;
+  if (dashEarnings) dashEarnings.textContent = '$' + (userData.earnings || 0);
+  if (dashCalls) dashCalls.textContent = userData.callsCompleted || 0;
+  if (dashRating) dashRating.textContent = userData.rating ? userData.rating.toFixed(1) : '5.0';
+  if (dashId) dashId.textContent = userData.whisperId || 'Not set';
+  
+  // Update profile form - check each element exists
+  const profileBio = document.getElementById('profile-bio');
+  const profilePaypal = document.getElementById('profile-paypal');
+  const profileId = document.getElementById('profile-id');
+  const profileTwitter = document.getElementById('profile-twitter');
+  const profileInstagram = document.getElementById('profile-instagram');
+  const profileTiktok = document.getElementById('profile-tiktok');
+  
+  if (profileBio) profileBio.value = userData.bio || '';
+  if (profilePaypal) profilePaypal.value = userData.paypalEmail || '';
+  if (profileId) profileId.value = userData.whisperId || '';
+  if (profileTwitter) profileTwitter.value = userData.social?.twitter || '';
+  if (profileInstagram) profileInstagram.value = userData.social?.instagram || '';
+  if (profileTiktok) profileTiktok.value = userData.social?.tiktok || '';
 }
 
 // Update availability toggle
@@ -430,24 +455,32 @@ window.viewProfile = function(profileId) {
   const isCurrentUser = currentUser && profile.uid === currentUser.uid;
   
   // Update modal
-  document.getElementById('modal-profile-img').src = profile.photo;
-  document.getElementById('modal-profile-name').textContent = profile.name + (isCurrentUser ? ' (YOU)' : '');
-  document.getElementById('modal-profile-bio').textContent = profile.bio;
-  document.getElementById('modal-profile-id').textContent = `Whisper ID: ${profile.whisperId}`;
-  document.getElementById('modal-profile-price').textContent = '1 Coin ($15)';
+  const modalImg = document.getElementById('modal-profile-img');
+  const modalName = document.getElementById('modal-profile-name');
+  const modalBio = document.getElementById('modal-profile-bio');
+  const modalId = document.getElementById('modal-profile-id');
+  const modalPrice = document.getElementById('modal-profile-price');
+  
+  if (modalImg) modalImg.src = profile.photo;
+  if (modalName) modalName.textContent = profile.name + (isCurrentUser ? ' (YOU)' : '');
+  if (modalBio) modalBio.textContent = profile.bio;
+  if (modalId) modalId.textContent = `Whisper ID: ${profile.whisperId}`;
+  if (modalPrice) modalPrice.textContent = '1 Coin ($15)';
   
   // Update social links
   const socialLinks = document.getElementById('modal-social-links');
-  socialLinks.innerHTML = '';
-  
-  if (profile.social?.twitter) {
-    socialLinks.innerHTML += `<a href="${profile.social.twitter}" target="_blank" class="social-link"><i class="fab fa-twitter"></i></a>`;
-  }
-  if (profile.social?.instagram) {
-    socialLinks.innerHTML += `<a href="${profile.social.instagram}" target="_blank" class="social-link"><i class="fab fa-instagram"></i></a>`;
-  }
-  if (profile.social?.tiktok) {
-    socialLinks.innerHTML += `<a href="${profile.social.tiktok}" target="_blank" class="social-link"><i class="fab fa-tiktok"></i></a>`;
+  if (socialLinks) {
+    socialLinks.innerHTML = '';
+    
+    if (profile.social?.twitter) {
+      socialLinks.innerHTML += `<a href="${profile.social.twitter}" target="_blank" class="social-link"><i class="fab fa-twitter"></i></a>`;
+    }
+    if (profile.social?.instagram) {
+      socialLinks.innerHTML += `<a href="${profile.social.instagram}" target="_blank" class="social-link"><i class="fab fa-instagram"></i></a>`;
+    }
+    if (profile.social?.tiktok) {
+      socialLinks.innerHTML += `<a href="${profile.social.tiktok}" target="_blank" class="social-link"><i class="fab fa-tiktok"></i></a>`;
+    }
   }
   
   // Update call button
@@ -1126,9 +1159,13 @@ window.closeAuthModal = function() {
 };
 
 window.switchAuthTab = function(tab) {
-  document.getElementById('auth-modal-title').textContent = tab === 'login' ? 'Login to Whisper+me' : 'Sign Up for Whisper+me';
-  document.getElementById('login-form').style.display = tab === 'login' ? 'block' : 'none';
-  document.getElementById('signup-form').style.display = tab === 'signup' ? 'block' : 'none';
+  const authModalTitle = document.getElementById('auth-modal-title');
+  const loginForm = document.getElementById('login-form');
+  const signupForm = document.getElementById('signup-form');
+  
+  if (authModalTitle) authModalTitle.textContent = tab === 'login' ? 'Login to Whisper+me' : 'Sign Up for Whisper+me';
+  if (loginForm) loginForm.style.display = tab === 'login' ? 'block' : 'none';
+  if (signupForm) signupForm.style.display = tab === 'signup' ? 'block' : 'none';
 };
 
 window.login = async function() {
@@ -1249,8 +1286,10 @@ function showNotification(message, isError = false) {
 }
 
 function showGuestUI() {
-  document.getElementById('guest-menu').style.display = 'block';
-  document.getElementById('logged-in-menu').style.display = 'none';
+  const guestMenu = document.getElementById('guest-menu');
+  const loggedInMenu = document.getElementById('logged-in-menu');
+  if (guestMenu) guestMenu.style.display = 'block';
+  if (loggedInMenu) loggedInMenu.style.display = 'none';
 }
 
 function setupEventListeners() {
@@ -1262,13 +1301,20 @@ function setupEventListeners() {
     });
   });
   
-  document.getElementById('login-password')?.addEventListener('keypress', function(e) {
-    if (e.key === 'Enter') login();
-  });
+  const loginPassword = document.getElementById('login-password');
+  const signupConfirm = document.getElementById('signup-confirm');
   
-  document.getElementById('signup-confirm')?.addEventListener('keypress', function(e) {
-    if (e.key === 'Enter') signup();
-  });
+  if (loginPassword) {
+    loginPassword.addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') login();
+    });
+  }
+  
+  if (signupConfirm) {
+    signupConfirm.addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') signup();
+    });
+  }
 }
 
 // Coin functions - SIMPLIFIED (only 1 coin option)
@@ -1353,7 +1399,8 @@ window.submitRating = async function() {
   // Reset
   const stars = document.querySelectorAll('#rating-modal .fa-star');
   stars.forEach(star => star.style.color = '#666');
-  document.getElementById('rating-comment').value = '';
+  const commentInput = document.getElementById('rating-comment');
+  if (commentInput) commentInput.value = '';
   currentRating = 5;
 };
 
