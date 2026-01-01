@@ -1,0 +1,1 @@
+[payments.js content here]
