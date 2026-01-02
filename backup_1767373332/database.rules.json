@@ -1,0 +1,68 @@
+{
+  "rules": {
+    "users": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      "$uid": {
+        ".read": "true",
+        ".write": "auth != null && auth.uid === $uid",
+        
+        "email": {
+          ".read": "auth != null && auth.uid === $uid"
+        },
+        "coins": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": "false"
+        },
+        "earnings": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": "false"
+        },
+        "payoutMethods": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": "auth != null && auth.uid === $uid"
+        },
+        
+        "displayName": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50"
+        },
+        "profilePhoto": {
+          ".validate": "newData.isString() && newData.val().length <= 500"
+        },
+        "bio": {
+          ".validate": "newData.isString() && newData.val().length <= 500"
+        },
+        "callPrice": {
+          ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 3"
+        },
+        "isAvailable": {
+          ".validate": "newData.isBoolean()"
+        },
+        "socialLinks": {
+          "$social": {
+            ".validate": "newData.isString() && newData.val().length <= 200"
+          }
+        }
+      }
+    },
+    
+    "calls": {
+      "$callId": {
+        ".read": "auth != null",
+        ".write": "auth != null && (
+          data.child('callerId').val() === auth.uid || 
+          data.child('receiverId').val() === auth.uid
+        )"
+      }
+    },
+    
+    "notifications": {
+      "$userId": {
+        ".read": "auth != null && auth.uid === $userId",
+        "$notificationId": {
+          ".write": "auth != null && auth.uid === $userId"
+        }
+      }
+    }
+  }
+}

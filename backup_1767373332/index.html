@@ -1,0 +1,1357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whisper+me - Live Anonymous Audio Chat</title>
+    
+    <!-- Google Adsense -->
+    <meta name="google-adsense-account" content="ca-pub-1184595877548269">
+    <script async src="https:///pagead/js/adsbygoogle.js?client=ca-pub-1184595877548269" crossorigin="anonymous"></script>
+    
+    <!-- Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-4QYRJLTXTT"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-4QYRJLTXTT');
+    </script>
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Agora SDK -->
+    <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.18.2.js"></script>
+    
+    <!-- Stripe -->
+    <script src="https://js.stripe.com/v3/"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #000000, #111111);
+            color: white;
+            min-height: 100vh;
+        }
+        
+        /* Loading Screen */
+        .loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid #333;
+            border-top-color: #7c3aed;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Header */
+        header {
+            background: rgba(0, 0, 0, 0.9);
+            backdrop-filter: blur(10px);
+            padding: 1rem;
+            border-bottom: 1px solid #222;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #7c3aed;
+        }
+        
+        .btn {
+            padding: 0.5rem 1rem;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary {
+            background: #7c3aed;
+            color: white;
+        }
+        
+        .btn-secondary {
+            background: #333;
+            color: white;
+        }
+        
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+        
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+        
+        /* REAL iPHONE PHONE SECTION */
+        .phone-container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+            display: flex;
+            justify-content: center;
+        }
+        
+        .iphone-wrapper {
+            width: 320px;
+            height: 650px;
+            background: #f2f2f2;
+            border-radius: 40px;
+            padding: 20px;
+            box-shadow: 
+                0 0 0 12px #1a1a1a,
+                0 0 0 14px #666,
+                0 20px 60px rgba(0, 0, 0, 0.8);
+            position: relative;
+            overflow: hidden;
+            border: 3px solid #222;
+        }
+        
+        .iphone-notch {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 180px;
+            height: 25px;
+            background: #1a1a1a;
+            border-bottom-left-radius: 20px;
+            border-bottom-right-radius: 20px;
+            z-index: 10;
+        }
+        
+        .iphone-screen {
+            width: 100%;
+            height: 100%;
+            background: #000;
+            border-radius: 30px;
+            overflow: hidden;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .phone-status-bar {
+            background: #000;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            color: white;
+            font-size: 0.8rem;
+            border-bottom: 1px solid #222;
+        }
+        
+        .phone-content {
+            flex: 1;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+        
+        .shuffle-profile {
+            margin-bottom: 30px;
+        }
+        
+        .shuffle-profile-img {
+            width: 120px;
+            height: 120px;
+            border-radius: 60px;
+            object-fit: cover;
+            border: 3px solid #7c3aed;
+            margin-bottom: 15px;
+            animation: pulse 2s infinite;
+        }
+        
+        .shuffle-profile-name {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            color: white;
+        }
+        
+        .shuffle-profile-price {
+            color: #7c3aed;
+            font-weight: 600;
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+        }
+        
+        .shuffle-profile-bio {
+            color: #aaa;
+            font-size: 0.9rem;
+            line-height: 1.4;
+            margin-bottom: 30px;
+            max-height: 60px;
+            overflow: hidden;
+        }
+        
+        .phone-controls {
+            display: flex;
+            gap: 30px;
+            margin-top: 20px;
+        }
+        
+        .phone-btn {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            cursor: pointer;
+            border: none;
+            transition: transform 0.3s ease;
+        }
+        
+        .phone-btn:hover {
+            transform: scale(1.1);
+        }
+        
+        .phone-btn-call {
+            background: #10b981;
+            color: white;
+            box-shadow: 0 5px 15px rgba(16, 185, 129, 0.4);
+        }
+        
+        .phone-btn-hangup {
+            background: #ef4444;
+            color: white;
+            box-shadow: 0 5px 15px rgba(239, 68, 68, 0.4);
+        }
+        
+        .shuffle-timer {
+            margin-top: 20px;
+            color: #666;
+            font-size: 0.9rem;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        /* Profiles Grid */
+        .profiles-section {
+            max-width: 1200px;
+            margin: 3rem auto;
+            padding: 0 1rem;
+        }
+        
+        .section-title {
+            font-size: 1.5rem;
+            margin-bottom: 1.5rem;
+            color: #fff;
+            text-align: center;
+        }
+        
+        .profiles-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1.5rem;
+        }
+        
+        .profile-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 1.5rem;
+            border: 1px solid rgba(124, 58, 237, 0.2);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+        }
+        
+        .profile-card:hover {
+            transform: translateY(-5px);
+            border-color: #7c3aed;
+            box-shadow: 0 10px 30px rgba(124, 58, 237, 0.3);
+        }
+        
+        .profile-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .profile-img {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #7c3aed;
+        }
+        
+        .profile-info h3 {
+            font-size: 1.2rem;
+            margin-bottom: 0.25rem;
+        }
+        
+        .profile-price {
+            color: #7c3aed;
+            font-weight: 600;
+        }
+        
+        .profile-bio {
+            color: #aaa;
+            font-size: 0.9rem;
+            line-height: 1.4;
+            margin-bottom: 1rem;
+        }
+        
+        /* Coins Section */
+        .coins-section {
+            max-width: 1200px;
+            margin: 3rem auto;
+            padding: 0 1rem;
+        }
+        
+        .coins-options {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin: 2rem 0;
+        }
+        
+        .coin-option {
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px solid #333;
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+        
+        .coin-option.selected {
+            border-color: #7c3aed;
+            background: rgba(124, 58, 237, 0.1);
+            transform: scale(1.05);
+        }
+        
+        .coin-amount {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #7c3aed;
+            margin-bottom: 0.5rem;
+        }
+        
+        .coin-price {
+            color: #10b981;
+            font-weight: 600;
+        }
+        
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.95);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            padding: 1rem;
+            backdrop-filter: blur(5px);
+        }
+        
+        .modal {
+            background: rgba(30, 30, 30, 0.95);
+            border-radius: 20px;
+            width: 90%;
+            max-width: 500px;
+            border: 1px solid #333;
+            max-height: 90vh;
+            overflow-y: auto;
+            backdrop-filter: blur(10px);
+        }
+        
+        .modal-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .modal-body {
+            padding: 1.5rem;
+        }
+        
+        .close-btn {
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0;
+        }
+        
+        /* Profile Modal */
+        .profile-modal-img {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid #7c3aed;
+            margin: 0 auto 1rem;
+            display: block;
+        }
+        
+        .social-links {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin: 1rem 0;
+        }
+        
+        .social-link {
+            color: #7c3aed;
+            font-size: 1.5rem;
+            transition: transform 0.3s ease;
+        }
+        
+        .social-link:hover {
+            transform: scale(1.2);
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+        
+        /* Dashboard Modal - UPDATED */
+        .dashboard-modal .modal {
+            max-width: 600px;
+        }
+        
+        .dashboard-user-info {
+            text-align: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid #333;
+        }
+        
+        .dashboard-user-img {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid #7c3aed;
+            margin-bottom: 1rem;
+        }
+        
+        .dashboard-user-email {
+            color: #888;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .dashboard-user-id {
+            background: rgba(124, 58, 237, 0.2);
+            color: #7c3aed;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            display: inline-block;
+        }
+        
+        .dashboard-stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+        
+        .stat-card {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 1rem;
+            border-radius: 12px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+        }
+        
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #7c3aed;
+        }
+        
+        .stat-label {
+            color: #888;
+            font-size: 0.8rem;
+            margin-top: 0.25rem;
+        }
+        
+        /* Payout Options */
+        .payout-options {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+        
+        .payout-option {
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px solid #333;
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+        
+        .payout-option.selected {
+            border-color: #7c3aed;
+            background: rgba(124, 58, 237, 0.1);
+        }
+        
+        .payout-icon {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            color: #7c3aed;
+        }
+        
+        .payout-name {
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+        
+        .payout-details {
+            color: #888;
+            font-size: 0.8rem;
+        }
+        
+        /* Availability Toggle */
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 30px;
+            margin: 0 10px;
+        }
+        
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #333;
+            transition: .4s;
+            border-radius: 34px;
+        }
+        
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        
+        input:checked + .toggle-slider {
+            background-color: #7c3aed;
+        }
+        
+        input:checked + .toggle-slider:before {
+            transform: translateX(30px);
+        }
+        
+        /* Form Styles */
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        
+        .form-group label {
+            display: block;
+            color: #888;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+        }
+        
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid #333;
+            border-radius: 12px;
+            color: white;
+            font-size: 1rem;
+        }
+        
+        .form-group textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        
+        /* User Menu */
+        .user-menu {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #7c3aed;
+            cursor: pointer;
+        }
+        
+        .coins-badge {
+            background: rgba(124, 58, 237, 0.2);
+            color: #7c3aed;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        /* Notification */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #10b981;
+            color: white;
+            padding: 1rem 1.5rem;
+            border-radius: 12px;
+            display: none;
+            z-index: 2000;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+            animation: slideIn 0.3s ease;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .notification.show {
+            display: block;
+        }
+        
+        .notification.error {
+            background: #ef4444;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        /* Shuffle Mode Indicator */
+        .shuffle-indicator {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(124, 58, 237, 0.2);
+            color: #7c3aed;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .iphone-wrapper {
+                transform: scale(0.8);
+            }
+            
+            .profiles-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .coins-options {
+                grid-template-columns: 1fr;
+            }
+            
+            .action-buttons {
+                flex-direction: column;
+            }
+            
+            .phone-controls {
+                gap: 20px;
+            }
+            
+            .phone-btn {
+                width: 60px;
+                height: 60px;
+            }
+            
+            .dashboard-stats {
+                grid-template-columns: 1fr;
+            }
+            
+            .payout-options {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div class="loading-screen" id="loading-screen">
+        <div class="spinner"></div>
+    </div>
+    
+    <!-- Header -->
+    <header>
+        <div class="header-content">
+            <div class="logo">
+                <i class="fas fa-comment-alt"></i>
+                <span>Whisper+me</span>
+            </div>
+            
+            <div id="user-menu">
+                <!-- Guest Menu -->
+                <div id="guest-menu">
+                    <button class="btn btn-primary" onclick="window.App.ui.showAuthModal()">
+                        <i class="fas fa-sign-in-alt"></i> Login
+                    </button>
+                </div>
+                
+                <!-- Logged In Menu -->
+                <div id="logged-in-menu" style="display: none;">
+                    <div class="user-menu">
+                        <div class="coins-badge" onclick="showDashboard()">
+                            <i class="fas fa-coins"></i> <span id="coins-count">0</span>
+                        </div>
+                        <img src="" alt="" class="user-avatar" id="user-avatar" onclick="showDashboard()">
+                        <button class="btn btn-secondary" onclick="showDashboard()">
+                            <i class="fas fa-user"></i> Dashboard
+                        </button>
+                        <button class="btn btn-danger" onclick="window.App.auth.logout()">
+                            <i class="fas fa-sign-out-alt"></i> Logout
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+    
+    <!-- Main Content -->
+    <main>
+        <!-- REAL iPHONE PHONE WITH SHUFFLE MODE -->
+        <section class="phone-container">
+            <div class="iphone-wrapper">
+                <div class="iphone-notch"></div>
+                <div class="iphone-screen">
+                    <div class="phone-status-bar">
+                        <span>9:41 AM</span>
+                        <span>Whisper+me</span>
+                    </div>
+                    
+                    <div class="phone-content">
+                        <div class="shuffle-indicator">
+                            <i class="fas fa-random"></i> SHUFFLE MODE
+                        </div>
+                        
+                        <div class="shuffle-profile" id="shuffle-profile">
+                            <img src="photo-1494790108755-2616b786d4d7?w=400&h=400&fit=crop&crop=face" 
+                                 alt="Profile" class="shuffle-profile-img" id="shuffle-img">
+                            <h3 class="shuffle-profile-name" id="shuffle-name">Loading...</h3>
+                            <div class="shuffle-profile-price" id="shuffle-price">1 Coin</div>
+                            <p class="shuffle-profile-bio" id="shuffle-bio">Connecting to real users...</p>
+                        </div>
+                        
+                        <div class="phone-controls">
+                            <button class="phone-btn phone-btn-call" onclick="startCallFromShuffle()">
+                                <i class="fas fa-phone-alt"></i>
+                            </button>
+                            <button class="phone-btn phone-btn-hangup" onclick="nextShuffleProfile()">
+                                <i class="fas fa-forward"></i>
+                            </button>
+                        </div>
+                        
+                        <div class="shuffle-timer" id="shuffle-timer">
+                            Next profile in: <span id="countdown">30</span>s
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Profiles Grid -->
+        <section class="profiles-section">
+            <h2 class="section-title">Available Whispers</h2>
+            <div class="profiles-grid" id="profiles-container">
+                <!-- Profiles loaded from Firebase -->
+            </div>
+        </section>
+        
+        <!-- Coins Purchase Section -->
+        <section class="coins-section">
+            <h2 class="section-title">Buy Whisper Coins</h2>
+            <p style="text-align: center; color: #888; margin-bottom: 1rem;">
+                1 Coin = $15 • Each call costs 1-3 coins • Whispers earn $12 per coin
+            </p>
+            
+            <div class="coins-options" id="coins-options">
+                <!-- Coin options loaded dynamically -->
+            </div>
+            
+            <button class="btn btn-primary" onclick="window.App.ui.showBuyCoinsModal()" style="width: 100%; padding: 1rem; font-size: 1.1rem;">
+                <i class="fas fa-shopping-cart"></i> Buy Coins Now
+            </button>
+        </section>
+    </main>
+    
+    <!-- Footer -->
+    <footer style="background: rgba(0,0,0,0.9); padding: 2rem 1rem; margin-top: 3rem; text-align: center; border-top: 1px solid #222; backdrop-filter: blur(10px);">
+        <div style="max-width: 1200px; margin: 0 auto;">
+            <div class="logo" style="justify-content: center; margin-bottom: 1rem;">
+                <i class="fas fa-comment-alt"></i>
+                <span>Whisper+me</span>
+            </div>
+            <p style="color: #666; font-size: 0.9rem;">
+                © 2024 Whisper+me. Live anonymous audio chat.
+            </p>
+            <button onclick="showAdminLogin()" style="background: none; border: none; color: #ef4444; margin-top: 1rem; cursor: pointer; font-size: 0.8rem;">
+                Admin Login
+            </button>
+        </div>
+    </footer>
+    
+    <!-- MODALS -->
+    
+    <!-- Auth Modal (Updated with Social Login) -->
+    <div class="modal-overlay" id="auth-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="auth-modal-title">Login to Whisper+me</h3>
+                <button class="close-btn" onclick="window.App.ui.closeModal('auth-modal')">×</button>
+            </div>
+            <div class="modal-body">
+                <!-- Social Login Buttons -->
+                <div style="margin-bottom: 1.5rem;">
+                    <button class="btn btn-secondary" onclick="window.App.auth.loginWithFacebook()" style="width: 100%; margin-bottom: 0.5rem; background: #1877F2; color: white;">
+                        <i class="fab fa-facebook"></i> Continue with Facebook
+                    </button>
+                    <button class="btn btn-secondary" onclick="window.App.auth.loginWithInstagram()" style="width: 100%; background: #E4405F; color: white;">
+                        <i class="fab fa-instagram"></i> Continue with Instagram
+                    </button>
+                    <p style="text-align: center; color: #888; margin: 1rem 0;">or</p>
+                </div>
+                
+                <!-- Login Form -->
+                <div class="auth-form active" id="login-form">
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="login-email" placeholder="your@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="login-password" placeholder="••••••••">
+                    </div>
+                    <button class="btn btn-primary" onclick="window.App.auth.login(
+                        document.getElementById('login-email').value,
+                        document.getElementById('login-password').value
+                    ).then(() => window.App.ui.closeModal('auth-modal')).catch(e => window.App.ui.showNotification(e.message, 'error'))" 
+                    style="width: 100%; padding: 1rem;">
+                        <i class="fas fa-sign-in-alt"></i> Login
+                    </button>
+                    <p style="text-align: center; color: #888; margin-top: 1rem;">
+                        Don't have an account? <a href="#" onclick="window.App.ui.switchAuthTab('signup')" style="color: #7c3aed; text-decoration: none;">Sign up</a>
+                    </p>
+                </div>
+                
+                <!-- Signup Form -->
+                <div class="auth-form" id="signup-form" style="display: none;">
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="signup-email" placeholder="your@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Password (min 6 characters)</label>
+                        <input type="password" id="signup-password" placeholder="••••••••">
+                    </div>
+                    <div class="form-group">
+                        <label>Confirm Password</label>
+                        <input type="password" id="signup-confirm" placeholder="••••••••">
+                    </div>
+                    <button class="btn btn-primary" onclick="window.App.auth.signup(
+                        document.getElementById('signup-email').value.split('@')[0],
+                        document.getElementById('signup-email').value,
+                        document.getElementById('signup-password').value
+                    ).then(() => window.App.ui.closeModal('auth-modal')).catch(e => window.App.ui.showNotification(e.message, 'error'))" 
+                    style="width: 100%; padding: 1rem;">
+                        <i class="fas fa-user-plus"></i> Sign Up
+                    </button>
+                    <p style="text-align: center; color: #888; margin-top: 1rem;">
+                        Already have an account? <a href="#" onclick="window.App.ui.switchAuthTab('login')" style="color: #7c3aed; text-decoration: none;">Login</a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Profile Modal -->
+    <div class="modal-overlay" id="profile-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Whisper Profile</h3>
+                <button class="close-btn" onclick="window.App.ui.closeModal('profile-modal')">×</button>
+            </div>
+            <div class="modal-body">
+                <img src="" alt="" class="profile-modal-img" id="modal-profile-img">
+                <h3 id="modal-profile-name" style="text-align: center; margin-bottom: 0.5rem;"></h3>
+                <p id="modal-profile-price" style="text-align: center; color: #7c3aed; font-weight: 600; margin-bottom: 1rem;"></p>
+                <p id="modal-profile-bio" style="color: #aaa; text-align: center; margin-bottom: 1rem; line-height: 1.5;"></p>
+                
+                <div class="social-links" id="modal-social-links">
+                    <!-- Social links loaded dynamically -->
+                </div>
+                
+                <div class="action-buttons" id="modal-action-buttons">
+                    <!-- Action buttons loaded dynamically -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Dashboard Modal - UPDATED -->
+    <div class="modal-overlay dashboard-modal" id="dashboard-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>My Dashboard</h3>
+                <button class="close-btn" onclick="window.App.ui.closeModal('dashboard-modal')">×</button>
+            </div>
+            <div class="modal-body">
+                <!-- User Info Section -->
+                <div class="dashboard-user-info">
+                    <img src="" alt="" class="dashboard-user-img" id="dashboard-user-img">
+                    <h3 id="dashboard-user-name"></h3>
+                    <p class="dashboard-user-email" id="dashboard-user-email"></p>
+                    <div class="dashboard-user-id" id="dashboard-user-id">ID: Loading...</div>
+                </div>
+                
+                <!-- Stats Grid -->
+                <div class="dashboard-stats">
+                    <div class="stat-card">
+                        <div class="stat-value" id="dash-coins">0</div>
+                        <div class="stat-label">Coins</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="dash-earnings">$0</div>
+                        <div class="stat-label">Earnings</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="dash-calls">0</div>
+                        <div class="stat-label">Calls</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="dash-rating">5.0</div>
+                        <div class="stat-label">Rating</div>
+                    </div>
+                </div>
+                
+                <!-- AVAILABILITY TOGGLE -->
+                <div style="display: flex; align-items: center; justify-content: center; margin: 1.5rem 0; padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 12px;">
+                    <span style="margin-right: 1rem;">Available to receive calls:</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="availability-toggle" onchange="toggleAvailability()">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                
+                <!-- Payout Options -->
+                <h4 style="margin: 1.5rem 0 1rem;">Payout Methods</h4>
+                <p style="color: #888; font-size: 0.9rem; margin-bottom: 1rem;">Select how you want to receive your earnings</p>
+                
+                <div class="payout-options" id="payout-options">
+                    <!-- Payout options loaded dynamically -->
+                </div>
+                
+                <!-- Payout Form -->
+                <div id="payout-form" style="display: none;">
+                    <div class="form-group">
+                        <label id="payout-method-label">Enter PayPal Email</label>
+                        <input type="email" id="payout-email" placeholder="your.paypal@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Minimum Payout Amount</label>
+                        <input type="text" id="payout-min-amount" readonly value="$20">
+                    </div>
+                    <button class="btn btn-primary" onclick="savePayoutMethod()" style="width: 100%; padding: 1rem;">
+                        <i class="fas fa-save"></i> Save Payout Method
+                    </button>
+                </div>
+                
+                <!-- Edit Profile -->
+                <h4 style="margin: 1.5rem 0 1rem;">Edit Profile</h4>
+                
+                <div class="form-group">
+                    <label>Profile Bio (shown on your profile card)</label>
+                    <textarea id="profile-bio" placeholder="Tell people about yourself..."></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label>Social Media Links (for your profile)</label>
+                    <input type="text" id="profile-twitter" placeholder="Twitter URL">
+                    <input type="text" id="profile-instagram" placeholder="Instagram URL" style="margin-top: 0.5rem;">
+                    <input type="text" id="profile-tiktok" placeholder="TikTok URL" style="margin-top: 0.5rem;">
+                </div>
+                
+                <div class="form-group">
+                    <label>Profile Photo</label>
+                    <input type="file" id="profile-photo" accept="image/*" onchange="uploadProfilePhoto(this.files[0])">
+                    <div id="photo-preview" style="margin-top: 1rem;"></div>
+                </div>
+                
+                <button class="btn btn-primary" onclick="saveProfile()" style="width: 100%; padding: 1rem; margin-top: 1rem;">
+                    <i class="fas fa-save"></i> Save Profile & Return Home
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Rating Modal -->
+    <div class="modal-overlay" id="rating-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Rate Your Call</h3>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 1rem;">How was your call experience?</p>
+                <div style="display: flex; justify-content: center; gap: 0.5rem; margin-bottom: 1.5rem;">
+                    <i class="fas fa-star" onclick="setRating(1)" style="font-size: 2rem; color: #666; cursor: pointer;"></i>
+                    <i class="fas fa-star" onclick="setRating(2)" style="font-size: 2rem; color: #666; cursor: pointer;"></i>
+                    <i class="fas fa-star" onclick="setRating(3)" style="font-size: 2rem; color: #666; cursor: pointer;"></i>
+                    <i class="fas fa-star" onclick="setRating(4)" style="font-size: 2rem; color: #666; cursor: pointer;"></i>
+                    <i class="fas fa-star" onclick="setRating(5)" style="font-size: 2rem; color: #666; cursor: pointer;"></i>
+                </div>
+                
+                <div class="form-group">
+                    <label>Feedback (sent to admin)</label>
+                    <textarea id="rating-comment" placeholder="Share your experience..."></textarea>
+                </div>
+                
+                <button class="btn btn-primary" onclick="submitRating()" style="width: 100%; padding: 1rem;">
+                    Submit Rating
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Notification -->
+    <div class="notification" id="notification"></div>
+    
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+    
+    <!-- App Scripts -->
+    <script src="auth.js"></script>
+    <script src="ui.js"></script>
+    <script src="payments.js"></script>
+    <script src="calls.js"></script>
+    <script src="agora.js"></script>
+    <script src="firebase-auth-fix.js"></script>
+    <script src="app-optimized.js"></script>
+    
+    <script>
+        // Dashboard functions
+        async function showDashboard() {
+            if (!window.App.auth.currentUser) {
+                window.App.ui.showNotification('Please login to view dashboard', 'error');
+                window.App.ui.showAuthModal();
+                return;
+            }
+            
+            const userData = window.App.auth.userData;
+            if (!userData) return;
+            
+            // Update user info
+            document.getElementById('dashboard-user-img').src = userData.profilePhoto || 'photo-1494790108755-2616b786d4d7?w=400&h=400&fit=crop&crop=face';
+            document.getElementById('dashboard-user-name').textContent = userData.displayName || 'User';
+            document.getElementById('dashboard-user-email').textContent = userData.email || '';
+            document.getElementById('dashboard-user-id').textContent = `ID: ${userData.whisperId || userData.userId?.substring(0, 8) || 'N/A'}`;
+            
+            // Update avatar in header
+            const headerAvatar = document.getElementById('user-avatar');
+            if (headerAvatar) {
+                headerAvatar.src = userData.profilePhoto || '';
+            }
+            
+            // Update stats
+            window.App.ui.updateDashboardStats(userData);
+            
+            // Update form values
+            document.getElementById('profile-bio').value = userData.bio || '';
+            document.getElementById('profile-twitter').value = userData.socialLinks?.twitter || '';
+            document.getElementById('profile-instagram').value = userData.socialLinks?.instagram || '';
+            document.getElementById('profile-tiktok').value = userData.socialLinks?.tiktok || '';
+            
+            // Update availability toggle
+            const toggle = document.getElementById('availability-toggle');
+            if (toggle) {
+                toggle.checked = userData.isAvailable === true;
+            }
+            
+            // Load payout options
+            loadPayoutOptions();
+            
+            // Show modal
+            window.App.ui.showModal('dashboard-modal');
+        }
+        
+        function loadPayoutOptions() {
+            const payoutMethods = window.App.payments?.getPayoutMethods() || {};
+            const container = document.getElementById('payout-options');
+            if (!container) return;
+            
+            container.innerHTML = '';
+            
+            Object.entries(payoutMethods).forEach(([method, details]) => {
+                const option = document.createElement('div');
+                option.className = 'payout-option';
+                option.innerHTML = `
+                    <div class="payout-icon">
+                        <i class="${details.icon}"></i>
+                    </div>
+                    <div class="payout-name">${details.name}</div>
+                    <div class="payout-details">Min: $${details.minPayout} • Fee: ${details.fee}%</div>
+                `;
+                option.onclick = () => selectPayoutMethod(method, details);
+                container.appendChild(option);
+            });
+        }
+        
+        function selectPayoutMethod(method, details) {
+            // Remove selected class from all options
+            document.querySelectorAll('.payout-option').forEach(opt => {
+                opt.classList.remove('selected');
+            });
+            
+            // Add selected class to clicked option
+            event.target.closest('.payout-option').classList.add('selected');
+            
+            // Show payout form
+            const form = document.getElementById('payout-form');
+            const label = document.getElementById('payout-method-label');
+            const minAmount = document.getElementById('payout-min-amount');
+            
+            if (method === 'paypal') {
+                label.textContent = 'Enter PayPal Email';
+                document.getElementById('payout-email').placeholder = 'your.paypal@email.com';
+            } else if (method === 'bank') {
+                label.textContent = 'Enter Bank Account Details';
+                document.getElementById('payout-email').placeholder = 'Account Number, Routing Number';
+            } else if (method === 'crypto') {
+                label.textContent = 'Enter Crypto Wallet Address';
+                document.getElementById('payout-email').placeholder = '0x... (USDT wallet address)';
+            }
+            
+            minAmount.value = `$${details.minPayout}`;
+            form.style.display = 'block';
+            
+            window.selectedPayoutMethod = method;
+        }
+        
+        async function savePayoutMethod() {
+            const email = document.getElementById('payout-email').value;
+            const method = window.selectedPayoutMethod;
+            
+            if (!email) {
+                window.App.ui.showNotification('Please enter payout details', 'error');
+                return;
+            }
+            
+            try {
+                const updates = {};
+                updates[`payoutMethods.${method}`] = email;
+                
+                await window.App.auth.updateProfile(updates);
+                window.App.ui.showNotification('Payout method saved successfully!', 'success');
+                
+            } catch (error) {
+                window.App.ui.showNotification('Failed to save payout method: ' + error.message, 'error');
+            }
+        }
+        
+        async function uploadProfilePhoto(file) {
+            if (!file) return;
+            
+            try {
+                const result = await window.App.auth.uploadProfilePhoto(file);
+                window.App.ui.showNotification('Profile photo uploaded successfully!', 'success');
+                
+                // Update preview
+                const preview = document.getElementById('photo-preview');
+                preview.innerHTML = `<img src="${result.url}" style="width: 100px; height: 100px; border-radius: 50%; object-fit: cover; border: 2px solid #7c3aed;">`;
+                
+            } catch (error) {
+                window.App.ui.showNotification('Failed to upload photo: ' + error.message, 'error');
+            }
+        }
+        
+        async function saveProfile() {
+            const bio = document.getElementById('profile-bio').value;
+            const twitter = document.getElementById('profile-twitter').value;
+            const instagram = document.getElementById('profile-instagram').value;
+            const tiktok = document.getElementById('profile-tiktok').value;
+            
+            const updates = {
+                bio: bio,
+                socialLinks: {
+                    twitter: twitter,
+                    instagram: instagram,
+                    tiktok: tiktok
+                }
+            };
+            
+            try {
+                await window.App.auth.updateProfile(updates);
+                window.App.ui.showNotification('Profile saved successfully!', 'success');
+                window.App.ui.closeModal('dashboard-modal');
+                
+            } catch (error) {
+                window.App.ui.showNotification('Failed to save profile: ' + error.message, 'error');
+            }
+        }
+        
+        function toggleAvailability() {
+            const toggle = document.getElementById('availability-toggle');
+            const isAvailable = toggle.checked;
+            
+            window.App.auth.updateAvailability(isAvailable);
+            
+            window.App.ui.showNotification(
+                `You are now ${isAvailable ? 'available' : 'unavailable'} to receive calls`,
+                'success'
+            );
+        }
+        
+        function setRating(stars) {
+            const starElements = document.querySelectorAll('#rating-modal .fa-star');
+            starElements.forEach((star, index) => {
+                star.style.color = index < stars ? '#fbbf24' : '#666';
+            });
+            window.selectedRating = stars;
+        }
+        
+        async function submitRating() {
+            const comment = document.getElementById('rating-comment').value;
+            const rating = window.selectedRating || 5;
+            
+            if (!window.App.calls.currentCall) return;
+            
+            try {
+                // Save rating to database
+                await firebase.database().ref(`ratings/${window.App.calls.currentCall.callId}`).set({
+                    rating: rating,
+                    comment: comment,
+                    ratedBy: window.App.auth.currentUser.uid,
+                    ratedAt: Date.now()
+                });
+                
+                window.App.ui.showNotification('Thank you for your rating!', 'success');
+                window.App.ui.closeModal('rating-modal');
+                
+            } catch (error) {
+                window.App.ui.showNotification('Failed to submit rating: ' + error.message, 'error');
+            }
+        }
+        
+        function showAdminLogin() {
+            const email = prompt('Enter admin email:');
+            const password = prompt('Enter admin password:');
+            
+            if (email === 'ifanifwasafifth@gmail.com' && password === 'admin123') {
+                window.location.href = 'admin.html';
+            } else {
+                window.App.ui.showNotification('Invalid admin credentials', 'error');
+            }
+        }
+        
+        // Global functions
+        window.showDashboard = showDashboard;
+        window.toggleAvailability = toggleAvailability;
+        window.saveProfile = saveProfile;
+        window.uploadProfilePhoto = uploadProfilePhoto;
+        window.setRating = setRating;
+        window.submitRating = submitRating;
+        window.showAdminLogin = showAdminLogin;
+    </script>
+</body>
+</html>
