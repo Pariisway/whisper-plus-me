@@ -4,7 +4,7 @@ console.log('🚀 Whisper+me Initializing...');
 // Global App State
 window.App = {
     config: {
-        agoraAppId: 'a6fcd5c405c641b8a3c9aabed4a4e5b1', // REPLACE with real App ID
+        agoraAppId: '966c8e41da614722a88d4372c3d95dba', // REPLACE with real App ID
         stripePublicKey: 'pk_live_51K...', // REPLACE with real Stripe key
         callPricePerMinute: 1,
         minimumCallDuration: 1,
