@@ -1,3 +1,9 @@
+#!/bin/bash
+
+echo "🔥 Fixing Firebase SDK loading issues..."
+
+# Create new index.html with Firebase v8 (compatible version)
+cat > index.html << 'EOF'
 <!DOCTYPE html>
 <html lang="en">
 <head>
