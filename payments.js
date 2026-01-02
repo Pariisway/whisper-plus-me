@@ -9,35 +9,61 @@ class PaymentManager {
       console.error('Stripe SDK not loaded');
       return false;
     }
-    const publishableKey = window.location.hostname === 'localhost' 
-      ? 'pk_test_YOUR_TEST_KEY'
-      : 'pk_live_YOUR_LIVE_KEY';
+    
+    // Use environment detection
+    const isProduction = window.location.hostname !== 'localhost' && 
+                        window.location.hostname !== '127.0.0.1';
+    
+    const publishableKey = isProduction
+      ? 'pk_live_YOUR_LIVE_KEY'  // Production key
+      : 'pk_test_YOUR_TEST_KEY'; // Test key
+    
     this.stripe = Stripe(publishableKey);
     return true;
   }
 
   async buyCoins(packageId) {
-    if (!window.authManager.currentUser) throw new Error('User not authenticated');
+    if (!window.App.auth.currentUser) {
+      throw new Error('User not authenticated');
+    }
     
     try {
-      const sessionResponse = await firebase.functions().httpsCallable('createCheckoutSession')({ packageId });
-      const { sessionId } = sessionResponse.data;
-      const result = await this.stripe.redirectToCheckout({ sessionId });
+      // Call Cloud Function to create checkout session
+      const createCheckoutSession = firebase.functions().httpsCallable('createCheckoutSession');
+      const sessionResponse = await createCheckoutSession({ packageId });
       
-      if (result.error) throw new Error(result.error.message);
+      const { sessionId } = sessionResponse.data;
+      
+      // Redirect to Stripe Checkout
+      const result = await this.stripe.redirectToCheckout({
+        sessionId: sessionId
+      });
+      
+      if (result.error) {
+        throw new Error(result.error.message);
+      }
+      
       return { success: true };
+      
     } catch (error) {
       console.error('Buy coins error:', error);
+      
+      // Handle specific errors
+      if (error.message.includes('functions') || error.message.includes('not deployed')) {
+        throw new Error('Payment system is currently unavailable. Please try again later.');
+      }
+      
       throw error;
     }
   }
 
   getCoinPackages() {
     return {
-      'coins_100': { amount: 9.99, coins: 100, description: '100 Coins', bonus: '' },
-      'coins_250': { amount: 19.99, coins: 250, description: '250 Coins', bonus: '25% bonus' },
-      'coins_500': { amount: 34.99, coins: 500, description: '500 Coins', bonus: '40% bonus' },
-      'coins_1000': { amount: 59.99, coins: 1000, description: '1000 Coins', bonus: '50% bonus' }
+      'coins_1': { amount: 15, coins: 1, description: '1 Coin' },
+      'coins_3': { amount: 45, coins: 3, description: '3 Coins' },
+      'coins_5': { amount: 75, coins: 5, description: '5 Coins' },
+      'coins_10': { amount: 135, coins: 10, description: '10 Coins (10% off)' },
+      'coins_20': { amount: 240, coins: 20, description: '20 Coins (20% off)' }
     };
   }
 
@@ -47,15 +73,46 @@ class PaymentManager {
     const sessionId = urlParams.get('session_id');
 
     if (paymentStatus === 'success' && sessionId) {
-      window.UI.showToast('Payment successful! Coins will be added shortly.', 'success');
-      await window.authManager.refreshUserData();
-      window.UI.updateUI();
+      window.App.ui.showToast('Payment successful! Coins will be added shortly.', 'success');
+      
+      // Refresh user data to show updated coins
+      if (window.App.auth) {
+        await window.App.auth.refreshUserData();
+        window.App.ui.updateUserInfo(window.App.auth.userData);
+      }
+      
+      // Clean URL
       window.history.replaceState({}, document.title, window.location.pathname);
+      
     } else if (paymentStatus === 'cancelled') {
-      window.UI.showToast('Payment cancelled', 'warning');
+      window.App.ui.showToast('Payment cancelled', 'warning');
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }
-}
 
-window.paymentManager = new PaymentManager();
+  getPayoutMethods() {
+    return {
+      paypal: {
+        name: 'PayPal',
+        description: 'Instant transfer to PayPal',
+        minPayout: 20,
+        fee: 0,
+        icon: 'fab fa-paypal'
+      },
+      bank: {
+        name: 'Bank Transfer',
+        description: 'Direct bank deposit (2-3 business days)',
+        minPayout: 50,
+        fee: 1.5,
+        icon: 'fas fa-university'
+      },
+      crypto: {
+        name: 'Crypto (USDT)',
+        description: 'Cryptocurrency transfer',
+        minPayout: 100,
+        fee: 0.5,
+        icon: 'fab fa-bitcoin'
+      }
+    };
+  }
+}

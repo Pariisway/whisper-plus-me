@@ -2,12 +2,64 @@ class UIManager {
   constructor() {
     this.modalStack = [];
     this.toastContainer = null;
+    this.authListeners = [];
   }
 
   initialize() {
     this.createToastContainer();
     this.setupEventListeners();
-    window.paymentManager?.handlePaymentReturn();
+    this.setupAuthUI();
+    window.App.payments?.handlePaymentReturn();
+  }
+
+  setupAuthUI() {
+    // Listen for auth changes
+    if (window.App.auth) {
+      window.App.auth.addListener((event, user, userData) => {
+        this.updateAuthUI(event, user, userData);
+      });
+    }
+  }
+
+  updateAuthUI(event, user, userData) {
+    const guestMenu = document.getElementById('guest-menu');
+    const loggedInMenu = document.getElementById('logged-in-menu');
+    
+    if (user) {
+      if (guestMenu) guestMenu.style.display = 'none';
+      if (loggedInMenu) loggedInMenu.style.display = 'block';
+      
+      // Update user info
+      this.updateUserInfo(userData);
+    } else {
+      if (guestMenu) guestMenu.style.display = 'block';
+      if (loggedInMenu) loggedInMenu.style.display = 'none';
+    }
+  }
+
+  updateUserInfo(userData) {
+    // Update coins count
+    const coinsCount = document.getElementById('coins-count');
+    if (coinsCount) coinsCount.textContent = userData?.coins || 0;
+    
+    // Update dashboard stats
+    this.updateDashboardStats(userData);
+  }
+
+  updateDashboardStats(userData) {
+    if (!userData) return;
+    
+    const elements = {
+      'dash-coins': userData.coins || 0,
+      'dash-earnings': `$${userData.earnings || 0}`,
+      'dash-calls': userData.callsCompleted || 0,
+      'dash-rating': userData.rating?.toFixed(1) || '5.0'
+    };
+    
+    Object.entries(elements).forEach(([id, value]) => {
+      const element = document.getElementById(id);
+      if (element) element.textContent = value;
+    });
   }
 
   createToastContainer() {
@@ -18,226 +70,212 @@ class UIManager {
   }
 
   setupEventListeners() {
-    const menuBtn = document.getElementById('menu-btn');
-    if (menuBtn) {
-      menuBtn.addEventListener('click', () => this.toggleMenu());
-    }
-    document.addEventListener('click', (e) => {
-      const menu = document.getElementById('dropdown-menu');
-      if (menu && !menu.contains(e.target) && !menuBtn?.contains(e.target)) {
-        menu.classList.remove('show');
-      }
-    });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') this.closeTopModal();
     });
   }
 
-  toggleMenu() {
-    const menu = document.getElementById('dropdown-menu');
-    if (menu) menu.classList.toggle('show');
-  }
-
   showToast(message, type = 'info', duration = 5000) {
     if (!this.toastContainer) return;
+    
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
-    const icons = { success: 'check-circle', error: 'exclamation-circle', warning: 'exclamation-triangle', info: 'info-circle' };
+    
+    const icons = { 
+      success: 'check-circle', 
+      error: 'exclamation-circle', 
+      warning: 'exclamation-triangle', 
+      info: 'info-circle' 
+    };
+    
     toast.innerHTML = `
       <i class="fas fa-${icons[type] || 'info-circle'}"></i>
       <span>${message}</span>
       <button class="toast-close" onclick="this.parentElement.remove()">&times;</button>
     `;
+    
     this.toastContainer.appendChild(toast);
-    setTimeout(() => { if (toast.parentNode) toast.remove(); }, duration);
+    
+    setTimeout(() => { 
+      if (toast.parentNode) toast.remove(); 
+    }, duration);
   }
 
-  updateUI() {
-    const user = window.authManager?.currentUser;
-    const userData = window.authManager?.userData;
+  showNotification(message, type = 'success') {
+    const notification = document.getElementById('notification');
+    if (!notification) return;
     
-    if (user && userData) {
-      const avatar = document.getElementById('user-avatar');
-      if (avatar) avatar.textContent = userData.displayName?.charAt(0)?.toUpperCase() || 'U';
-      
-      const userName = document.getElementById('user-name');
-      if (userName) userName.textContent = userData.displayName || 'User';
-      
-      const welcomeName = document.getElementById('welcome-name');
-      if (welcomeName) welcomeName.textContent = userData.displayName || 'User';
-      
-      const coinsCount = document.getElementById('coins-count');
-      if (coinsCount) coinsCount.textContent = userData.coins || 0;
-      
-      const userId = document.getElementById('user-id');
-      if (userId) userId.textContent = `ID: ${user.uid.substring(0, 8)}...`;
-      
-      const adminMenuItem = document.getElementById('admin-menu-item');
-      if (adminMenuItem) adminMenuItem.style.display = userData.role === 'admin' ? 'block' : 'none';
+    notification.textContent = message;
+    notification.className = 'notification show';
+    
+    if (type === 'error') {
+      notification.classList.add('error');
     }
-
-    const appContainer = document.getElementById('app-container');
-    if (appContainer) {
-      appContainer.style.display = 'block';
-      setTimeout(() => { appContainer.style.opacity = '1'; }, 10);
-    }
+    
+    setTimeout(() => {
+      notification.classList.remove('show');
+    }, 3000);
   }
 
   showAuthModal() {
     const modalHTML = `
       <div class="modal-overlay" id="auth-modal">
-        <div class="modal-content">
-          <div class="auth-tabs">
-            <button class="auth-tab active" onclick="window.UI.switchAuthTab('login')">Login</button>
-            <button class="auth-tab" onclick="window.UI.switchAuthTab('signup')">Sign Up</button>
-            <button class="close-btn" onclick="window.UI.closeModal('auth-modal')">&times;</button>
+        <div class="modal">
+          <div class="modal-header">
+            <h3 id="auth-modal-title">Login to Whisper+me</h3>
+            <button class="close-btn" onclick="window.App.ui.closeModal('auth-modal')">×</button>
           </div>
-          <div class="auth-content">
-            <div id="login-form" class="auth-form active">
-              <h3>Welcome Back</h3>
-              <form onsubmit="event.preventDefault(); window.authManager.login(
+          <div class="modal-body">
+            <!-- Social Login Buttons -->
+            <div style="margin-bottom: 1.5rem;">
+              <button class="btn btn-secondary" onclick="window.App.auth.loginWithFacebook()" style="width: 100%; margin-bottom: 0.5rem; background: #1877F2; color: white;">
+                <i class="fab fa-facebook"></i> Continue with Facebook
+              </button>
+              <button class="btn btn-secondary" onclick="window.App.auth.loginWithInstagram()" style="width: 100%; background: #E4405F; color: white;">
+                <i class="fab fa-instagram"></i> Continue with Instagram
+              </button>
+              <p style="text-align: center; color: #888; margin: 1rem 0;">or</p>
+            </div>
+            
+            <!-- Login Form -->
+            <div class="auth-form active" id="login-form">
+              <div class="form-group">
+                <label>Email</label>
+                <input type="email" id="login-email" placeholder="your@email.com">
+              </div>
+              <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="login-password" placeholder="••••••••">
+              </div>
+              <button class="btn btn-primary" onclick="window.App.auth.login(
                 document.getElementById('login-email').value,
                 document.getElementById('login-password').value
-              ).then(() => window.UI.closeModal('auth-modal')).catch(e => window.UI.showToast(e.message, 'error'))">
-                <input type="email" id="login-email" placeholder="Email" required>
-                <input type="password" id="login-password" placeholder="Password" required>
-                <button type="submit" class="btn btn-primary">Login</button>
-              </form>
+              ).then(() => window.App.ui.closeModal('auth-modal')).catch(e => window.App.ui.showToast(e.message, 'error'))" 
+              style="width: 100%; padding: 1rem;">
+                <i class="fas fa-sign-in-alt"></i> Login
+              </button>
+              <p style="text-align: center; color: #888; margin-top: 1rem;">
+                Don't have an account? <a href="#" onclick="window.App.ui.switchAuthTab('signup')" style="color: #7c3aed; text-decoration: none;">Sign up</a>
+              </p>
             </div>
-            <div id="signup-form" class="auth-form">
-              <h3>Create Account</h3>
-              <form onsubmit="event.preventDefault(); window.authManager.signup(
-                document.getElementById('signup-name').value,
+            
+            <!-- Signup Form -->
+            <div class="auth-form" id="signup-form" style="display: none;">
+              <div class="form-group">
+                <label>Email</label>
+                <input type="email" id="signup-email" placeholder="your@email.com">
+              </div>
+              <div class="form-group">
+                <label>Password (min 6 characters)</label>
+                <input type="password" id="signup-password" placeholder="••••••••">
+              </div>
+              <div class="form-group">
+                <label>Confirm Password</label>
+                <input type="password" id="signup-confirm" placeholder="••••••••">
+              </div>
+              <button class="btn btn-primary" onclick="window.App.auth.signup(
+                document.getElementById('signup-email').value.split('@')[0],
                 document.getElementById('signup-email').value,
                 document.getElementById('signup-password').value
-              ).then(() => window.UI.closeModal('auth-modal')).catch(e => window.UI.showToast(e.message, 'error'))">
-                <input type="text" id="signup-name" placeholder="Full Name" required>
-                <input type="email" id="signup-email" placeholder="Email" required>
-                <input type="password" id="signup-password" placeholder="Password" required minlength="6">
-                <button type="submit" class="btn btn-primary">Create Account</button>
-              </form>
+              ).then(() => window.App.ui.closeModal('auth-modal')).catch(e => window.App.ui.showToast(e.message, 'error'))" 
+              style="width: 100%; padding: 1rem;">
+                <i class="fas fa-user-plus"></i> Sign Up
+              </button>
+              <p style="text-align: center; color: #888; margin-top: 1rem;">
+                Already have an account? <a href="#" onclick="window.App.ui.switchAuthTab('login')" style="color: #7c3aed; text-decoration: none;">Login</a>
+              </p>
             </div>
           </div>
         </div>
       </div>
     `;
-    document.body.insertAdjacentHTML('beforeend', modalHTML);
-    this.modalStack.push('auth-modal');
+    
+    if (!document.getElementById('auth-modal')) {
+      document.body.insertAdjacentHTML('beforeend', modalHTML);
+    }
+    
+    this.showModal('auth-modal');
   }
 
   switchAuthTab(tab) {
-    document.querySelectorAll('.auth-tab').forEach(t => {
-      t.classList.toggle('active', t.textContent.toLowerCase().includes(tab));
-    });
-    document.getElementById('login-form').classList.toggle('active', tab === 'login');
-    document.getElementById('signup-form').classList.toggle('active', tab === 'signup');
+    const loginForm = document.getElementById('login-form');
+    const signupForm = document.getElementById('signup-form');
+    const title = document.getElementById('auth-modal-title');
+    
+    if (tab === 'login') {
+      title.textContent = 'Login to Whisper+me';
+      loginForm.style.display = 'block';
+      signupForm.style.display = 'none';
+    } else {
+      title.textContent = 'Create Account';
+      loginForm.style.display = 'none';
+      signupForm.style.display = 'block';
+    }
   }
 
   showBuyCoinsModal() {
-    const packages = window.paymentManager.getCoinPackages();
+    const packages = window.App.payments?.getCoinPackages() || {};
     let packagesHTML = '';
+    
     Object.entries(packages).forEach(([id, pkg]) => {
       packagesHTML += `
-        <div class="coin-package ${id === 'coins_250' ? 'popular' : ''}">
-          ${id === 'coins_250' ? '<div class="popular-badge">MOST POPULAR</div>' : ''}
-          <div class="package-header">
-            <i class="fas fa-${id === 'coins_1000' ? 'award' : id === 'coins_500' ? 'rocket' : id === 'coins_250' ? 'crown' : 'gem'}"></i>
-            <h3>${pkg.description}</h3>
-          </div>
-          <div class="package-price">$${pkg.amount}</div>
-          ${pkg.bonus ? `<div class="package-savings">${pkg.bonus}</div>` : ''}
-          <button class="btn btn-primary" onclick="window.paymentManager.buyCoins('${id}').catch(e => window.UI.showToast(e.message, 'error'))">
-            Buy Now
-          </button>
+        <div class="coin-option" onclick="selectCoinOption('${id}')">
+          <div class="coin-amount">${pkg.coins} Coins</div>
+          <div class="coin-price">$${pkg.amount}</div>
         </div>
       `;
     });
 
     const modalHTML = `
       <div class="modal-overlay" id="coins-modal">
-        <div class="modal-content">
-          <div class="coins-modal">
-            <div class="coins-header">
-              <h2><i class="fas fa-coins"></i> Buy Coins</h2>
-              <p>Purchase coins to start conversations</p>
-              <button class="close-btn" onclick="window.UI.closeModal('coins-modal')">&times;</button>
+        <div class="modal">
+          <div class="modal-header">
+            <h3><i class="fas fa-coins"></i> Buy Whisper Coins</h3>
+            <button class="close-btn" onclick="window.App.ui.closeModal('coins-modal')">×</button>
+          </div>
+          <div class="modal-body">
+            <p style="text-align: center; color: #888; margin-bottom: 1rem;">
+              1 Coin = $15 • Each call costs 1-3 coins • Whispers earn $12 per coin
+            </p>
+            
+            <div class="coins-options">
+              ${packagesHTML}
             </div>
-            <div class="coins-grid">${packagesHTML}</div>
-            <div class="coins-footer">
-              <p><i class="fas fa-lock"></i> Secure payment processed by Stripe</p>
+            
+            <button class="btn btn-primary" onclick="window.App.payments.buyCoins(window.selectedCoinId || 'coins_1')" 
+            style="width: 100%; padding: 1rem; font-size: 1.1rem; margin-top: 1rem;">
+              <i class="fas fa-shopping-cart"></i> Buy Coins Now
+            </button>
+            
+            <div style="margin-top: 1rem; padding: 1rem; background: rgba(124, 58, 237, 0.1); border-radius: 12px;">
+              <p style="color: #7c3aed; font-size: 0.9rem; text-align: center;">
+                <i class="fas fa-lock"></i> Secure payment processed by Stripe
+              </p>
             </div>
           </div>
         </div>
       </div>
     `;
-    document.body.insertAdjacentHTML('beforeend', modalHTML);
-    this.modalStack.push('coins-modal');
+    
+    if (!document.getElementById('coins-modal')) {
+      document.body.insertAdjacentHTML('beforeend', modalHTML);
+    }
+    
+    this.showModal('coins-modal');
   }
 
-  showCallUI(callId, otherUserId, isCaller = true) {
-    const callControls = document.getElementById('call-controls');
-    if (!callControls) return;
-    callControls.style.display = 'block';
-    callControls.innerHTML = `
-      <div class="call-header">
-        <div class="call-status">
-          <i class="fas fa-phone"></i>
-          <span>${isCaller ? 'Calling...' : 'Incoming call...'}</span>
-        </div>
-        <div class="call-timer" id="call-timer">00:00</div>
-      </div>
-      <div class="call-controls-grid">
-        <button class="call-control-btn mic-btn" onclick="window.agoraManager.toggleMic().catch(e => window.UI.showToast(e.message, 'error'))">
-          <i class="fas fa-microphone"></i>
-        </button>
-        <button class="call-control-btn speaker-btn" onclick="window.agoraManager.toggleSpeaker().catch(e => window.UI.showToast(e.message, 'error'))">
-          <i class="fas fa-volume-up"></i>
-        </button>
-        <button class="call-control-btn end-call-btn" onclick="window.callManager.endCall().catch(e => window.UI.showToast(e.message, 'error'))" style="background: var(--danger);">
-          <i class="fas fa-phone-slash"></i>
-        </button>
-      </div>
-    `;
-  }
-
-  hideCallUI() {
-    const callControls = document.getElementById('call-controls');
-    if (callControls) callControls.style.display = 'none';
-  }
-
-  showIncomingCallNotification(callData) {
-    const notificationHTML = `
-      <div class="modal-overlay" id="incoming-call-modal">
-        <div class="modal-content">
-          <div class="incoming-call">
-            <div class="caller-info">
-              <div class="caller-avatar">${callData.callerName?.charAt(0) || 'U'}</div>
-              <div class="caller-details">
-                <h3>${callData.callerName || 'Someone'}</h3>
-                <p>Incoming call</p>
-              </div>
-            </div>
-            <div class="call-actions">
-              <button class="btn btn-success" onclick="window.callManager.answerCall('${callData.callId}').then(() => window.UI.closeModal('incoming-call-modal')).catch(e => window.UI.showToast(e.message, 'error'))">
-                <i class="fas fa-phone"></i> Answer
-              </button>
-              <button class="btn btn-danger" onclick="window.callManager.declineCall('${callData.callId}').then(() => window.UI.closeModal('incoming-call-modal')).catch(e => window.UI.showToast(e.message, 'error'))">
-                <i class="fas fa-phone-slash"></i> Decline
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-    document.body.insertAdjacentHTML('beforeend', notificationHTML);
-    this.modalStack.push('incoming-call-modal');
+  showModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+      modal.style.display = 'flex';
+      this.modalStack.push(modalId);
+    }
   }
 
   closeModal(modalId) {
     const modal = document.getElementById(modalId);
     if (modal) {
-      modal.style.animation = 'fadeOut 0.3s ease';
-      setTimeout(() => modal.remove(), 300);
+      modal.style.display = 'none';
     }
     this.modalStack = this.modalStack.filter(id => id !== modalId);
   }
@@ -252,9 +290,50 @@ class UIManager {
     const loadingScreen = document.getElementById('loading-screen');
     if (loadingScreen) {
       loadingScreen.style.opacity = '0';
-      setTimeout(() => { loadingScreen.style.display = 'none'; }, 300);
+      setTimeout(() => { 
+        loadingScreen.style.display = 'none'; 
+      }, 300);
     }
+  }
+
+  showIncomingCallNotification(callData) {
+    const notificationHTML = `
+      <div class="modal-overlay" id="incoming-call-modal">
+        <div class="modal">
+          <div class="modal-body">
+            <div style="text-align: center;">
+              <div style="width: 80px; height: 80px; border-radius: 50%; background: #7c3aed; color: white; display: flex; align-items: center; justify-content: center; font-size: 2rem; margin: 0 auto 1rem;">
+                <i class="fas fa-phone"></i>
+              </div>
+              <h3>Incoming Call</h3>
+              <p style="color: #888; margin-bottom: 1rem;">${callData.callerName || 'Someone'} is calling you</p>
+              
+              <div style="display: flex; gap: 1rem; justify-content: center;">
+                <button class="btn btn-success" onclick="window.App.calls.answerCall('${callData.callId}').then(() => window.App.ui.closeModal('incoming-call-modal')).catch(e => window.App.ui.showToast(e.message, 'error'))">
+                  <i class="fas fa-phone"></i> Answer
+                </button>
+                <button class="btn btn-danger" onclick="window.App.calls.declineCall('${callData.callId}').then(() => window.App.ui.closeModal('incoming-call-modal')).catch(e => window.App.ui.showToast(e.message, 'error'))">
+                  <i class="fas fa-phone-slash"></i> Decline
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', notificationHTML);
+    this.modalStack.push('incoming-call-modal');
   }
 }
 
-window.UI = new UIManager();
+// Global function for coin selection
+function selectCoinOption(packageId) {
+  window.selectedCoinId = packageId;
+  
+  document.querySelectorAll('.coin-option').forEach(option => {
+    option.classList.remove('selected');
+  });
+  
+  event.target.closest('.coin-option').classList.add('selected');
+}

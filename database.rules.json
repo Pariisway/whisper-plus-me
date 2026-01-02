@@ -1,0 +1,111 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "$uid === auth.uid || auth.token.admin === true",
+        ".write": "$uid === auth.uid || auth.token.admin === true",
+        "coins": {
+          ".validate": "newData.isNumber() && newData.val() >= 0",
+          // Only Cloud Functions can modify coins
+          ".write": "auth.token.admin === true || root.child('cloud_functions').child(auth.uid).exists()"
+        },
+        "earnings": {
+          ".validate": "newData.isNumber() && newData.val() >= 0",
+          ".write": "root.child('cloud_functions').child(auth.uid).exists()"
+        },
+        "isAvailable": {
+          ".validate": "newData.isBoolean()",
+          ".write": "$uid === auth.uid"
+        },
+        "displayName": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50"
+        },
+        "email": {
+          ".validate": "newData.isString() && newData.val().matches(/^[^@]+@[^@]+\\\\.[^@]+$/)"
+        },
+        "profilePhoto": {
+          ".validate": "newData.isString() && newData.val().length <= 500"
+        },
+        "bio": {
+          ".validate": "newData.isString() && newData.val().length <= 500"
+        },
+        "callPrice": {
+          ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 3"
+        },
+        "socialLinks": {
+          ".validate": "newData.hasChildren(['twitter', 'instagram', 'tiktok'])",
+          "$social": {
+            ".validate": "newData.isString() && newData.val().length <= 200"
+          }
+        },
+        "payoutMethods": {
+          ".write": "$uid === auth.uid",
+          "$method": {
+            ".validate": "newData.isString() && newData.val().length <= 200"
+          }
+        }
+      }
+    },
+    "calls": {
+      "$callId": {
+        ".read": "auth != null && (data.child('callerId').val() === auth.uid || data.child('receiverId').val() === auth.uid || auth.token.admin === true)",
+        ".write": "root.child('cloud_functions').child(auth.uid).exists() || auth.token.admin === true",
+        "status": {
+          ".validate": "newData.isString() && ['waiting', 'ringing', 'answered', 'connected', 'ended', 'declined', 'timeout', 'cancelled'].indexOf(newData.val()) !== -1"
+        },
+        "coinEscrow": {
+          ".validate": "newData.isBoolean()"
+        },
+        "coins": {
+          ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 3"
+        }
+      }
+    },
+    "notifications": {
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        "$notificationId": {
+          ".write": "$uid === auth.uid || root.child('cloud_functions').child(auth.uid).exists()"
+        }
+      }
+    },
+    "transactions": {
+      "$uid": {
+        ".read": "$uid === auth.uid || auth.token.admin === true",
+        ".write": "root.child('cloud_functions').child(auth.uid).exists()"
+      }
+    },
+    "payouts": {
+      ".read": "auth.token.admin === true",
+      ".write": "auth.token.admin === true",
+      "$payoutId": {
+        "status": {
+          ".validate": "newData.isString() && ['pending', 'paid', 'rejected'].indexOf(newData.val()) !== -1"
+        }
+      }
+    },
+    "ratings": {
+      "$callId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    "admin_logs": {
+      ".read": "auth.token.admin === true",
+      ".write": "auth.token.admin === true"
+    },
+    "processedSessions": {
+      ".read": "auth.token.admin === true",
+      ".write": "root.child('cloud_functions').child(auth.uid).exists()"
+    },
+    "cloud_functions": {
+      "$uid": {
+        ".read": "auth.token.admin === true",
+        ".write": "auth.token.admin === true"
+      }
+    },
+    "available_users": {
+      ".indexOn": ["isAvailable", "lastSeen"]
+    }
+  }
+}

@@ -1,519 +1,327 @@
-// Main Application Logic for Whisper+me
+// Main Production Application Logic for Whisper+me
+// NO DEMO CODE - Real Firebase only
 
-// Global variables
-let currentUser = null;
-let userData = null;
-let availableUsers = [];
-let shuffleInterval = null;
-let countdownInterval = null;
-let selectedCoins = 1;
+// Global App Object (PHASE 1.2)
+window.App = {
+  auth: null,
+  ui: null,
+  calls: null,
+  payments: null,
+  agora: null,
+  db: null
+};
 
 // Initialize when page loads
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('Whisper+me app initializing...');
+document.addEventListener('DOMContentLoaded', async function() {
+    console.log('🚀 Whisper+me Production Initializing...');
     
-    // Hide loading screen after 2 seconds
-    setTimeout(() => {
-        document.getElementById('loading-screen').style.display = 'none';
-    }, 2000);
-    
-    // Initialize shuffle timer
-    startShuffleCountdown();
-    
-    // Load sample profiles
-    loadSampleProfiles();
-    
-    // Initialize event listeners
-    initializeEventListeners();
+    try {
+        // Initialize Firebase
+        if (!firebase.apps.length) {
+            firebase.initializeApp({
+                apiKey: "YOUR_FIREBASE_API_KEY",
+                authDomain: "YOUR_FIREBASE_AUTH_DOMAIN",
+                databaseURL: "YOUR_FIREBASE_DATABASE_URL",
+                projectId: "YOUR_FIREBASE_PROJECT_ID",
+                storageBucket: "YOUR_FIREBASE_STORAGE_BUCKET",
+                messagingSenderId: "YOUR_FIREBASE_SENDER_ID",
+                appId: "YOUR_FIREBASE_APP_ID"
+            });
+        }
+        
+        // Initialize modules
+        window.App.db = firebase.database();
+        window.App.auth = new AuthManager();
+        window.App.ui = new UIManager();
+        window.App.calls = new CallManager();
+        window.App.payments = new PaymentManager();
+        window.App.agora = new AgoraManager();
+        
+        // Initialize auth
+        const isAuthenticated = await window.App.auth.initialize();
+        
+        if (isAuthenticated) {
+            await setupAuthenticatedUser();
+        } else {
+            setTimeout(() => { 
+                window.App.ui.showAuthModal(); 
+            }, 1000);
+        }
+        
+        // Load real profiles from Firebase
+        loadRealProfiles();
+        
+        // Start shuffle with real data
+        startRealShuffle();
+        
+        // Hide loading screen
+        window.App.ui.hideLoadingScreen();
+        
+    } catch (error) {
+        console.error('Initialization error:', error);
+        window.App.ui.showToast('Failed to initialize app. Please refresh.', 'error');
+    }
 });
 
-// Event Listeners
-function initializeEventListeners() {
-    // Auth form submissions
-    document.getElementById('login-email')?.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') login();
-    });
-    document.getElementById('login-password')?.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') login();
-    });
-    document.getElementById('signup-email')?.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') signup();
-    });
-    document.getElementById('signup-password')?.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') signup();
-    });
-    document.getElementById('signup-confirm')?.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') signup();
-    });
-}
-
-// Authentication Functions
-function showAuthModal(type) {
-    const modal = document.getElementById('auth-modal');
-    const title = document.getElementById('auth-modal-title');
-    
-    if (type === 'login') {
-        title.textContent = 'Login to Whisper+me';
-        document.getElementById('login-form').style.display = 'block';
-        document.getElementById('signup-form').style.display = 'none';
-    } else {
-        title.textContent = 'Create Account';
-        document.getElementById('login-form').style.display = 'none';
-        document.getElementById('signup-form').style.display = 'block';
-    }
-    
-    modal.style.display = 'flex';
-}
-
-function closeModal(modalId) {
-    document.getElementById(modalId).style.display = 'none';
-}
-
-function switchAuthTab(type) {
-    showAuthModal(type);
-}
-
-async function login() {
-    const email = document.getElementById('login-email').value;
-    const password = document.getElementById('login-password').value;
-    
-    if (!email || !password) {
-        showNotification('Please fill in all fields', 'error');
-        return;
-    }
-    
+// Setup authenticated user
+async function setupAuthenticatedUser() {
     try {
-        // Simulate login - In production, this would connect to Firebase
-        console.log('Login attempt:', email);
+        window.App.ui.updateUI();
+        window.App.auth.updateAvailability(true);
+        setupDatabaseListeners();
         
-        // Simulate successful login
-        simulateLoginSuccess(email);
-        
-        showNotification('Login successful!', 'success');
-        closeModal('auth-modal');
-        
+        window.addEventListener('beforeunload', () => {
+            if (window.App.auth.currentUser) {
+                firebase.database().ref(`users/${window.App.auth.currentUser.uid}/isAvailable`).set(false);
+            }
+        });
     } catch (error) {
-        showNotification('Login failed: ' + error.message, 'error');
+        console.error('User setup error:', error);
     }
 }
 
-async function signup() {
-    const email = document.getElementById('signup-email').value;
-    const password = document.getElementById('signup-password').value;
-    const confirm = document.getElementById('signup-confirm').value;
+// Setup Firebase listeners
+function setupDatabaseListeners() {
+    const userId = window.App.auth.currentUser?.uid;
+    if (!userId) return;
+
+    // Listen for incoming calls
+    const notificationsRef = window.App.db.ref(`notifications/${userId}`);
+    notificationsRef.orderByChild('status').equalTo('unread').on('child_added', (snapshot) => {
+        const notification = snapshot.val();
+        if (notification.type === 'incoming_call') {
+            window.App.ui.showIncomingCallNotification(notification);
+        }
+    });
+
+    // Listen for available whispers
+    const whispersRef = window.App.db.ref('users').orderByChild('isAvailable').equalTo(true);
+    whispersRef.on('value', (snapshot) => {
+        updateAvailableWhispers(snapshot.val());
+    });
+}
+
+// Load real profiles from Firebase
+function loadRealProfiles() {
+    const container = document.getElementById('profiles-container');
+    if (!container) return;
     
-    if (!email || !password || !confirm) {
-        showNotification('Please fill in all fields', 'error');
-        return;
-    }
-    
-    if (password !== confirm) {
-        showNotification('Passwords do not match', 'error');
-        return;
-    }
-    
-    if (password.length < 6) {
-        showNotification('Password must be at least 6 characters', 'error');
-        return;
-    }
-    
-    try {
-        // Simulate signup - In production, this would connect to Firebase
-        console.log('Signup attempt:', email);
+    window.App.db.ref('users').orderByChild('isAvailable').equalTo(true).on('value', (snapshot) => {
+        const users = snapshot.val();
+        container.innerHTML = '';
         
-        // Simulate successful signup
-        simulateLoginSuccess(email);
+        if (!users) {
+            container.innerHTML = '<p style="text-align: center; color: #888;">No users available at the moment</p>';
+            return;
+        }
         
-        showNotification('Account created successfully!', 'success');
-        closeModal('auth-modal');
-        
-    } catch (error) {
-        showNotification('Signup failed: ' + error.message, 'error');
+        Object.entries(users).forEach(([uid, user]) => {
+            if (uid === window.App.auth.currentUser?.uid) return;
+            
+            const card = document.createElement('div');
+            card.className = 'profile-card';
+            card.innerHTML = `
+                <div class="profile-header">
+                    <img src="${user.profilePhoto || 'https://images.unsplash.com/photo-1494790108755-2616b786d4d7?w=400&h=400&fit=crop&crop=face'}" 
+                         alt="${user.displayName}" class="profile-img">
+                    <div class="profile-info">
+                        <h3>${user.displayName || 'Anonymous'}</h3>
+                        <div class="profile-price">${user.callPrice || 1} Coin${user.callPrice > 1 ? 's' : ''}</div>
+                    </div>
+                </div>
+                <p class="profile-bio">${user.bio || 'Available for calls'}</p>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="btn btn-secondary" onclick="shareUserProfile('${uid}')" style="flex: 1;">
+                        <i class="fas fa-share-alt"></i> Share
+                    </button>
+                    <button class="btn btn-primary" onclick="startCallWithUser('${uid}')" style="flex: 2;">
+                        <i class="fas fa-phone"></i> Call Now
+                    </button>
+                </div>
+            `;
+            container.appendChild(card);
+        });
+    });
+}
+
+// Update available whispers for shuffle
+function updateAvailableWhispers(users) {
+    if (!users || !window.App.auth.currentUser) return;
+    
+    // Filter out current user
+    const availableUsers = Object.entries(users).filter(([uid, user]) => {
+        return uid !== window.App.auth.currentUser.uid && user.isAvailable === true;
+    });
+    
+    // Update shuffle if we have users
+    if (availableUsers.length > 0 && window.shuffleUsers) {
+        window.shuffleUsers = availableUsers;
     }
 }
 
-function simulateLoginSuccess(email) {
-    currentUser = {
-        uid: 'user_' + Date.now(),
-        email: email
-    };
-    
-    userData = {
-        coins: 10,
-        earnings: 0,
-        callsCompleted: 0,
-        rating: 5.0
-    };
-    
-    // Update UI for logged in state
-    document.getElementById('guest-menu').style.display = 'none';
-    document.getElementById('logged-in-menu').style.display = 'block';
-    document.getElementById('coins-count').textContent = userData.coins;
-    
-    // Update dashboard stats
-    updateDashboardStats();
+// Start real shuffle with Firebase data
+function startRealShuffle() {
+    window.App.db.ref('users').orderByChild('isAvailable').equalTo(true).once('value').then((snapshot) => {
+        const users = snapshot.val();
+        if (!users) return;
+        
+        const availableUsers = Object.entries(users).filter(([uid, user]) => {
+            return uid !== (window.App.auth.currentUser?.uid) && user.isAvailable === true;
+        });
+        
+        if (availableUsers.length > 0) {
+            window.shuffleUsers = availableUsers;
+            window.shuffleIndex = 0;
+            updateShuffleWithRealUser();
+            startShuffleCountdown();
+        }
+    });
 }
 
-function logout() {
-    currentUser = null;
-    userData = null;
+// Update shuffle with real user
+function updateShuffleWithRealUser() {
+    if (!window.shuffleUsers || window.shuffleUsers.length === 0) return;
     
-    // Update UI for logged out state
-    document.getElementById('guest-menu').style.display = 'block';
-    document.getElementById('logged-in-menu').style.display = 'none';
-    
-    showNotification('Logged out successfully', 'success');
+    const [uid, user] = window.shuffleUsers[window.shuffleIndex];
+    document.getElementById('shuffle-img').src = user.profilePhoto || 'https://images.unsplash.com/photo-1494790108755-2616b786d4d7?w=400&h=400&fit=crop&crop=face';
+    document.getElementById('shuffle-name').textContent = user.displayName || 'Anonymous';
+    document.getElementById('shuffle-price').textContent = `${user.callPrice || 1} Coin${(user.callPrice || 1) > 1 ? 's' : ''}`;
+    document.getElementById('shuffle-bio').textContent = user.bio || 'Available for calls';
 }
 
-// Shuffle Functions
-let shuffleIndex = 0;
-const sampleProfiles = [
-    {
-        name: "Alex Johnson",
-        price: "2 Coins",
-        bio: "Tech entrepreneur & startup advisor. Love discussing innovation and business strategies.",
-        img: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop&crop=face"
-    },
-    {
-        name: "Sarah Miller",
-        price: "3 Coins",
-        bio: "Mental health advocate and mindfulness coach. Let's talk about self-care and personal growth.",
-        img: "https://images.unsplash.com/photo-1494790108755-2616b786d4d7?w=400&h=400&fit=crop&crop=face"
-    },
-    {
-        name: "Marcus Chen",
-        price: "1 Coin",
-        bio: "Professional musician and producer. Ask me anything about the music industry!",
-        img: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400&h=400&fit=crop&crop=face"
-    },
-    {
-        name: "Jessica Williams",
-        price: "2 Coins",
-        bio: "Travel blogger and adventure seeker. Let's share stories from around the world.",
-        img: "https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=400&h=400&fit=crop&crop=face"
-    },
-    {
-        name: "David Park",
-        price: "3 Coins",
-        bio: "AI researcher and futurist. Passionate about technology's impact on society.",
-        img: "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=400&h=400&fit=crop&crop=face"
-    }
-];
-
-function nextShuffleProfile() {
-    shuffleIndex = (shuffleIndex + 1) % sampleProfiles.length;
-    updateShuffleProfile();
-    resetShuffleCountdown();
-}
-
-function updateShuffleProfile() {
-    const profile = sampleProfiles[shuffleIndex];
-    document.getElementById('shuffle-img').src = profile.img;
-    document.getElementById('shuffle-name').textContent = profile.name;
-    document.getElementById('shuffle-price').textContent = profile.price;
-    document.getElementById('shuffle-bio').textContent = profile.bio;
-}
-
+// Start shuffle countdown
 function startShuffleCountdown() {
     let seconds = 30;
     const countdownElement = document.getElementById('countdown');
     
-    countdownInterval = setInterval(() => {
+    if (window.shuffleInterval) clearInterval(window.shuffleInterval);
+    
+    window.shuffleInterval = setInterval(() => {
         seconds--;
         countdownElement.textContent = seconds;
         
         if (seconds <= 0) {
-            nextShuffleProfile();
+            nextRealShuffleProfile();
             seconds = 30;
         }
     }, 1000);
 }
 
-function resetShuffleCountdown() {
-    clearInterval(countdownInterval);
-    document.getElementById('countdown').textContent = '30';
-    startShuffleCountdown();
+// Next real shuffle profile
+function nextRealShuffleProfile() {
+    if (!window.shuffleUsers || window.shuffleUsers.length === 0) return;
+    
+    window.shuffleIndex = (window.shuffleIndex + 1) % window.shuffleUsers.length;
+    updateShuffleWithRealUser();
 }
 
-function startCallFromShuffle() {
-    if (!currentUser) {
-        showNotification('Please login to start a call', 'error');
-        showAuthModal('login');
+// Start call from shuffle
+async function startCallFromShuffle() {
+    if (!window.App.auth.currentUser) {
+        window.App.ui.showNotification('Please login to start a call', 'error');
+        window.App.ui.showAuthModal();
         return;
     }
     
-    if (userData.coins < 1) {
-        showNotification('Not enough coins. Please buy more coins.', 'error');
+    if (!window.shuffleUsers || window.shuffleUsers.length === 0) return;
+    
+    const [uid, user] = window.shuffleUsers[window.shuffleIndex];
+    await startCallWithUser(uid);
+}
+
+// Start call with user
+async function startCallWithUser(userId) {
+    if (!window.App.auth.currentUser) {
+        window.App.ui.showNotification('Please login to start a call', 'error');
+        window.App.ui.showAuthModal();
         return;
     }
     
-    // Simulate call start
-    userData.coins -= 2; // Deduct for this call
-    document.getElementById('coins-count').textContent = userData.coins;
-    
-    showNotification(`Calling ${sampleProfiles[shuffleIndex].name}...`, 'success');
-    
-    // Simulate call success after 3 seconds
-    setTimeout(() => {
-        showNotification('Call connected! Talk for up to 5 minutes.', 'success');
-        // In production, this would start the actual Agora call
-    }, 3000);
-}
-
-// Profile Functions
-function loadSampleProfiles() {
-    const container = document.getElementById('profiles-container');
-    container.innerHTML = '';
-    
-    const profiles = [
-        {
-            name: "Dr. Maya Rodriguez",
-            price: "3 Coins",
-            bio: "Clinical psychologist specializing in relationships. Let's talk about communication and emotional wellness.",
-            img: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&h=400&fit=crop&crop=face"
-        },
-        {
-            name: "James Wilson",
-            price: "2 Coins",
-            bio: "Former professional athlete turned motivational speaker. Let's discuss discipline and achieving goals.",
-            img: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&h=400&fit=crop&crop=face"
-        },
-        {
-            name: "Priya Patel",
-            price: "1 Coin",
-            bio: "Software engineer at a FAANG company. Happy to chat about career advice and tech interviews.",
-            img: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=400&fit=crop&crop=face"
-        },
-        {
-            name: "Carlos Garcia",
-            price: "2 Coins",
-            bio: "Master chef and restaurant owner. Let's talk food, culture, and entrepreneurship.",
-            img: "https://images.unsplash.com/photo-1507591064344-4c6ce005b128?w=400&h=400&fit=crop&crop=face"
-        },
-        {
-            name: "Lisa Thompson",
-            price: "3 Coins",
-            bio: "Investment banker turned financial educator. Learn about personal finance and wealth building.",
-            img: "https://images.unsplash.com/photo-1531123897727-8f129e1688ce?w=400&h=400&fit=crop&crop=face"
-        },
-        {
-            name: "Ryan Cooper",
-            price: "1 Coin",
-            bio: "Stand-up comedian and writer. Need a laugh? Let's chat about comedy and creativity.",
-            img: "https://images.unsplash.com/photo-1517423440428-a5a00ad493e8?w=400&h=400&fit=crop&crop=face"
+    try {
+        const result = await window.App.calls.startCall(userId);
+        window.App.ui.showNotification('Call initiated! Waiting for answer...', 'success');
+    } catch (error) {
+        window.App.ui.showNotification(error.message, 'error');
+        if (error.message.includes('coins')) {
+            window.App.ui.showBuyCoinsModal();
         }
-    ];
-    
-    profiles.forEach(profile => {
-        const card = document.createElement('div');
-        card.className = 'profile-card';
-        card.innerHTML = `
-            <div class="profile-header">
-                <img src="${profile.img}" alt="${profile.name}" class="profile-img">
-                <div class="profile-info">
-                    <h3>${profile.name}</h3>
-                    <div class="profile-price">${profile.price}</div>
-                </div>
-            </div>
-            <p class="profile-bio">${profile.bio}</p>
-            <button class="btn btn-primary" onclick="viewProfile('${profile.name}', '${profile.price}', '${profile.bio.replace(/'/g, "\\'")}', '${profile.img}')">
-                <i class="fas fa-phone"></i> Call Now
-            </button>
-        `;
-        container.appendChild(card);
-    });
-}
-
-function viewProfile(name, price, bio, img) {
-    if (!currentUser) {
-        showNotification('Please login to view profiles', 'error');
-        showAuthModal('login');
-        return;
-    }
-    
-    document.getElementById('modal-profile-img').src = img;
-    document.getElementById('modal-profile-name').textContent = name;
-    document.getElementById('modal-profile-price').textContent = price;
-    document.getElementById('modal-profile-bio').textContent = bio;
-    
-    closeModal('profile-modal');
-}
-
-function startCall() {
-    if (!currentUser) {
-        showNotification('Please login to start a call', 'error');
-        showAuthModal('login');
-        return;
-    }
-    
-    const price = document.getElementById('modal-profile-price').textContent;
-    const coinCost = parseInt(price.split(' ')[0]);
-    
-    if (userData.coins < coinCost) {
-        showNotification(`Not enough coins. You need ${coinCost} coins for this call.`, 'error');
-        return;
-    }
-    
-    // Simulate call start
-    userData.coins -= coinCost;
-    document.getElementById('coins-count').textContent = userData.coins;
-    
-    const name = document.getElementById('modal-profile-name').textContent;
-    showNotification(`Calling ${name}...`, 'success');
-    closeModal('profile-modal');
-    
-    // Simulate call success after 3 seconds
-    setTimeout(() => {
-        showNotification('Call connected! Talk for up to 5 minutes.', 'success');
-        // In production, this would start the actual Agora call
-    }, 3000);
-}
-
-// Coin Functions
-function selectCoinOption(coins) {
-    selectedCoins = coins;
-    
-    // Update UI
-    document.querySelectorAll('.coin-option').forEach(option => {
-        option.classList.remove('selected');
-    });
-    
-    event.target.closest('.coin-option').classList.add('selected');
-}
-
-function buyCoins() {
-    if (!currentUser) {
-        showNotification('Please login to buy coins', 'error');
-        showAuthModal('login');
-        return;
-    }
-    
-    const price = selectedCoins * 15;
-    showNotification(`Redirecting to payment for ${selectedCoins} coins ($${price})...`, 'success');
-    
-    // Simulate payment success after 2 seconds
-    setTimeout(() => {
-        userData.coins += selectedCoins;
-        document.getElementById('coins-count').textContent = userData.coins;
-        showNotification(`Successfully purchased ${selectedCoins} coins!`, 'success');
-    }, 2000);
-}
-
-// Dashboard Functions
-function showDashboard() {
-    if (!currentUser) {
-        showNotification('Please login to view dashboard', 'error');
-        showAuthModal('login');
-        return;
-    }
-    
-    updateDashboardStats();
-    const modal = document.getElementById('dashboard-modal');
-    modal.style.display = 'flex';
-}
-
-function updateDashboardStats() {
-    if (userData) {
-        document.getElementById('dash-coins').textContent = userData.coins;
-        document.getElementById('dash-earnings').textContent = '$' + userData.earnings;
-        document.getElementById('dash-calls').textContent = userData.callsCompleted;
-        document.getElementById('dash-rating').textContent = userData.rating.toFixed(1);
     }
 }
 
-function toggleAvailability() {
-    const toggle = document.getElementById('availability-toggle');
-    const status = toggle.checked ? 'available' : 'unavailable';
-    showNotification(`You are now ${status} to receive calls`, 'success');
-}
-
-function saveProfile() {
-    const bio = document.getElementById('profile-bio').value;
-    const price = document.getElementById('profile-price').value;
+// Share user profile
+function shareUserProfile(userId) {
+    const shareUrl = `${window.location.origin}?ref=${userId}`;
     
-    if (bio) {
-        showNotification('Profile saved successfully!', 'success');
-        closeModal('dashboard-modal');
-    } else {
-        showNotification('Please add a bio to your profile', 'error');
-    }
-}
-
-// Rating Functions
-function setRating(stars) {
-    // Highlight selected stars
-    const starElements = document.querySelectorAll('#rating-modal .fa-star');
-    starElements.forEach((star, index) => {
-        star.style.color = index < stars ? '#fbbf24' : '#666';
-    });
-}
-
-function submitRating() {
-    showNotification('Thank you for your rating!', 'success');
-    closeModal('rating-modal');
-}
-
-// Notification System
-function showNotification(message, type = 'success') {
-    const notification = document.getElementById('notification');
-    notification.textContent = message;
-    notification.className = 'notification show';
-    
-    if (type === 'error') {
-        notification.classList.add('error');
-    }
-    
-    setTimeout(() => {
-        notification.classList.remove('show');
-    }, 3000);
-}
-
-// Admin Functions
-function showAdminLogin() {
-    const email = prompt('Enter admin email:');
-    const password = prompt('Enter admin password:');
-    
-    if (email === 'ifanifwasafifth@gmail.com' && password === 'admin123') {
-        window.location.href = 'admin.html';
-    } else {
-        showNotification('Invalid admin credentials', 'error');
-    }
-}
-
-// Share Profile
-function shareProfile() {
     if (navigator.share) {
         navigator.share({
-            title: 'Whisper+me',
-            text: 'Check out this awesome anonymous audio chat platform!',
-            url: window.location.href
+            title: 'Whisper+me User',
+            text: 'Check out this user on Whisper+me!',
+            url: shareUrl
         });
     } else {
-        navigator.clipboard.writeText(window.location.href);
-        showNotification('Link copied to clipboard!', 'success');
+        navigator.clipboard.writeText(shareUrl);
+        window.App.ui.showNotification('Profile link copied to clipboard!', 'success');
     }
 }
 
-// Initialize shuffle on page load
-updateShuffleProfile();
+// View profile modal
+function viewProfile(uid) {
+    window.App.db.ref(`users/${uid}`).once('value').then((snapshot) => {
+        const user = snapshot.val();
+        if (!user) return;
+        
+        document.getElementById('modal-profile-img').src = user.profilePhoto || 'https://images.unsplash.com/photo-1494790108755-2616b786d4d7?w=400&h=400&fit=crop&crop=face';
+        document.getElementById('modal-profile-name').textContent = user.displayName || 'Anonymous';
+        document.getElementById('modal-profile-price').textContent = `${user.callPrice || 1} Coin${(user.callPrice || 1) > 1 ? 's' : ''}`;
+        document.getElementById('modal-profile-bio').textContent = user.bio || 'Available for calls';
+        
+        // Add social links
+        const socialLinks = document.getElementById('modal-social-links');
+        socialLinks.innerHTML = '';
+        if (user.socialLinks) {
+            if (user.socialLinks.twitter) {
+                socialLinks.innerHTML += `<a href="${user.socialLinks.twitter}" target="_blank" class="social-link"><i class="fab fa-twitter"></i></a>`;
+            }
+            if (user.socialLinks.instagram) {
+                socialLinks.innerHTML += `<a href="${user.socialLinks.instagram}" target="_blank" class="social-link"><i class="fab fa-instagram"></i></a>`;
+            }
+            if (user.socialLinks.tiktok) {
+                socialLinks.innerHTML += `<a href="${user.socialLinks.tiktok}" target="_blank" class="social-link"><i class="fab fa-tiktok"></i></a>`;
+            }
+        }
+        
+        // Add call button
+        const actionButtons = document.querySelector('#profile-modal .action-buttons');
+        actionButtons.innerHTML = `
+            <button class="btn btn-secondary" onclick="shareUserProfile('${uid}')" style="flex: 1;">
+                <i class="fas fa-share-alt"></i> Share
+            </button>
+            <button class="btn btn-primary" onclick="startCallWithUser('${uid}')" style="flex: 2;">
+                <i class="fas fa-phone-alt"></i> Call Now
+            </button>
+        `;
+        
+        window.App.ui.showModal('profile-modal');
+    });
+}
+
+// Initialize event listeners
+function initializeEventListeners() {
+    // Auth form submissions
+    document.getElementById('login-email')?.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') window.App.auth.login();
+    });
+    document.getElementById('login-password')?.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') window.App.auth.login();
+    });
+}
 
 // Export functions for global access
-window.showAuthModal = showAuthModal;
-window.closeModal = closeModal;
-window.switchAuthTab = switchAuthTab;
-window.login = login;
-window.signup = signup;
-window.logout = logout;
-window.nextShuffleProfile = nextShuffleProfile;
+window.nextShuffleProfile = nextRealShuffleProfile;
 window.startCallFromShuffle = startCallFromShuffle;
 window.viewProfile = viewProfile;
-window.startCall = startCall;
-window.selectCoinOption = selectCoinOption;
-window.buyCoins = buyCoins;
-window.showDashboard = showDashboard;
-window.toggleAvailability = toggleAvailability;
-window.saveProfile = saveProfile;
-window.setRating = setRating;
-window.submitRating = submitRating;
-window.showAdminLogin = showAdminLogin;
-window.shareProfile = shareProfile;
+window.startCallWithUser = startCallWithUser;
+window.shareUserProfile = shareUserProfile;
+
+// Initialize on load
+initializeEventListeners();

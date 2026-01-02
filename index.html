@@ -470,7 +470,42 @@
             margin-top: 1.5rem;
         }
         
-        /* Dashboard Modal */
+        /* Dashboard Modal - UPDATED */
+        .dashboard-modal .modal {
+            max-width: 600px;
+        }
+        
+        .dashboard-user-info {
+            text-align: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid #333;
+        }
+        
+        .dashboard-user-img {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid #7c3aed;
+            margin-bottom: 1rem;
+        }
+        
+        .dashboard-user-email {
+            color: #888;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .dashboard-user-id {
+            background: rgba(124, 58, 237, 0.2);
+            color: #7c3aed;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            display: inline-block;
+        }
+        
         .dashboard-stats {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
@@ -496,6 +531,46 @@
             color: #888;
             font-size: 0.8rem;
             margin-top: 0.25rem;
+        }
+        
+        /* Payout Options */
+        .payout-options {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+        
+        .payout-option {
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px solid #333;
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+        
+        .payout-option.selected {
+            border-color: #7c3aed;
+            background: rgba(124, 58, 237, 0.1);
+        }
+        
+        .payout-icon {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            color: #7c3aed;
+        }
+        
+        .payout-name {
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+        
+        .payout-details {
+            color: #888;
+            font-size: 0.8rem;
         }
         
         /* Availability Toggle */
@@ -679,6 +754,14 @@
                 width: 60px;
                 height: 60px;
             }
+            
+            .dashboard-stats {
+                grid-template-columns: 1fr;
+            }
+            
+            .payout-options {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -699,11 +782,8 @@
             <div id="user-menu">
                 <!-- Guest Menu -->
                 <div id="guest-menu">
-                    <button class="btn btn-primary" onclick="showAuthModal('login')">
+                    <button class="btn btn-primary" onclick="window.App.ui.showAuthModal()">
                         <i class="fas fa-sign-in-alt"></i> Login
-                    </button>
-                    <button class="btn btn-secondary" onclick="showAuthModal('signup')" style="margin-left: 0.5rem;">
-                        <i class="fas fa-user-plus"></i> Sign Up
                     </button>
                 </div>
                 
@@ -713,10 +793,11 @@
                         <div class="coins-badge" onclick="showDashboard()">
                             <i class="fas fa-coins"></i> <span id="coins-count">0</span>
                         </div>
+                        <img src="" alt="" class="user-avatar" id="user-avatar" onclick="showDashboard()">
                         <button class="btn btn-secondary" onclick="showDashboard()">
                             <i class="fas fa-user"></i> Dashboard
                         </button>
-                        <button class="btn btn-danger" onclick="logout()">
+                        <button class="btn btn-danger" onclick="window.App.auth.logout()">
                             <i class="fas fa-sign-out-alt"></i> Logout
                         </button>
                     </div>
@@ -743,11 +824,11 @@
                         </div>
                         
                         <div class="shuffle-profile" id="shuffle-profile">
-                            <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop&crop=face" 
+                            <img src="https://images.unsplash.com/photo-1494790108755-2616b786d4d7?w=400&h=400&fit=crop&crop=face" 
                                  alt="Profile" class="shuffle-profile-img" id="shuffle-img">
-                            <h3 class="shuffle-profile-name" id="shuffle-name">Alex Johnson</h3>
-                            <div class="shuffle-profile-price" id="shuffle-price">2 Coins</div>
-                            <p class="shuffle-profile-bio" id="shuffle-bio">Tech entrepreneur & startup advisor. Love discussing innovation and business strategies.</p>
+                            <h3 class="shuffle-profile-name" id="shuffle-name">Loading...</h3>
+                            <div class="shuffle-profile-price" id="shuffle-price">1 Coin</div>
+                            <p class="shuffle-profile-bio" id="shuffle-bio">Connecting to real users...</p>
                         </div>
                         
                         <div class="phone-controls">
@@ -771,7 +852,7 @@
         <section class="profiles-section">
             <h2 class="section-title">Available Whispers</h2>
             <div class="profiles-grid" id="profiles-container">
-                <!-- Profiles loaded dynamically -->
+                <!-- Profiles loaded from Firebase -->
             </div>
         </section>
         
@@ -782,22 +863,11 @@
                 1 Coin = $15 • Each call costs 1-3 coins • Whispers earn $12 per coin
             </p>
             
-            <div class="coins-options">
-                <div class="coin-option selected" onclick="selectCoinOption(1)">
-                    <div class="coin-amount">1 Coin</div>
-                    <div class="coin-price">$15</div>
-                </div>
-                <div class="coin-option" onclick="selectCoinOption(3)">
-                    <div class="coin-amount">3 Coins</div>
-                    <div class="coin-price">$45</div>
-                </div>
-                <div class="coin-option" onclick="selectCoinOption(5)">
-                    <div class="coin-amount">5 Coins</div>
-                    <div class="coin-price">$75</div>
-                </div>
+            <div class="coins-options" id="coins-options">
+                <!-- Coin options loaded dynamically -->
             </div>
             
-            <button class="btn btn-primary" onclick="buyCoins()" style="width: 100%; padding: 1rem; font-size: 1.1rem;">
+            <button class="btn btn-primary" onclick="window.App.ui.showBuyCoinsModal()" style="width: 100%; padding: 1rem; font-size: 1.1rem;">
                 <i class="fas fa-shopping-cart"></i> Buy Coins Now
             </button>
         </section>
@@ -821,14 +891,25 @@
     
     <!-- MODALS -->
     
-    <!-- Auth Modal -->
+    <!-- Auth Modal (Updated with Social Login) -->
     <div class="modal-overlay" id="auth-modal">
         <div class="modal">
             <div class="modal-header">
                 <h3 id="auth-modal-title">Login to Whisper+me</h3>
-                <button class="close-btn" onclick="closeModal('auth-modal')">×</button>
+                <button class="close-btn" onclick="window.App.ui.closeModal('auth-modal')">×</button>
             </div>
             <div class="modal-body">
+                <!-- Social Login Buttons -->
+                <div style="margin-bottom: 1.5rem;">
+                    <button class="btn btn-secondary" onclick="window.App.auth.loginWithFacebook()" style="width: 100%; margin-bottom: 0.5rem; background: #1877F2; color: white;">
+                        <i class="fab fa-facebook"></i> Continue with Facebook
+                    </button>
+                    <button class="btn btn-secondary" onclick="window.App.auth.loginWithInstagram()" style="width: 100%; background: #E4405F; color: white;">
+                        <i class="fab fa-instagram"></i> Continue with Instagram
+                    </button>
+                    <p style="text-align: center; color: #888; margin: 1rem 0;">or</p>
+                </div>
+                
                 <!-- Login Form -->
                 <div class="auth-form active" id="login-form">
                     <div class="form-group">
@@ -839,11 +920,15 @@
                         <label>Password</label>
                         <input type="password" id="login-password" placeholder="••••••••">
                     </div>
-                    <button class="btn btn-primary" onclick="login()" style="width: 100%; padding: 1rem;">
+                    <button class="btn btn-primary" onclick="window.App.auth.login(
+                        document.getElementById('login-email').value,
+                        document.getElementById('login-password').value
+                    ).then(() => window.App.ui.closeModal('auth-modal')).catch(e => window.App.ui.showNotification(e.message, 'error'))" 
+                    style="width: 100%; padding: 1rem;">
                         <i class="fas fa-sign-in-alt"></i> Login
                     </button>
                     <p style="text-align: center; color: #888; margin-top: 1rem;">
-                        Don't have an account? <a href="#" onclick="switchAuthTab('signup')" style="color: #7c3aed; text-decoration: none;">Sign up</a>
+                        Don't have an account? <a href="#" onclick="window.App.ui.switchAuthTab('signup')" style="color: #7c3aed; text-decoration: none;">Sign up</a>
                     </p>
                 </div>
                 
@@ -861,11 +946,16 @@
                         <label>Confirm Password</label>
                         <input type="password" id="signup-confirm" placeholder="••••••••">
                     </div>
-                    <button class="btn btn-primary" onclick="signup()" style="width: 100%; padding: 1rem;">
+                    <button class="btn btn-primary" onclick="window.App.auth.signup(
+                        document.getElementById('signup-email').value.split('@')[0],
+                        document.getElementById('signup-email').value,
+                        document.getElementById('signup-password').value
+                    ).then(() => window.App.ui.closeModal('auth-modal')).catch(e => window.App.ui.showNotification(e.message, 'error'))" 
+                    style="width: 100%; padding: 1rem;">
                         <i class="fas fa-user-plus"></i> Sign Up
                     </button>
                     <p style="text-align: center; color: #888; margin-top: 1rem;">
-                        Already have an account? <a href="#" onclick="switchAuthTab('login')" style="color: #7c3aed; text-decoration: none;">Login</a>
+                        Already have an account? <a href="#" onclick="window.App.ui.switchAuthTab('login')" style="color: #7c3aed; text-decoration: none;">Login</a>
                     </p>
                 </div>
             </div>
@@ -877,7 +967,7 @@
         <div class="modal">
             <div class="modal-header">
                 <h3>Whisper Profile</h3>
-                <button class="close-btn" onclick="closeModal('profile-modal')">×</button>
+                <button class="close-btn" onclick="window.App.ui.closeModal('profile-modal')">×</button>
             </div>
             <div class="modal-body">
                 <img src="" alt="" class="profile-modal-img" id="modal-profile-img">
@@ -886,29 +976,33 @@
                 <p id="modal-profile-bio" style="color: #aaa; text-align: center; margin-bottom: 1rem; line-height: 1.5;"></p>
                 
                 <div class="social-links" id="modal-social-links">
-                    <!-- Social links here -->
+                    <!-- Social links loaded dynamically -->
                 </div>
                 
-                <div class="action-buttons">
-                    <button class="btn btn-secondary" onclick="shareProfile()" style="flex: 1;">
-                        <i class="fas fa-share-alt"></i> Share
-                    </button>
-                    <button class="btn btn-primary" onclick="startCall()" style="flex: 2;">
-                        <i class="fas fa-phone-alt"></i> Call Now
-                    </button>
+                <div class="action-buttons" id="modal-action-buttons">
+                    <!-- Action buttons loaded dynamically -->
                 </div>
             </div>
         </div>
     </div>
     
-    <!-- Dashboard Modal -->
-    <div class="modal-overlay" id="dashboard-modal">
+    <!-- Dashboard Modal - UPDATED -->
+    <div class="modal-overlay dashboard-modal" id="dashboard-modal">
         <div class="modal">
             <div class="modal-header">
                 <h3>My Dashboard</h3>
-                <button class="close-btn" onclick="closeModal('dashboard-modal')">×</button>
+                <button class="close-btn" onclick="window.App.ui.closeModal('dashboard-modal')">×</button>
             </div>
             <div class="modal-body">
+                <!-- User Info Section -->
+                <div class="dashboard-user-info">
+                    <img src="" alt="" class="dashboard-user-img" id="dashboard-user-img">
+                    <h3 id="dashboard-user-name"></h3>
+                    <p class="dashboard-user-email" id="dashboard-user-email"></p>
+                    <div class="dashboard-user-id" id="dashboard-user-id">ID: Loading...</div>
+                </div>
+                
+                <!-- Stats Grid -->
                 <div class="dashboard-stats">
                     <div class="stat-card">
                         <div class="stat-value" id="dash-coins">0</div>
@@ -937,20 +1031,35 @@
                     </label>
                 </div>
                 
+                <!-- Payout Options -->
+                <h4 style="margin: 1.5rem 0 1rem;">Payout Methods</h4>
+                <p style="color: #888; font-size: 0.9rem; margin-bottom: 1rem;">Select how you want to receive your earnings</p>
+                
+                <div class="payout-options" id="payout-options">
+                    <!-- Payout options loaded dynamically -->
+                </div>
+                
+                <!-- Payout Form -->
+                <div id="payout-form" style="display: none;">
+                    <div class="form-group">
+                        <label id="payout-method-label">Enter PayPal Email</label>
+                        <input type="email" id="payout-email" placeholder="your.paypal@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Minimum Payout Amount</label>
+                        <input type="text" id="payout-min-amount" readonly value="$20">
+                    </div>
+                    <button class="btn btn-primary" onclick="savePayoutMethod()" style="width: 100%; padding: 1rem;">
+                        <i class="fas fa-save"></i> Save Payout Method
+                    </button>
+                </div>
+                
+                <!-- Edit Profile -->
                 <h4 style="margin: 1.5rem 0 1rem;">Edit Profile</h4>
                 
                 <div class="form-group">
                     <label>Profile Bio (shown on your profile card)</label>
                     <textarea id="profile-bio" placeholder="Tell people about yourself..."></textarea>
-                </div>
-                
-                <div class="form-group">
-                    <label>Set Your Call Price (1-3 coins, can change once per day)</label>
-                    <select id="profile-price">
-                        <option value="1">1 Coin ($12 earned)</option>
-                        <option value="2">2 Coins ($24 earned)</option>
-                        <option value="3">3 Coins ($36 earned)</option>
-                    </select>
                 </div>
                 
                 <div class="form-group">
@@ -962,13 +1071,8 @@
                 
                 <div class="form-group">
                     <label>Profile Photo</label>
-                    <input type="file" id="profile-photo" accept="image/*">
+                    <input type="file" id="profile-photo" accept="image/*" onchange="uploadProfilePhoto(this.files[0])">
                     <div id="photo-preview" style="margin-top: 1rem;"></div>
-                </div>
-                
-                <div class="form-group">
-                    <label>PayPal Email for Payouts</label>
-                    <input type="email" id="paypal-email" placeholder="your.paypal@email.com">
                 </div>
                 
                 <button class="btn btn-primary" onclick="saveProfile()" style="width: 100%; padding: 1rem; margin-top: 1rem;">
@@ -1014,8 +1118,239 @@
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
     
-    <!-- App Script -->
+    <!-- App Scripts -->
+    <script src="auth.js"></script>
+    <script src="ui.js"></script>
+    <script src="payments.js"></script>
+    <script src="calls.js"></script>
+    <script src="agora.js"></script>
     <script src="app.js"></script>
+    
+    <script>
+        // Dashboard functions
+        async function showDashboard() {
+            if (!window.App.auth.currentUser) {
+                window.App.ui.showNotification('Please login to view dashboard', 'error');
+                window.App.ui.showAuthModal();
+                return;
+            }
+            
+            const userData = window.App.auth.userData;
+            if (!userData) return;
+            
+            // Update user info
+            document.getElementById('dashboard-user-img').src = userData.profilePhoto || 'https://images.unsplash.com/photo-1494790108755-2616b786d4d7?w=400&h=400&fit=crop&crop=face';
+            document.getElementById('dashboard-user-name').textContent = userData.displayName || 'User';
+            document.getElementById('dashboard-user-email').textContent = userData.email || '';
+            document.getElementById('dashboard-user-id').textContent = `ID: ${userData.whisperId || userData.userId?.substring(0, 8) || 'N/A'}`;
+            
+            // Update avatar in header
+            const headerAvatar = document.getElementById('user-avatar');
+            if (headerAvatar) {
+                headerAvatar.src = userData.profilePhoto || '';
+            }
+            
+            // Update stats
+            window.App.ui.updateDashboardStats(userData);
+            
+            // Update form values
+            document.getElementById('profile-bio').value = userData.bio || '';
+            document.getElementById('profile-twitter').value = userData.socialLinks?.twitter || '';
+            document.getElementById('profile-instagram').value = userData.socialLinks?.instagram || '';
+            document.getElementById('profile-tiktok').value = userData.socialLinks?.tiktok || '';
+            
+            // Update availability toggle
+            const toggle = document.getElementById('availability-toggle');
+            if (toggle) {
+                toggle.checked = userData.isAvailable === true;
+            }
+            
+            // Load payout options
+            loadPayoutOptions();
+            
+            // Show modal
+            window.App.ui.showModal('dashboard-modal');
+        }
+        
+        function loadPayoutOptions() {
+            const payoutMethods = window.App.payments?.getPayoutMethods() || {};
+            const container = document.getElementById('payout-options');
+            if (!container) return;
+            
+            container.innerHTML = '';
+            
+            Object.entries(payoutMethods).forEach(([method, details]) => {
+                const option = document.createElement('div');
+                option.className = 'payout-option';
+                option.innerHTML = `
+                    <div class="payout-icon">
+                        <i class="${details.icon}"></i>
+                    </div>
+                    <div class="payout-name">${details.name}</div>
+                    <div class="payout-details">Min: $${details.minPayout} • Fee: ${details.fee}%</div>
+                `;
+                option.onclick = () => selectPayoutMethod(method, details);
+                container.appendChild(option);
+            });
+        }
+        
+        function selectPayoutMethod(method, details) {
+            // Remove selected class from all options
+            document.querySelectorAll('.payout-option').forEach(opt => {
+                opt.classList.remove('selected');
+            });
+            
+            // Add selected class to clicked option
+            event.target.closest('.payout-option').classList.add('selected');
+            
+            // Show payout form
+            const form = document.getElementById('payout-form');
+            const label = document.getElementById('payout-method-label');
+            const minAmount = document.getElementById('payout-min-amount');
+            
+            if (method === 'paypal') {
+                label.textContent = 'Enter PayPal Email';
+                document.getElementById('payout-email').placeholder = 'your.paypal@email.com';
+            } else if (method === 'bank') {
+                label.textContent = 'Enter Bank Account Details';
+                document.getElementById('payout-email').placeholder = 'Account Number, Routing Number';
+            } else if (method === 'crypto') {
+                label.textContent = 'Enter Crypto Wallet Address';
+                document.getElementById('payout-email').placeholder = '0x... (USDT wallet address)';
+            }
+            
+            minAmount.value = `$${details.minPayout}`;
+            form.style.display = 'block';
+            
+            window.selectedPayoutMethod = method;
+        }
+        
+        async function savePayoutMethod() {
+            const email = document.getElementById('payout-email').value;
+            const method = window.selectedPayoutMethod;
+            
+            if (!email) {
+                window.App.ui.showNotification('Please enter payout details', 'error');
+                return;
+            }
+            
+            try {
+                const updates = {};
+                updates[`payoutMethods.${method}`] = email;
+                
+                await window.App.auth.updateProfile(updates);
+                window.App.ui.showNotification('Payout method saved successfully!', 'success');
+                
+            } catch (error) {
+                window.App.ui.showNotification('Failed to save payout method: ' + error.message, 'error');
+            }
+        }
+        
+        async function uploadProfilePhoto(file) {
+            if (!file) return;
+            
+            try {
+                const result = await window.App.auth.uploadProfilePhoto(file);
+                window.App.ui.showNotification('Profile photo uploaded successfully!', 'success');
+                
+                // Update preview
+                const preview = document.getElementById('photo-preview');
+                preview.innerHTML = `<img src="${result.url}" style="width: 100px; height: 100px; border-radius: 50%; object-fit: cover; border: 2px solid #7c3aed;">`;
+                
+            } catch (error) {
+                window.App.ui.showNotification('Failed to upload photo: ' + error.message, 'error');
+            }
+        }
+        
+        async function saveProfile() {
+            const bio = document.getElementById('profile-bio').value;
+            const twitter = document.getElementById('profile-twitter').value;
+            const instagram = document.getElementById('profile-instagram').value;
+            const tiktok = document.getElementById('profile-tiktok').value;
+            
+            const updates = {
+                bio: bio,
+                socialLinks: {
+                    twitter: twitter,
+                    instagram: instagram,
+                    tiktok: tiktok
+                }
+            };
+            
+            try {
+                await window.App.auth.updateProfile(updates);
+                window.App.ui.showNotification('Profile saved successfully!', 'success');
+                window.App.ui.closeModal('dashboard-modal');
+                
+            } catch (error) {
+                window.App.ui.showNotification('Failed to save profile: ' + error.message, 'error');
+            }
+        }
+        
+        function toggleAvailability() {
+            const toggle = document.getElementById('availability-toggle');
+            const isAvailable = toggle.checked;
+            
+            window.App.auth.updateAvailability(isAvailable);
+            
+            window.App.ui.showNotification(
+                `You are now ${isAvailable ? 'available' : 'unavailable'} to receive calls`,
+                'success'
+            );
+        }
+        
+        function setRating(stars) {
+            const starElements = document.querySelectorAll('#rating-modal .fa-star');
+            starElements.forEach((star, index) => {
+                star.style.color = index < stars ? '#fbbf24' : '#666';
+            });
+            window.selectedRating = stars;
+        }
+        
+        async function submitRating() {
+            const comment = document.getElementById('rating-comment').value;
+            const rating = window.selectedRating || 5;
+            
+            if (!window.App.calls.currentCall) return;
+            
+            try {
+                // Save rating to database
+                await firebase.database().ref(`ratings/${window.App.calls.currentCall.callId}`).set({
+                    rating: rating,
+                    comment: comment,
+                    ratedBy: window.App.auth.currentUser.uid,
+                    ratedAt: Date.now()
+                });
+                
+                window.App.ui.showNotification('Thank you for your rating!', 'success');
+                window.App.ui.closeModal('rating-modal');
+                
+            } catch (error) {
+                window.App.ui.showNotification('Failed to submit rating: ' + error.message, 'error');
+            }
+        }
+        
+        function showAdminLogin() {
+            const email = prompt('Enter admin email:');
+            const password = prompt('Enter admin password:');
+            
+            if (email === 'ifanifwasafifth@gmail.com' && password === 'admin123') {
+                window.location.href = 'admin.html';
+            } else {
+                window.App.ui.showNotification('Invalid admin credentials', 'error');
+            }
+        }
+        
+        // Global functions
+        window.showDashboard = showDashboard;
+        window.toggleAvailability = toggleAvailability;
+        window.saveProfile = saveProfile;
+        window.uploadProfilePhoto = uploadProfilePhoto;
+        window.setRating = setRating;
+        window.submitRating = submitRating;
+        window.showAdminLogin = showAdminLogin;
+    </script>
 </body>
 </html>
