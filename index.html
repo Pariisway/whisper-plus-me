@@ -5,78 +5,380 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Whisper+me - Live Anonymous Audio Chat</title>
     
-    <!-- Meta Tags -->
-    <meta name="description" content="Anonymous audio chat app. Get paid to listen or connect with whispers. 100% anonymous, instant calls, secure payments.">
+    <!-- Google Adsense -->
     <meta name="google-adsense-account" content="ca-pub-1184595877548269">
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1184595877548269" crossorigin="anonymous"></script>
+    
+    <!-- Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-4QYRJLTXTT"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-4QYRJLTXTT');
+    </script>
     
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <!-- Firebase SDKs will be loaded in app.js -->
-    
-    <!-- Inline Critical CSS -->
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; color: #333; }
-        
-        .loading-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 9999; }
-        .loader { border: 5px solid rgba(255,255,255,0.3); border-top: 5px solid #fff; border-radius: 50%; width: 60px; height: 60px; animation: spin 1s linear infinite; margin-bottom: 20px; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .loading-screen p { color: white; font-size: 1.2rem; margin-top: 20px; }
-        
-        #toast-container { position: fixed; top: 20px; right: 20px; z-index: 10000; max-width: 300px; }
-        .toast { padding: 12px 20px; border-radius: 8px; margin-bottom: 10px; animation: slideInRight 0.3s ease; color: white; font-weight: 500; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
-        .toast-success { background: #4CAF50; } .toast-error { background: #f44336; } .toast-info { background: #2196F3; }
-        @keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-        
-        .btn { padding: 10px 20px; border: none; border-radius: 25px; cursor: pointer; font-weight: 600; transition: all 0.3s; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; }
-        .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
-        .btn-secondary { background: #f0f0f0; color: #333; }
-        .btn-success { background: #4CAF50; color: white; }
-        .btn-danger { background: #ff4757; color: white; }
-        .btn:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
-        
-        .hidden { display: none !important; }
-        
-        /* Pulse animation */
-        @keyframes pulse {
-            0% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.5; transform: scale(1.1); }
-            100% { opacity: 1; transform: scale(1); }
-        }
-        .pulse { animation: pulse 2s infinite; }
-        
-        /* iPhone Display */
-        .iphone { width: 380px; height: 740px; border-radius: 45px; background: #000; padding: 14px; margin: auto; }
-        .screen { background: #fff; border-radius: 35px; height: 100%; display: flex; flex-direction: column; justify-content: center; }
-        
-        /* Status dot */
-        .status-dot { width: 12px; height: 12px; background: #00e676; border-radius: 50%; animation: pulse 1.5s infinite; }
-        
-        /* Modal */
-        .modal-backdrop { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 10000; }
-        .modal-content { background: white; border-radius: 15px; padding: 30px; max-width: 500px; width: 90%; position: relative; }
-        .modal-close { position: absolute; top: 15px; right: 15px; font-size: 1.5rem; cursor: pointer; color: #666; }
-    </style>
+    <!-- Main CSS -->
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div id="loading-screen" class="loading-screen">
-        <div class="loader"></div>
-        <p>Loading Whisper+me...</p>
+    <!-- Loading Screen -->
+    <div class="loading-screen" id="loading-screen">
+        <div class="spinner"></div>
     </div>
     
-    <div id="app-container"></div>
+    <!-- Header -->
+    <header>
+        <div class="header-content">
+            <div class="logo">
+                <i class="fas fa-comment-alt"></i>
+                <span>Whisper+me</span>
+            </div>
+            
+            <div class="user-menu" id="user-menu">
+                <!-- Guest Menu -->
+                <div id="guest-menu">
+                    <button class="btn btn-primary" onclick="showAuthModal('login')">
+                        <i class="fas fa-sign-in-alt"></i> Login
+                    </button>
+                    <button class="btn btn-secondary" onclick="showAuthModal('signup')" style="margin-left: 0.5rem;">
+                        <i class="fas fa-user-plus"></i> Sign Up
+                    </button>
+                </div>
+                
+                <!-- Logged In Menu -->
+                <div id="logged-in-menu" style="display: none;">
+                    <div class="coins-badge" onclick="showDashboard()">
+                        <i class="fas fa-coins"></i> <span id="coins-count">0</span>
+                    </div>
+                    <button class="btn btn-secondary" onclick="showDashboard()">
+                        <i class="fas fa-user"></i> Dashboard
+                    </button>
+                    <button class="btn btn-danger" onclick="logout()">
+                        <i class="fas fa-sign-out-alt"></i> Logout
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
     
-    <div id="toast-container"></div>
+    <!-- Main Content -->
+    <main>
+        <!-- iPhone Interface -->
+        <section class="iphone-container">
+            <div class="iphone-wrapper">
+                <div class="iphone-notch"></div>
+                <div class="iphone-screen">
+                    <div class="phone-status-bar">
+                        <span>9:41 AM</span>
+                        <span>Whisper+me</span>
+                    </div>
+                    
+                    <div class="phone-content">
+                        <div class="shuffle-indicator" id="shuffle-indicator">
+                            <i class="fas fa-random"></i> SHUFFLE MODE
+                        </div>
+                        
+                        <div class="shuffle-profile" id="shuffle-profile">
+                            <img src="https://ui-avatars.com/api/?name=User&background=7c3aed&color=fff" 
+                                 alt="Profile" class="shuffle-profile-img" id="shuffle-img">
+                            <h3 class="shuffle-profile-name" id="shuffle-name">Loading...</h3>
+                            <div class="shuffle-profile-price" id="shuffle-price">1 Coin</div>
+                            <div class="whisper-id-display" id="shuffle-id">ID: 00000</div>
+                            <p class="shuffle-profile-bio" id="shuffle-bio">Swipe to find whispers...</p>
+                        </div>
+                        
+                        <div class="phone-controls">
+                            <button class="phone-btn phone-btn-call" onclick="startCallFromShuffle()" id="shuffle-call-btn">
+                                <i class="fas fa-phone-alt"></i>
+                            </button>
+                            <button class="phone-btn" onclick="nextShuffleProfile()" style="background: #666; color: white;">
+                                <i class="fas fa-arrow-right"></i>
+                            </button>
+                        </div>
+                        
+                        <div class="shuffle-timer" id="shuffle-timer">
+                            Swipe to see next whisper
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Profiles Grid -->
+        <section class="profiles-section">
+            <h2 class="section-title">Available Whispers</h2>
+            <div class="profiles-grid" id="profiles-container">
+                <!-- Profiles loaded dynamically -->
+            </div>
+        </section>
+        
+        <!-- Coins Purchase Section -->
+        <section class="coins-section">
+            <h2 class="section-title">Buy Whisper Coins</h2>
+            <p style="text-align: center; color: #888; margin-bottom: 1rem;">
+                1 Coin = $15 • Each call costs 1 coin • Whispers earn $12 per coin
+            </p>
+            
+            <div class="coins-options">
+                <div class="coin-option selected" onclick="selectCoinOption(1)">
+                    <div class="coin-amount">1 Coin</div>
+                    <div class="coin-price">$15</div>
+                </div>
+                <div class="coin-option" onclick="selectCoinOption(3)">
+                    <div class="coin-amount">3 Coins</div>
+                    <div class="coin-price">$45</div>
+                </div>
+                <div class="coin-option" onclick="selectCoinOption(5)">
+                    <div class="coin-amount">5 Coins</div>
+                    <div class="coin-price">$75</div>
+                </div>
+            </div>
+            
+            <button class="btn btn-primary" onclick="buyCoins()" style="width: 100%; padding: 1rem; font-size: 1.1rem;">
+                <i class="fas fa-shopping-cart"></i> Buy Coins Now
+            </button>
+        </section>
+    </main>
     
-    <!-- Load Firebase SDKs dynamically in app.js -->
+    <!-- Footer -->
+    <footer>
+        <div style="max-width: 1200px; margin: 0 auto;">
+            <div class="logo" style="justify-content: center; margin-bottom: 1rem;">
+                <i class="fas fa-comment-alt"></i>
+                <span>Whisper+me</span>
+            </div>
+            <p style="color: #666; font-size: 0.9rem;">
+                © 2024 Whisper+me. Live anonymous audio chat.
+            </p>
+            <button onclick="showAdminLogin()" style="background: none; border: none; color: #ef4444; margin-top: 1rem; cursor: pointer; font-size: 0.8rem;">
+                Admin Login
+            </button>
+        </div>
+    </footer>
     
-    <!-- Main App Script -->
-    <script src="app.js"></script>
+    <!-- MODALS -->
     
-    <!-- Load agora.js dynamically in app.js -->
+    <!-- Auth Modal -->
+    <div class="modal-overlay" id="auth-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="auth-modal-title">Login to Whisper+me</h3>
+                <button class="close-btn" onclick="closeModal('auth-modal')">×</button>
+            </div>
+            <div class="modal-body">
+                <!-- Login Form -->
+                <div class="auth-form active" id="login-form">
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="login-email" placeholder="your@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="login-password" placeholder="••••••••">
+                    </div>
+                    <button class="btn btn-primary" onclick="login()" style="width: 100%; padding: 1rem;">
+                        <i class="fas fa-sign-in-alt"></i> Login
+                    </button>
+                    <p style="text-align: center; color: #888; margin-top: 1rem;">
+                        Don't have an account? <a href="#" onclick="switchAuthTab('signup')" style="color: #7c3aed; text-decoration: none;">Sign up</a>
+                    </p>
+                </div>
+                
+                <!-- Signup Form -->
+                <div class="auth-form" id="signup-form" style="display: none;">
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="signup-email" placeholder="your@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Password (min 6 characters)</label>
+                        <input type="password" id="signup-password" placeholder="••••••••">
+                    </div>
+                    <div class="form-group">
+                        <label>Confirm Password</label>
+                        <input type="password" id="signup-confirm" placeholder="••••••••">
+                    </div>
+                    <button class="btn btn-primary" onclick="signup()" style="width: 100%; padding: 1rem;">
+                        <i class="fas fa-user-plus"></i> Sign Up
+                    </button>
+                    <p style="text-align: center; color: #888; margin-top: 1rem;">
+                        Already have an account? <a href="#" onclick="switchAuthTab('login')" style="color: #7c3aed; text-decoration: none;">Login</a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
     
-    <!-- AdSense -->
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1184595877548269" crossorigin="anonymous"></script>
+    <!-- Profile Modal -->
+    <div class="modal-overlay" id="profile-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Whisper Profile</h3>
+                <button class="close-btn" onclick="closeModal('profile-modal')">×</button>
+            </div>
+            <div class="modal-body">
+                <img src="" alt="" class="profile-modal-img" id="modal-profile-img">
+                <h3 id="modal-profile-name" style="text-align: center; margin-bottom: 0.5rem;"></h3>
+                <p id="modal-profile-price" style="text-align: center; color: #7c3aed; font-weight: 600; margin-bottom: 1rem;"></p>
+                <div class="whisper-id-display" id="modal-profile-id" style="margin: 0 auto 1rem;"></div>
+                <p id="modal-profile-bio" style="color: #aaa; text-align: center; margin-bottom: 1rem; line-height: 1.5;"></p>
+                
+                <div class="modal-social-links" id="modal-social-links">
+                    <!-- Social links here -->
+                </div>
+                
+                <div class="action-buttons">
+                    <button class="btn btn-secondary" onclick="shareProfile()" style="flex: 1;">
+                        <i class="fas fa-share-alt"></i> Share
+                    </button>
+                    <button class="btn btn-primary" onclick="startCall()" style="flex: 2;">
+                        <i class="fas fa-phone-alt"></i> Call Now (1 Coin)
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Dashboard Modal -->
+    <div class="modal-overlay" id="dashboard-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>My Dashboard</h3>
+                <button class="close-btn" onclick="closeModal('dashboard-modal')">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="dashboard-stats">
+                    <div class="stat-card">
+                        <div class="stat-value" id="dash-coins">0</div>
+                        <div class="stat-label">Coins</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="dash-earnings">$0</div>
+                        <div class="stat-label">Earnings</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="dash-calls">0</div>
+                        <div class="stat-label">Calls</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="dash-rating">5.0</div>
+                        <div class="stat-label">Rating</div>
+                    </div>
+                </div>
+                
+                <!-- Availability Toggle -->
+                <div style="display: flex; align-items: center; justify-content: center; margin: 1.5rem 0; padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 12px;">
+                    <span style="margin-right: 1rem;">Available to receive calls:</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="availability-toggle" onchange="toggleAvailability()">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                
+                <h4 style="margin: 1.5rem 0 1rem;">Edit Profile</h4>
+                
+                <div class="form-group">
+                    <label>Profile Bio (shown on your profile card)</label>
+                    <textarea id="profile-bio" placeholder="Tell people about yourself..."></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label>Social Media Links</label>
+                    <input type="text" id="profile-twitter" placeholder="Twitter URL (optional)">
+                    <input type="text" id="profile-instagram" placeholder="Instagram URL (optional)" style="margin-top: 0.5rem;">
+                    <input type="text" id="profile-tiktok" placeholder="TikTok URL (optional)" style="margin-top: 0.5rem;">
+                </div>
+                
+                <div class="form-group">
+                    <label>Profile Photo URL</label>
+                    <input type="url" id="profile-photo" placeholder="https://example.com/photo.jpg">
+                    <p style="color: #666; font-size: 0.8rem; margin-top: 0.5rem;">Upload to a service like Imgur and paste the link</p>
+                </div>
+                
+                <div class="form-group">
+                    <label>PayPal Email for Payouts</label>
+                    <input type="email" id="paypal-email" placeholder="your.paypal@email.com">
+                </div>
+                
+                <button class="btn btn-primary" onclick="saveProfile()" style="width: 100%; padding: 1rem; margin-top: 1rem;">
+                    <i class="fas fa-save"></i> Save Profile
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Rating Modal -->
+    <div class="modal-overlay" id="rating-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Rate Your Call</h3>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 1rem;">How was your call experience?</p>
+                <div style="display: flex; justify-content: center; gap: 0.5rem; margin-bottom: 1.5rem;" id="rating-stars">
+                    <i class="fas fa-star" onclick="setRating(1)" style="font-size: 2rem; color: #666; cursor: pointer;"></i>
+                    <i class="fas fa-star" onclick="setRating(2)" style="font-size: 2rem; color: #666; cursor: pointer;"></i>
+                    <i class="fas fa-star" onclick="setRating(3)" style="font-size: 2rem; color: #666; cursor: pointer;"></i>
+                    <i class="fas fa-star" onclick="setRating(4)" style="font-size: 2rem; color: #666; cursor: pointer;"></i>
+                    <i class="fas fa-star" onclick="setRating(5)" style="font-size: 2rem; color: #666; cursor: pointer;"></i>
+                </div>
+                
+                <div class="form-group">
+                    <label>Feedback (sent to admin)</label>
+                    <textarea id="rating-comment" placeholder="Share your experience..."></textarea>
+                </div>
+                
+                <button class="btn btn-primary" onclick="submitRating()" style="width: 100%; padding: 1rem;">
+                    Submit Rating
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Notification -->
+    <div class="notification" id="notification"></div>
+    
+    <!-- Firebase SDK (Modular v10) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getDatabase, ref, set, get, update, query, orderByChild, equalTo, onChildAdded, onValue, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js";
+        
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyALbIJSI2C-p6IyMtj_F0ZqGyN1i79jOd4",
+            authDomain: "whisper-chat-live.firebaseapp.com",
+            databaseURL: "https://whisper-chat-live-default-rtdb.firebaseio.com",
+            projectId: "whisper-chat-live",
+            storageBucket: "whisper-chat-live.firebasestorage.app",
+            messagingSenderId: "302894848452",
+            appId: "1:302894848452:web:61a7ab21a269533c426c91"
+        };
+        
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getDatabase(app);
+        const functions = getFunctions(app);
+        
+        // Make available globally
+        window.firebase = { auth, db, functions, httpsCallable };
+        window.firebaseMethods = { 
+            signInWithEmailAndPassword, 
+            createUserWithEmailAndPassword, 
+            signOut,
+            ref, set, get, update, query, orderByChild, equalTo, onChildAdded, onValue, runTransaction
+        };
+        
+        // Load main app
+        const script = document.createElement('script');
+        script.src = 'app.js';
+        document.body.appendChild(script);
+    </script>
 </body>
 </html>
