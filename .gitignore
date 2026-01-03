@@ -3,8 +3,6 @@
 .firebaserc
 .env
 .env.local
-.env.production
-.env.development
 *.env
 
 # Node modules
@@ -29,10 +27,11 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
-
-# Backup files
 *.backup
 backup_*
 
-# Scripts (we don't need deployment scripts in production)
+# Scripts
 *.sh
+
+# Backup directories
+backup_*/
