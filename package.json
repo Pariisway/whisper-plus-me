@@ -1,0 +1,19 @@
+{
+  "name": "whisper-plus-me",
+  "version": "1.0.0",
+  "description": "Anonymous audio chat app with secure monetization",
+  "main": "index.html",
+  "scripts": {
+    "deploy": "bash force-sync-github.sh",
+    "test": "echo \"No tests specified\" && exit 0"
+  },
+  "keywords": [
+    "audio-chat",
+    "anonymous",
+    "firebase",
+    "agora",
+    "monetization"
+  ],
+  "author": "Whisper+me Team",
+  "license": "MIT"
+}

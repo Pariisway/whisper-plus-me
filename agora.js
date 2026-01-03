@@ -21,6 +21,7 @@ window.AgoraManager = {
     client: null,
     localTrack: null,
     currentCallId: null,
+    heartbeatInterval: null,
     
     async getToken(channelName) {
         try {
@@ -43,11 +44,12 @@ window.AgoraManager = {
             this.client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
             
             // Join with UID from Firebase auth
+            const uid = window.firebase.auth().currentUser?.uid || Math.floor(Math.random() * 100000);
             await this.client.join(
                 "966c8e41da614722a88d4372c3d95dba", // App ID
                 channelName,
                 token,
-                window.firebase.auth().currentUser.uid
+                uid
             );
             
             // Create and publish audio track
@@ -85,9 +87,12 @@ window.AgoraManager = {
     startHeartbeat(callId) {
         this.heartbeatInterval = setInterval(() => {
             const userId = window.firebase.auth().currentUser?.uid;
-            if (userId && callId) {
-                const role = window.whisperAppInstance?.currentCall?.callerId === userId ? 'caller' : 'whisper';
-                window.firebase.database().ref(`calls/${callId}/lastHeartbeat${role}`).set(Date.now());
+            if (userId && callId && window.firebase?.database) {
+                // Determine if user is caller or whisper
+                const isCaller = window.whisperAppInstance?.currentCall?.callerId === userId;
+                const field = isCaller ? 'lastHeartbeatCaller' : 'lastHeartbeatWhisper';
+                
+                window.firebase.database().ref(`calls/${callId}/${field}`).set(Date.now());
             }
         }, 5000);
     },

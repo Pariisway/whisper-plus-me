@@ -43,24 +43,25 @@ body {
 }
 
 /* iPhone Display */
-.iphone-container {
-    max-width: 400px;
-    margin: 20px auto;
+.iphone {
+    width: 380px;
+    height: 740px;
+    border-radius: 45px;
     background: #000;
-    border-radius: 40px;
-    padding: 20px;
+    padding: 14px;
+    margin: 20px auto;
     box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-    position: relative;
-    border: 10px solid #333;
+    border: 8px solid #333;
 }
 
-.iphone-screen {
+.screen {
     background: #fff;
-    border-radius: 20px;
-    padding: 20px;
-    min-height: 400px;
+    border-radius: 35px;
+    height: 100%;
     display: flex;
     flex-direction: column;
+    justify-content: center;
+    padding: 20px;
 }
 
 /* Profile Cards Grid */
@@ -106,14 +107,14 @@ body {
     font-size: 1.2rem;
 }
 
-.availability-dot {
-    width: 10px;
-    height: 10px;
-    background: #4CAF50;
+.status-dot {
+    width: 12px;
+    height: 12px;
+    background: #00e676;
     border-radius: 50%;
     display: inline-block;
     margin-right: 8px;
-    animation: pulse 2s infinite;
+    animation: pulse 1.5s infinite;
 }
 
 @keyframes pulse {
@@ -155,9 +156,24 @@ body {
     color: #333;
 }
 
+.btn-success {
+    background: #4CAF50;
+    color: white;
+}
+
 .btn-danger {
     background: #ff4757;
     color: white;
+}
+
+.btn-sm {
+    padding: 5px 10px;
+    font-size: 0.9rem;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
 }
 
 /* Call Interface */
@@ -210,33 +226,37 @@ body {
     font-size: 1.5rem;
 }
 
-/* Notifications */
-.notification {
+/* Modal */
+.modal-backdrop {
     position: fixed;
-    top: 20px;
-    right: 20px;
-    background: #4CAF50;
-    color: white;
-    padding: 15px 25px;
-    border-radius: 10px;
-    z-index: 1000;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
 }
 
-.toast-container {
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    z-index: 1000;
+.modal-content {
+    background: white;
+    border-radius: 15px;
+    padding: 30px;
+    max-width: 500px;
+    width: 90%;
+    position: relative;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
 }
 
-.toast {
-    background: #333;
-    color: white;
-    padding: 15px 25px;
-    border-radius: 10px;
-    margin-top: 10px;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+.modal-close {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #666;
 }
 
 /* Admin Dashboard */
@@ -273,8 +293,13 @@ body {
         padding: 10px;
     }
     
-    .iphone-container {
-        max-width: 300px;
+    .iphone {
+        width: 320px;
+        height: 640px;
+    }
+    
+    .screen {
+        padding: 15px;
     }
 }
 
@@ -286,6 +311,9 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 100;
 }
 
 .nav-logo {
@@ -303,34 +331,83 @@ body {
     font-weight: 600;
 }
 
-/* Modal */
-.modal {
+/* Toast */
+.toast-container {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0,0,0,0.7);
+    top: 20px;
+    right: 20px;
+    z-index: 10000;
+}
+
+.toast {
+    background: #333;
+    color: white;
+    padding: 15px 25px;
+    border-radius: 10px;
+    margin-top: 10px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    animation: slideInRight 0.3s ease;
+}
+
+.toast-success {
+    background: #4CAF50;
+}
+
+.toast-error {
+    background: #f44336;
+}
+
+.toast-info {
+    background: #2196F3;
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Carousel */
+.carousel {
+    position: relative;
+    overflow: hidden;
+}
+
+.carousel-track {
     display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 1001;
+    transition: transform 0.3s ease;
 }
 
-.modal-content {
-    background: white;
-    border-radius: 15px;
-    padding: 30px;
-    max-width: 500px;
-    width: 90%;
-    max-height: 80vh;
-    overflow-y: auto;
+.carousel-item {
+    flex: 0 0 100%;
 }
 
-.close-modal {
+.carousel-btn {
     position: absolute;
-    top: 15px;
-    right: 15px;
-    font-size: 1.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(255,255,255,0.8);
+    border: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
     cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    z-index: 10;
+}
+
+.carousel-btn.prev {
+    left: 10px;
+}
+
+.carousel-btn.next {
+    right: 10px;
 }

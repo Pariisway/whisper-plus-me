@@ -3,79 +3,87 @@
     ".read": false,
     ".write": false,
     
-    "publicProfiles": {
-      ".read": true,
-      ".indexOn": ["isAvailable", "createdAt"],
-      "$uid": {
-        ".write": "auth != null && auth.uid === $uid",
-        ".validate": "newData.child('displayName').val().length > 1 && newData.child('displayName').val().length < 50 && newData.child('isAvailable').isBoolean()"
-      }
-    },
-    
     "users": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null && auth.uid === $uid",
-        ".validate": "newData.hasChild('email') && newData.hasChild('coins') && newData.child('coins').isNumber() && newData.child('coins').val() >= 0"
+        ".write": false,
+        
+        "coins": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": false
+        },
+        
+        "isAdmin": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": false
+        }
       }
+    },
+    
+    "publicProfiles": {
+      "$uid": {
+        ".read": true,
+        ".write": "auth != null && auth.uid === $uid"
+      },
+      ".indexOn": ["isAvailable", "profileId"]
     },
     
     "calls": {
-      ".indexOn": ["status", "createdAt", "callerId", "targetId"],
       "$callId": {
-        ".read": "auth != null && (data.child('callerId').val() === auth.uid || data.child('targetId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
-        ".write": "auth != null && (data.child('callerId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
-        ".validate": "newData.hasChild('callerId') && newData.hasChild('targetId') && newData.hasChild('status') && newData.hasChild('price') && newData.child('status').isString() && newData.child('price').isNumber() && newData.child('price').val() > 0"
+        ".read": "auth != null && (
+          auth.uid === data.child('callerId').val() ||
+          auth.uid === data.child('whisperId').val() ||
+          root.child('users/'+auth.uid+'/isAdmin').val() === true
+        )",
+        ".write": false
       }
     },
     
-    "admins": {
-      "$uid": {
-        ".read": "auth != null && root.child('admins').child(auth.uid).val() === true",
-        ".write": "auth != null && root.child('admins').child(auth.uid).val() === true"
-      }
-    },
-    
-    "payments": {
-      "$paymentId": {
-        ".read": "auth != null && (data.child('userId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
-        ".write": "auth != null && root.child('admins').child(auth.uid).val() === true"
-      }
-    },
-    
-    "ratings": {
-      "$ratingId": {
-        ".read": "auth != null",
-        ".write": "auth != null && newData.child('reviewerId').val() === auth.uid",
-        ".validate": "newData.hasChild('rating') && newData.hasChild('reviewerId') && newData.hasChild('callId') && newData.child('rating').isNumber() && newData.child('rating').val() >= 1 && newData.child('rating').val() <= 5"
-      }
-    },
-    
-    "notifications": {
-      "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null && auth.uid === $uid"
+    "reviews": {
+      "$callId": {
+        ".read": "auth != null && root.child('users/'+auth.uid+'/isAdmin').val() === true",
+        ".write": "auth != null"
       }
     },
     
     "adminActions": {
-      "$actionId": {
-        ".read": "auth != null && root.child('admins').child(auth.uid).val() === true",
-        ".write": "auth != null && root.child('admins').child(auth.uid).val() === true"
+      ".read": "auth != null && root.child('users/'+auth.uid+'/isAdmin').val() === true",
+      ".write": "auth != null && root.child('users/'+auth.uid+'/isAdmin').val() === true"
+    },
+    
+    "callDisputes": {
+      "$callId": {
+        ".read": "auth != null && root.child('users/'+auth.uid+'/isAdmin').val() === true",
+        ".write": "auth != null && (
+          auth.uid === data.child('callerId').val() ||
+          auth.uid === data.child('whisperId').val() ||
+          root.child('users/'+auth.uid+'/isAdmin').val() === true
+        )"
       }
     },
     
-    "flaggedCalls": {
-      "$flagId": {
-        ".read": "auth != null && root.child('admins').child(auth.uid).val() === true",
-        ".write": "auth != null && root.child('admins').child(auth.uid).val() === true"
+    "abuseStats": {
+      "$uid": {
+        ".read": "auth != null && root.child('users/'+auth.uid+'/isAdmin').val() === true",
+        ".write": false
       }
     },
     
-    "transactions": {
-      "$txId": {
-        ".read": "auth != null && (data.child('userId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
-        ".write": "auth != null && (data.child('userId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)"
+    "rateLimits": {
+      "$uid": {
+        ".read": false,
+        ".write": false
+      }
+    },
+    
+    "heartbeats": {
+      "$callId": {
+        ".read": "auth != null && (
+          auth.uid === data.child('callerId').val() ||
+          auth.uid === data.child('whisperId').val() ||
+          root.child('users/'+auth.uid+'/isAdmin').val() === true
+        )",
+        ".write": "auth != null"
       }
     }
   }

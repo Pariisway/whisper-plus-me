@@ -12,42 +12,7 @@
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <!-- Firebase SDK v9 (Modern) -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getAuth, GoogleAuthProvider, FacebookAuthProvider } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { getDatabase } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
-        import { getStorage } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
-        
-        const firebaseConfig = {
-            apiKey: "AIzaSyALbIJSI2C-p6IyMtj_F0ZqGyN1i79jOd4",
-            authDomain: "whisper-chat-live.firebaseapp.com",
-            databaseURL: "https://whisper-chat-live-default-rtdb.firebaseio.com",
-            projectId: "whisper-chat-live",
-            storageBucket: "whisper-chat-live.firebasestorage.app",
-            messagingSenderId: "302894848452",
-            appId: "1:302894848452:web:61a7ab21a269533c426c91"
-        };
-        
-        // Initialize Firebase
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const database = getDatabase(app);
-        const storage = getStorage(app);
-        
-        // Make available globally
-        window.firebase = { app, auth, database, storage, GoogleAuthProvider, FacebookAuthProvider };
-        console.log('✅ Firebase v10 initialized');
-    </script>
-    
-    <!-- Google Analytics -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-4QYRJLTXTT"></script>
-    <script>
-        window.dataLayer = window.dataLayer || [];
-        function gtag(){dataLayer.push(arguments);}
-        gtag('js', new Date());
-        gtag('config', 'G-4QYRJLTXTT');
-    </script>
+    <!-- Firebase SDKs will be loaded in app.js -->
     
     <!-- Inline Critical CSS -->
     <style>
@@ -67,17 +32,31 @@
         .btn { padding: 10px 20px; border: none; border-radius: 25px; cursor: pointer; font-weight: 600; transition: all 0.3s; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; }
         .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
         .btn-secondary { background: #f0f0f0; color: #333; }
+        .btn-success { background: #4CAF50; color: white; }
+        .btn-danger { background: #ff4757; color: white; }
         .btn:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
         
         .hidden { display: none !important; }
         
-        /* Pulse animation for availability dot */
+        /* Pulse animation */
         @keyframes pulse {
             0% { opacity: 1; transform: scale(1); }
             50% { opacity: 0.5; transform: scale(1.1); }
             100% { opacity: 1; transform: scale(1); }
         }
         .pulse { animation: pulse 2s infinite; }
+        
+        /* iPhone Display */
+        .iphone { width: 380px; height: 740px; border-radius: 45px; background: #000; padding: 14px; margin: auto; }
+        .screen { background: #fff; border-radius: 35px; height: 100%; display: flex; flex-direction: column; justify-content: center; }
+        
+        /* Status dot */
+        .status-dot { width: 12px; height: 12px; background: #00e676; border-radius: 50%; animation: pulse 1.5s infinite; }
+        
+        /* Modal */
+        .modal-backdrop { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 10000; }
+        .modal-content { background: white; border-radius: 15px; padding: 30px; max-width: 500px; width: 90%; position: relative; }
+        .modal-close { position: absolute; top: 15px; right: 15px; font-size: 1.5rem; cursor: pointer; color: #666; }
     </style>
 </head>
 <body>
@@ -90,8 +69,12 @@
     
     <div id="toast-container"></div>
     
+    <!-- Load Firebase SDKs dynamically in app.js -->
+    
     <!-- Main App Script -->
     <script src="app.js"></script>
+    
+    <!-- Load agora.js dynamically in app.js -->
     
     <!-- AdSense -->
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1184595877548269" crossorigin="anonymous"></script>
