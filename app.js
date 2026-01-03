@@ -1,702 +1,883 @@
-// Whisper+me - Main Application
-console.log('🚀 Whisper+me Initializing...');
-
-// Global App State
-window.App = {
-    config: {
-        agoraAppId: '966c8e41da614722a88d4372c3d95dba', // REPLACE with real App ID
-        stripePublicKey: 'pk_live_51K...', // REPLACE with real Stripe key
-        callPricePerMinute: 1,
-        minimumCallDuration: 1,
-        maximumCallDuration: 60
-    },
-    state: {
-        currentUser: null,
-        userData: null,
-        activeCall: null,
-        coins: 0,
-        isAvailable: false
-    },
-    modules: {}
-};
-
-// Initialize when DOM is ready
-document.addEventListener('DOMContentLoaded', async function() {
-    console.log('📱 DOM Ready - Initializing App...');
+// Whisper+me Production App - FIXED VERSION
+class WhisperApp {
+    constructor() {
+        this.user = null;
+        this.userData = null;
+        this.agoraClient = null;
+        this.localAudioTrack = null;
+        this.currentCall = null; // FIXED: Added currentCall initialization
+        this.callTimer = null;
+        
+        // Initialize
+        this.init();
+    }
     
-    try {
-        // Initialize modules
-        await initializeModules();
+    async init() {
+        console.log('🚀 Whisper+me Initializing...');
         
-        // Set up auth state listener
-        setupAuthListener();
-        
-        // Load initial UI
-        loadHomePage();
-        
-        // Initialize event listeners
-        setupGlobalListeners();
-        
-        console.log('✅ App initialized successfully');
-        
-        // Hide loading screen
+        // Hide loading screen immediately
         setTimeout(() => {
             const loadingScreen = document.getElementById('loading-screen');
-            if (loadingScreen) {
-                loadingScreen.style.display = 'none';
+            if (loadingScreen) loadingScreen.style.display = 'none';
+        }, 500);
+        
+        // Wait for Firebase
+        if (!window.firebase) {
+            setTimeout(() => this.init(), 100);
+            return;
+        }
+        
+        // Listen for auth state changes
+        window.firebase.auth.onAuthStateChanged(async (user) => {
+            if (user) {
+                console.log('✅ User logged in:', user.email);
+                this.user = user;
+                await this.loadUserData();
+                this.showLoggedInUI();
+                this.loadAvailableProfiles();
+            } else {
+                console.log('👤 No user logged in');
+                this.user = null;
+                this.userData = null;
+                this.showLoggedOutUI();
             }
-        }, 1000);
+        });
         
-    } catch (error) {
-        console.error('❌ App initialization failed:', error);
-        showError('Failed to initialize app. Please refresh the page.');
-    }
-});
-
-async function initializeModules() {
-    console.log('🛠 Initializing modules...');
-    
-    // Check if Firebase is available
-    if (!window.firebase || !window.firebase.app) {
-        throw new Error('Firebase not loaded. Check internet connection.');
-    }
-    
-    // Initialize Auth Manager
-    if (typeof AuthManager === 'function') {
-        App.modules.auth = new AuthManager();
-    } else {
-        console.warn('⚠️ AuthManager not found, loading fallback');
-        await loadModule('auth-manager-fallback.js');
-    }
-    
-    // Initialize UI Manager
-    if (typeof UIManager === 'function') {
-        App.modules.ui = new UIManager();
-        App.modules.ui.initialize();
-    }
-    
-    // Initialize other modules as needed
-    console.log('✅ Modules initialized');
-}
-
-function setupAuthListener() {
-    if (!window.auth) {
-        console.warn('⚠️ Firebase auth not available');
-        return;
-    }
-    
-    window.auth.onAuthStateChanged(async (user) => {
-        console.log('👤 Auth state changed:', user ? 'Logged in' : 'Logged out');
+        // Make globally available
+        window.WhisperApp = this;
         
-        if (user) {
-            // User is signed in
-            App.state.currentUser = user;
+        // Show initial UI
+        this.showLoggedOutUI();
+    }
+    
+    async loadUserData() {
+        try {
+            const { get, ref } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js');
             
-            // Load user data
-            await loadUserData(user.uid);
+            // Load private user data
+            const userSnapshot = await get(ref(window.firebase.database, `users/${this.user.uid}`));
+            // Load public profile
+            const profileSnapshot = await get(ref(window.firebase.database, `publicProfiles/${this.user.uid}`));
+            
+            this.userData = {
+                ...(userSnapshot.val() || {}),
+                ...(profileSnapshot.val() || {}),
+                uid: this.user.uid
+            };
+            
+            console.log('📊 User data loaded:', this.userData);
+            
+        } catch (error) {
+            console.error('Error loading user data:', error);
+            this.showToast('Error loading user data', 'error');
+        }
+    }
+    
+    async loadAvailableProfiles() {
+        const container = document.getElementById('profiles-container');
+        if (!container) return;
+        
+        try {
+            const { get, query, ref, orderByChild, equalTo, limitToFirst } = 
+                await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js');
+            
+            // Query available profiles (excluding current user)
+            const profilesQuery = query(
+                ref(window.firebase.database, 'publicProfiles'),
+                orderByChild('isAvailable'),
+                equalTo(true),
+                limitToFirst(50)
+            );
+            
+            const snapshot = await get(profilesQuery);
+            const profiles = snapshot.val() || {};
             
             // Update UI
-            updateUIForLoggedInUser();
+            this.renderProfileGrid(container, profiles);
             
-        } else {
-            // User is signed out
-            App.state.currentUser = null;
-            App.state.userData = null;
-            
-            // Update UI
-            updateUIForLoggedOutUser();
+        } catch (error) {
+            console.error('Error loading profiles:', error);
+            this.showToast('Error loading profiles', 'error');
         }
-    });
-}
-
-async function loadUserData(uid) {
-    try {
-        const snapshot = await window.db.ref('users/' + uid).once('value');
-        App.state.userData = snapshot.val() || {};
-        App.state.coins = App.state.userData.coins || 0;
-        App.state.isAvailable = App.state.userData.isAvailable || false;
-        
-        console.log('📊 User data loaded:', App.state.userData);
-    } catch (error) {
-        console.error('❌ Failed to load user data:', error);
     }
-}
-
-function loadHomePage() {
-    const container = document.getElementById('app-container');
-    if (!container) return;
     
-    container.innerHTML = `
-        <div class="app-layout">
-            <!-- Header -->
-            <header class="app-header">
-                <div class="header-content">
-                    <div class="logo">
-                        <i class="fas fa-comment-dots"></i>
-                        <h1>Whisper+me</h1>
-                    </div>
-                    <div class="user-menu" id="user-menu">
-                        <button class="btn btn-outline" onclick="showLoginModal()">
-                            <i class="fas fa-sign-in-alt"></i> Sign In
-                        </button>
-                    </div>
-                </div>
-            </header>
-            
-            <!-- Main Content -->
-            <main class="main-content">
-                <!-- Hero Section -->
-                <section class="hero-section">
-                    <div class="hero-content">
-                        <h2>Anonymous Live Audio Chat</h2>
-                        <p>Connect with real people for private, anonymous conversations. No video, just voice.</p>
-                        
-                        <div class="hero-stats">
-                            <div class="stat">
-                                <i class="fas fa-users"></i>
-                                <span id="online-count">25+</span>
-                                <small>Online Now</small>
-                            </div>
-                            <div class="stat">
-                                <i class="fas fa-phone"></i>
-                                <span id="calls-count">1000+</span>
-                                <small>Calls Today</small>
-                            </div>
-                            <div class="stat">
-                                <i class="fas fa-star"></i>
-                                <span id="rating">4.8</span>
-                                <small>Avg Rating</small>
-                            </div>
-                        </div>
-                        
-                        <div class="hero-actions">
-                            <button class="btn btn-primary btn-large" onclick="startQuickCall()">
-                                <i class="fas fa-bolt"></i> Quick Call
-                            </button>
-                            <button class="btn btn-secondary btn-large" onclick="browseProfiles()">
-                                <i class="fas fa-search"></i> Browse Profiles
-                            </button>
-                        </div>
-                    </div>
-                </section>
-                
-                <!-- How it Works -->
-                <section class="features-section">
-                    <h3>How It Works</h3>
-                    <div class="features-grid">
-                        <div class="feature-card">
-                            <div class="feature-icon">
-                                <i class="fas fa-user-plus"></i>
-                            </div>
-                            <h4>Create Profile</h4>
-                            <p>Sign up in seconds, set your price, and describe what you offer</p>
-                        </div>
-                        
-                        <div class="feature-card">
-                            <div class="feature-icon">
-                                <i class="fas fa-coins"></i>
-                            </div>
-                            <h4>Buy Coins</h4>
-                            <p>Purchase coins to start calling others. Only pay for what you use</p>
-                        </div>
-                        
-                        <div class="feature-card">
-                            <div class="feature-icon">
-                                <i class="fas fa-phone-alt"></i>
-                            </div>
-                            <h4>Start Calling</h4>
-                            <p>Browse profiles, connect instantly, and have private conversations</p>
-                        </div>
-                        
-                        <div class="feature-card">
-                            <div class="feature-icon">
-                                <i class="fas fa-money-bill-wave"></i>
-                            </div>
-                            <h4>Earn Money</h4>
-                            <p>Get paid for your time. Withdraw earnings anytime via Stripe</p>
-                        </div>
-                    </div>
-                </section>
-                
-                <!-- Live Profiles -->
-                <section class="profiles-section">
-                    <div class="section-header">
-                        <h3>Live Profiles Available Now</h3>
-                        <button class="btn btn-refresh" onclick="loadLiveProfiles()">
-                            <i class="fas fa-sync-alt"></i> Refresh
-                        </button>
-                    </div>
-                    
-                    <div class="profiles-container" id="profiles-container">
-                        <!-- Profiles will load here -->
-                        <div class="loading-profiles">
-                            <div class="loader-small"></div>
-                            <p>Loading live profiles...</p>
-                        </div>
-                    </div>
-                </section>
-            </main>
-            
-            <!-- Footer -->
-            <footer class="app-footer">
-                <div class="footer-content">
-                    <div class="footer-section">
-                        <h4>Whisper+me</h4>
-                        <p>Anonymous audio conversations for meaningful connections</p>
-                    </div>
-                    
-                    <div class="footer-section">
-                        <h4>Quick Links</h4>
-                        <a href="#" onclick="loadHomePage()">Home</a>
-                        <a href="#" onclick="showHowItWorks()">How It Works</a>
-                        <a href="#" onclick="showPricing()">Pricing</a>
-                        <a href="#" onclick="showPrivacy()">Privacy</a>
-                    </div>
-                    
-                    <div class="footer-section">
-                        <h4>Contact</h4>
-                        <p>support@whisperplus.me</p>
-                        <p>© 2024 Whisper+me. All rights reserved.</p>
-                    </div>
-                </div>
-            </footer>
-        </div>
+    renderProfileGrid(container, profiles) {
+        const profilesArray = Object.entries(profiles)
+            .filter(([uid]) => uid !== this.user?.uid)
+            .map(([uid, profile]) => ({ uid, ...profile }));
         
-        <!-- Auth Modal -->
-        <div class="modal" id="auth-modal" style="display: none;">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>Sign In to Whisper+me</h3>
-                    <button class="close-modal" onclick="closeModal('auth-modal')">&times;</button>
-                </div>
-                
-                <div class="modal-body">
-                    <div class="auth-methods">
-                        <button class="btn btn-google" onclick="signInWithGoogle()">
-                            <i class="fab fa-google"></i> Continue with Google
+        if (profilesArray.length === 0) {
+            container.innerHTML = `
+                <div style="grid-column: 1/-1; text-align: center; padding: 40px;">
+                    <i class="fas fa-users-slash" style="font-size: 48px; color: #667eea; margin-bottom: 20px;"></i>
+                    <h3 style="margin-bottom: 10px; color: white;">No whispers available</h3>
+                    <p style="margin-bottom: 20px; color: rgba(255,255,255,0.8);">Be the first to list yourself as available!</p>
+                    ${this.user ? `
+                        <button class="btn btn-primary" onclick="WhisperApp.toggleAvailability()">
+                            <i class="fas fa-toggle-on"></i> Go Available
                         </button>
-                        
-                        <button class="btn btn-facebook" onclick="signInWithFacebook()">
-                            <i class="fab fa-facebook"></i> Continue with Facebook
-                        </button>
-                        
-                        <div class="divider">
-                            <span>or</span>
-                        </div>
-                        
-                        <div class="email-auth">
-                            <input type="email" id="auth-email" placeholder="Email address" class="form-input">
-                            <input type="password" id="auth-password" placeholder="Password" class="form-input">
-                            <button class="btn btn-primary" onclick="signInWithEmail()">Sign In</button>
-                            <p class="auth-switch">New user? <a href="#" onclick="showSignUp()">Create account</a></p>
-                        </div>
-                    </div>
+                    ` : ''}
                 </div>
-            </div>
-        </div>
-        
-        <!-- Call Modal -->
-        <div class="modal" id="call-modal" style="display: none;">
-            <div class="modal-content call-modal">
-                <div class="modal-header">
-                    <h3>Starting Call...</h3>
-                    <button class="close-modal" onclick="endCall()">&times;</button>
-                </div>
-                
-                <div class="modal-body">
-                    <div class="call-info">
-                        <div class="caller-avatar">
-                            <i class="fas fa-user"></i>
-                        </div>
-                        <h4>Connecting to user...</h4>
-                        <p class="call-price">1 coin/minute</p>
-                        
-                        <div class="call-controls">
-                            <div class="call-timer">
-                                <i class="fas fa-clock"></i>
-                                <span id="call-timer">00:00</span>
-                            </div>
-                            
-                            <div class="call-buttons">
-                                <button class="btn btn-call-end" onclick="endCall()">
-                                    <i class="fas fa-phone-slash"></i> End Call
-                                </button>
-                                
-                                <button class="btn btn-call-mute" onclick="toggleMute()">
-                                    <i class="fas fa-microphone"></i> Mute
-                                </button>
-                            </div>
-                            
-                            <div class="coins-info">
-                                <i class="fas fa-coins"></i>
-                                <span id="coins-balance">0</span> coins remaining
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Toast Container -->
-        <div id="toast-container" class="toast-container"></div>
-    `;
-    
-    // Load live profiles
-    loadLiveProfiles();
-}
-
-function setupGlobalListeners() {
-    // Handle clicks on auth buttons
-    document.addEventListener('click', function(e) {
-        if (e.target.matches('.btn-login, .btn-signup')) {
-            showLoginModal();
+            `;
+            return;
         }
-    });
-    
-    // Handle profile refresh
-    window.loadLiveProfiles = loadLiveProfiles;
-}
-
-async function loadLiveProfiles() {
-    const container = document.getElementById('profiles-container');
-    if (!container) return;
-    
-    container.innerHTML = `
-        <div class="loading-profiles">
-            <div class="loader-small"></div>
-            <p>Loading live profiles...</p>
-        </div>
-    `;
-    
-    try {
-        // For demo - show sample profiles
-        // In production, this would fetch from Firebase
-        setTimeout(() => {
-            showSampleProfiles(container);
-        }, 1000);
         
-    } catch (error) {
-        console.error('❌ Error loading profiles:', error);
+        container.innerHTML = profilesArray.map(profile => `
+            <div class="profile-card" style="background: white; border-radius: 15px; padding: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.1);">
+                <div style="display: flex; align-items: center; margin-bottom: 15px;">
+                    <img src="${profile.profilePhoto || this.getDefaultAvatar(profile.displayName)}" 
+                         style="width: 60px; height: 60px; border-radius: 50%; margin-right: 15px;"
+                         onerror="this.src='${this.getDefaultAvatar(profile.displayName)}'">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 10px; height: 10px; background: #4CAF50; border-radius: 50%;"></div>
+                            <h3 style="margin: 0; color: #333;">${profile.displayName || 'Anonymous'}</h3>
+                        </div>
+                        <div style="background: #4CAF50; color: white; padding: 3px 10px; border-radius: 15px; font-size: 0.9rem; margin-top: 5px; display: inline-block;">
+                            ${profile.callPrice || 1} Coin
+                        </div>
+                    </div>
+                </div>
+                <p style="margin-bottom: 15px; color: #666; font-size: 0.9rem;">${profile.bio || 'Available for anonymous calls'}</p>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-secondary" onclick="WhisperApp.shareProfile('${profile.uid}', '${profile.displayName}')">
+                        <i class="fas fa-share-alt"></i> Share
+                    </button>
+                    <button class="btn btn-primary" onclick="WhisperApp.startCall('${profile.uid}')">
+                        <i class="fas fa-phone"></i> Call (${profile.callPrice || 1} Coin)
+                    </button>
+                </div>
+            </div>
+        `).join('');
+    }
+    
+    showLoggedInUI() {
+        const container = document.getElementById('app-container');
         container.innerHTML = `
-            <div class="error-state">
-                <i class="fas fa-exclamation-triangle"></i>
-                <p>Failed to load profiles. Please try again.</p>
-                <button class="btn btn-retry" onclick="loadLiveProfiles()">Retry</button>
-            </div>
-        `;
-    }
-}
-
-function showSampleProfiles(container) {
-    const sampleProfiles = [
-        {
-            id: '1',
-            name: 'Confidant',
-            bio: 'Great listener, available for deep conversations',
-            price: 1,
-            rating: 4.9,
-            calls: 127
-        },
-        {
-            id: '2',
-            name: 'Wisdom Seeker',
-            bio: 'Love discussing philosophy and life',
-            price: 2,
-            rating: 4.7,
-            calls: 89
-        },
-        {
-            id: '3',
-            name: 'Storyteller',
-            bio: 'Share stories and listen to yours',
-            price: 1,
-            rating: 4.8,
-            calls: 203
-        },
-        {
-            id: '4',
-            name: 'Life Coach',
-            bio: 'Help you navigate challenges',
-            price: 3,
-            rating: 4.9,
-            calls: 156
-        },
-        {
-            id: '5',
-            name: 'Friendly Voice',
-            bio: 'Just need someone to talk to? I\'m here',
-            price: 1,
-            rating: 4.6,
-            calls: 78
-        },
-        {
-            id: '6',
-            name: 'Tech Guru',
-            bio: 'Discuss tech, startups, and innovation',
-            price: 2,
-            rating: 4.7,
-            calls: 92
-        }
-    ];
-    
-    let html = '<div class="profiles-grid">';
-    
-    sampleProfiles.forEach(profile => {
-        html += `
-            <div class="profile-card">
-                <div class="profile-header">
-                    <div class="profile-avatar">
+            <!-- Navbar -->
+            <nav style="background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100;">
+                <a href="#" style="color: white; font-size: 1.5rem; font-weight: bold; text-decoration: none;" onclick="WhisperApp.showHome(); return false;">Whisper+me</a>
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <span style="background: rgba(255,255,255,0.2); padding: 5px 15px; border-radius: 20px; color: white;">
+                        ${this.userData?.coins || 0} Coins
+                    </span>
+                    <button class="btn btn-secondary" onclick="WhisperApp.showProfileModal()">
                         <i class="fas fa-user"></i>
-                    </div>
-                    <div class="profile-info">
-                        <h4>${profile.name}</h4>
-                        <div class="profile-stats">
-                            <span class="rating">
-                                <i class="fas fa-star"></i> ${profile.rating}
-                            </span>
-                            <span class="calls">
-                                <i class="fas fa-phone"></i> ${profile.calls}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-                
-                <p class="profile-bio">${profile.bio}</p>
-                
-                <div class="profile-price">
-                    <i class="fas fa-coins"></i>
-                    <span>${profile.price} coin${profile.price > 1 ? 's' : ''}/min</span>
-                </div>
-                
-                <div class="profile-actions">
-                    <button class="btn btn-outline" onclick="viewProfile('${profile.id}')">
-                        <i class="fas fa-eye"></i> View
                     </button>
-                    <button class="btn btn-primary" onclick="startCall('${profile.id}')">
-                        <i class="fas fa-phone"></i> Call Now
-                    </button>
-                </div>
-            </div>
-        `;
-    });
-    
-    html += '</div>';
-    container.innerHTML = html;
-}
-
-// Global Functions
-window.showLoginModal = function() {
-    const modal = document.getElementById('auth-modal');
-    if (modal) {
-        modal.style.display = 'flex';
-    }
-};
-
-window.closeModal = function(modalId) {
-    const modal = document.getElementById(modalId);
-    if (modal) {
-        modal.style.display = 'none';
-    }
-};
-
-window.signInWithGoogle = async function() {
-    try {
-        const result = await window.auth.signInWithPopup(window.googleProvider);
-        console.log('✅ Google sign-in successful:', result.user.email);
-        closeModal('auth-modal');
-        showToast('Welcome! You are now signed in.', 'success');
-    } catch (error) {
-        console.error('❌ Google sign-in failed:', error);
-        showToast('Sign-in failed. Please try again.', 'error');
-    }
-};
-
-window.signInWithFacebook = async function() {
-    try {
-        const result = await window.auth.signInWithPopup(window.facebookProvider);
-        console.log('✅ Facebook sign-in successful:', result.user.email);
-        closeModal('auth-modal');
-        showToast('Welcome! You are now signed in.', 'success');
-    } catch (error) {
-        console.error('❌ Facebook sign-in failed:', error);
-        showToast('Sign-in failed. Please try again.', 'error');
-    }
-};
-
-window.startCall = function(userId) {
-    if (!App.state.currentUser) {
-        showLoginModal();
-        showToast('Please sign in to start a call', 'warning');
-        return;
-    }
-    
-    if (App.state.coins < 1) {
-        showToast('You need coins to make calls. Please purchase first.', 'warning');
-        return;
-    }
-    
-    const modal = document.getElementById('call-modal');
-    if (modal) {
-        modal.style.display = 'flex';
-        
-        // Start call timer
-        startCallTimer();
-        
-        // Initialize Agora call
-        initializeAgoraCall(userId);
-    }
-};
-
-window.endCall = function() {
-    const modal = document.getElementById('call-modal');
-    if (modal) {
-        modal.style.display = 'none';
-    }
-    
-    // Stop call timer
-    stopCallTimer();
-    
-    // End Agora call
-    endAgoraCall();
-    
-    showToast('Call ended', 'info');
-};
-
-function startCallTimer() {
-    let seconds = 0;
-    const timerElement = document.getElementById('call-timer');
-    
-    window.callTimer = setInterval(() => {
-        seconds++;
-        const minutes = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        
-        if (timerElement) {
-            timerElement.textContent = `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-        }
-        
-        // Deduct coins every minute
-        if (seconds % 60 === 0 && seconds > 0) {
-            if (App.state.coins > 0) {
-                App.state.coins--;
-                updateCoinsDisplay();
-                
-                if (App.state.coins === 0) {
-                    showToast('You\'re out of coins! Call will end.', 'warning');
-                    setTimeout(endCall, 5000);
-                }
-            }
-        }
-    }, 1000);
-}
-
-function stopCallTimer() {
-    if (window.callTimer) {
-        clearInterval(window.callTimer);
-    }
-}
-
-function updateCoinsDisplay() {
-    const coinsElement = document.getElementById('coins-balance');
-    if (coinsElement) {
-        coinsElement.textContent = App.state.coins;
-    }
-}
-
-function updateUIForLoggedInUser() {
-    const userMenu = document.getElementById('user-menu');
-    if (userMenu && App.state.currentUser) {
-        userMenu.innerHTML = `
-            <div class="user-info">
-                <span class="user-avatar">
-                    ${App.state.currentUser.email.charAt(0).toUpperCase()}
-                </span>
-                <span class="user-name">${App.state.currentUser.email}</span>
-                <div class="user-actions">
-                    <button class="btn btn-coins">
-                        <i class="fas fa-coins"></i> ${App.state.coins} Coins
-                    </button>
-                    <button class="btn btn-logout" onclick="logout()">
+                    <button class="btn btn-secondary" onclick="WhisperApp.logout()">
                         <i class="fas fa-sign-out-alt"></i>
                     </button>
                 </div>
+            </nav>
+            
+            <!-- iPhone Display -->
+            <div style="max-width: 400px; margin: 20px auto; background: #000; border-radius: 40px; padding: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); border: 10px solid #333;">
+                <div style="background: #fff; border-radius: 20px; padding: 20px; min-height: 400px; display: flex; flex-direction: column; justify-content: center; align-items: center;" id="iphone-screen">
+                    <i class="fas fa-phone" style="font-size: 48px; color: #667eea; margin-bottom: 20px;"></i>
+                    <h3 style="margin-bottom: 10px;">Select a whisper to call</h3>
+                    <p style="color: #666; text-align: center;">Profiles will appear here when available</p>
+                </div>
             </div>
-        `;
-    }
-}
-
-function updateUIForLoggedOutUser() {
-    const userMenu = document.getElementById('user-menu');
-    if (userMenu) {
-        userMenu.innerHTML = `
-            <button class="btn btn-outline" onclick="showLoginModal()">
-                <i class="fas fa-sign-in-alt"></i> Sign In
-            </button>
-        `;
-    }
-}
-
-window.logout = async function() {
-    try {
-        await window.auth.signOut();
-        showToast('Signed out successfully', 'success');
-    } catch (error) {
-        console.error('❌ Logout failed:', error);
-        showToast('Logout failed', 'error');
-    }
-};
-
-function showToast(message, type = 'info') {
-    const container = document.getElementById('toast-container');
-    if (!container) return;
-    
-    const toast = document.createElement('div');
-    toast.className = `toast toast-${type}`;
-    toast.textContent = message;
-    
-    container.appendChild(toast);
-    
-    // Remove toast after 3 seconds
-    setTimeout(() => {
-        toast.remove();
-    }, 3000);
-}
-
-function showError(message) {
-    const container = document.getElementById('app-container');
-    if (!container) return;
-    
-    container.innerHTML = `
-        <div class="error-screen">
-            <div class="error-content">
-                <i class="fas fa-exclamation-triangle"></i>
-                <h2>Something went wrong</h2>
-                <p>${message}</p>
-                <button class="btn btn-primary" onclick="location.reload()">
-                    <i class="fas fa-redo"></i> Reload Page
+            
+            <!-- Available Whispers -->
+            <div style="max-width: 1200px; margin: 40px auto 20px; padding: 0 20px; display: flex; justify-content: space-between; align-items: center;">
+                <h2 style="color: white; font-size: 1.8rem;">
+                    <i class="fas fa-users"></i> Available Whispers
+                </h2>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-primary" onclick="WhisperApp.toggleAvailability()" id="availability-toggle">
+                        <i class="fas fa-toggle-off"></i> ${this.userData?.isAvailable ? 'Available' : 'Go Available'}
+                    </button>
+                    <button class="btn btn-secondary" onclick="WhisperApp.showInviteModal()">
+                        <i class="fas fa-user-plus"></i> Invite Friend
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Profiles Grid -->
+            <div id="profiles-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; padding: 20px; max-width: 1400px; margin: 0 auto;">
+                Loading profiles...
+            </div>
+            
+            <!-- Quick Actions -->
+            <div style="max-width: 600px; margin: 40px auto; display: flex; gap: 15px; justify-content: center; padding: 20px;">
+                <button class="btn btn-primary" onclick="WhisperApp.showBuyCoinsModal()" style="padding: 12px 30px; font-size: 16px;">
+                    <i class="fas fa-coins"></i> Buy 10 Coins ($15)
                 </button>
             </div>
-        </div>
-    `;
-}
-
-// Agora Functions (Placeholder - Needs real implementation)
-async function initializeAgoraCall(userId) {
-    console.log('📞 Initializing Agora call to user:', userId);
-    showToast('Connecting to call...', 'info');
+        `;
+        
+        // Update availability button color
+        const toggleBtn = document.getElementById('availability-toggle');
+        if (toggleBtn && this.userData?.isAvailable) {
+            toggleBtn.innerHTML = '<i class="fas fa-toggle-on"></i> Available';
+            toggleBtn.classList.add('btn-success');
+        }
+    }
     
-    // TODO: Implement real Agora call
-    // This requires Agora App ID and proper setup
+    showLoggedOutUI() {
+        const container = document.getElementById('app-container');
+        container.innerHTML = `
+            <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;">
+                <div style="background: rgba(255,255,255,0.95); border-radius: 20px; padding: 40px; max-width: 800px; width: 100%; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+                    <h1 style="font-size: 3rem; margin-bottom: 10px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Whisper+me</h1>
+                    <p style="font-size: 1.2rem; color: #666; margin-bottom: 40px;">Anonymous Audio Chat • Get Paid to Listen</p>
+                    
+                    <div style="margin: 40px auto; max-width: 300px;">
+                        <div style="background: #000; border-radius: 30px; padding: 15px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); border: 8px solid #333;">
+                            <div style="background: #fff; border-radius: 15px; padding: 20px; min-height: 300px; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                                <img src="https://ui-avatars.com/api/?name=Whisper&background=667eea&color=fff&size=100" 
+                                     style="width: 100px; height: 100px; border-radius: 50%; margin-bottom: 20px;">
+                                <h3 style="margin-bottom: 5px;">Anonymous Whisper</h3>
+                                <p style="color: #666; margin-bottom: 15px;">Available for 1 coin/min</p>
+                                <div style="width: 12px; height: 12px; background: #4CAF50; border-radius: 50%; animation: pulse 2s infinite;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin: 40px 0;">
+                        <button class="btn btn-primary btn-large" onclick="WhisperApp.showAuthModal('login')" style="padding: 15px 40px; font-size: 18px; margin: 10px;">
+                            <i class="fas fa-sign-in-alt"></i> Login
+                        </button>
+                        <button class="btn btn-secondary btn-large" onclick="WhisperApp.showAuthModal('register')" style="padding: 15px 40px; font-size: 18px; margin: 10px;">
+                            <i class="fas fa-user-plus"></i> Sign Up Free
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <style>
+                @keyframes pulse {
+                    0% { opacity: 1; transform: scale(1); }
+                    50% { opacity: 0.5; transform: scale(1.1); }
+                    100% { opacity: 1; transform: scale(1); }
+                }
+            </style>
+        `;
+    }
+    
+    // Helper methods
+    getDefaultAvatar(name) {
+        const encodedName = encodeURIComponent(name || 'User');
+        return `https://ui-avatars.com/api/?name=${encodedName}&background=667eea&color=fff&size=200`;
+    }
+    
+    showToast(message, type = 'info') {
+        const container = document.getElementById('toast-container');
+        if (!container) return;
+        
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.textContent = message;
+        toast.style.cssText = 'position: fixed; top: 20px; right: 20px; background: ' + 
+            (type === 'success' ? '#4CAF50' : type === 'error' ? '#f44336' : '#2196F3') + 
+            '; color: white; padding: 12px 24px; border-radius: 4px; z-index: 10000;';
+        
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+    }
+    
+    // FIXED: Added currentCall assignment
+    async startCall(targetUserId) {
+        if (!this.user) {
+            this.showAuthModal('login');
+            return;
+        }
+        
+        // Check coin balance
+        if ((this.userData?.coins || 0) < 1) {
+            this.showToast('Not enough coins. Please buy more to call.', 'error');
+            this.showBuyCoinsModal();
+            return;
+        }
+        
+        this.showToast('Starting call...', 'info');
+        
+        try {
+            // Use transaction to safely deduct coins
+            const { runTransaction, ref } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js');
+            
+            // Transaction to deduct coins
+            const result = await runTransaction(ref(window.firebase.database, `users/${this.user.uid}/coins`), (currentCoins) => {
+                if (currentCoins === null) return 0;
+                if (currentCoins < 1) return currentCoins; // Not enough coins
+                return currentCoins - 1; // Deduct 1 coin
+            });
+            
+            if (!result.committed) {
+                this.showToast('Failed to deduct coins. Please try again.', 'error');
+                return;
+            }
+            
+            // Update local data
+            this.userData.coins = this.userData.coins - 1;
+            
+            // FIXED: Set currentCall object
+            const callId = 'call_' + Date.now();
+            this.currentCall = {
+                id: callId,
+                startTime: Date.now(),
+                targetId: targetUserId,
+                callerId: this.user.uid
+            };
+            
+            // Create call record
+            const { set } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js');
+            
+            await set(ref(window.firebase.database, `calls/${callId}`), {
+                callerId: this.user.uid,
+                callerName: this.userData.displayName,
+                targetId: targetUserId,
+                status: 'initiated',
+                price: 1,
+                startTime: Date.now(),
+                createdAt: Date.now(),
+                coinsDeducted: true
+            });
+            
+            // Notify target user
+            await set(ref(window.firebase.database, `notifications/${targetUserId}/${Date.now()}`), {
+                type: 'incoming_call',
+                callId: callId,
+                callerId: this.user.uid,
+                callerName: this.userData.displayName,
+                timestamp: Date.now()
+            });
+            
+            // Show calling interface
+            this.showCallInterface(callId, targetUserId);
+            
+        } catch (error) {
+            console.error('Error starting call:', error);
+            this.showToast('Failed to start call. Please try again.', 'error');
+        }
+    }
+    
+    showCallInterface(callId, targetUserId) {
+        const container = document.getElementById('app-container');
+        
+        // Get target user info
+        this.getTargetUserInfo(targetUserId).then(targetUser => {
+            container.innerHTML = `
+                <div style="min-height: 100vh; background: linear-gradient(135deg, #000428 0%, #004e92 100%); color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px;">
+                    <h2 style="margin-bottom: 20px;"><i class="fas fa-phone"></i> Calling...</h2>
+                    
+                    <div style="text-align: center; margin-bottom: 30px;">
+                        <img src="${targetUser.profilePhoto || this.getDefaultAvatar(targetUser.displayName)}" 
+                             style="width: 120px; height: 120px; border-radius: 50%; margin-bottom: 20px; border: 4px solid #4CAF50;">
+                        <h3 style="font-size: 1.8rem; margin-bottom: 10px;">${targetUser.displayName || 'Anonymous'}</h3>
+                        <p style="color: #aaa;">Waiting for answer...</p>
+                    </div>
+                    
+                    <div id="call-timer" style="font-size: 3rem; font-weight: bold; margin: 30px 0; font-family: monospace;">01:00</div>
+                    
+                    <div style="display: flex; gap: 30px; margin: 40px 0;">
+                        <div id="mic-toggle" onclick="WhisperApp.toggleMic()" 
+                             style="width: 70px; height: 70px; border-radius: 50%; background: #4CAF50; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1.5rem;">
+                            <i class="fas fa-microphone"></i>
+                        </div>
+                        <div onclick="WhisperApp.endCall('${callId}')" 
+                             style="width: 80px; height: 80px; border-radius: 50%; background: #ff4757; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1.8rem;">
+                            <i class="fas fa-phone-slash"></i>
+                        </div>
+                    </div>
+                    
+                    <div style="text-align: center; max-width: 500px; margin-top: 30px; color: #aaa;">
+                        <p><i class="fas fa-info-circle"></i> Call will be refunded if not answered in 60 seconds</p>
+                    </div>
+                </div>
+            `;
+            
+            // Start 60-second answer timer
+            this.startAnswerTimer(callId, 60);
+        });
+    }
+    
+    async getTargetUserInfo(userId) {
+        try {
+            const { get, ref } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js');
+            const snapshot = await get(ref(window.firebase.database, `publicProfiles/${userId}`));
+            return snapshot.val() || { displayName: 'Anonymous' };
+        } catch (error) {
+            return { displayName: 'Anonymous' };
+        }
+    }
+    
+    startAnswerTimer(callId, seconds) {
+        let remaining = seconds;
+        const timerElement = document.getElementById('call-timer');
+        
+        this.callTimer = setInterval(() => {
+            remaining--;
+            const mins = Math.floor(remaining / 60);
+            const secs = remaining % 60;
+            timerElement.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            
+            if (remaining <= 0) {
+                clearInterval(this.callTimer);
+                this.endCall(callId, 'unanswered');
+                this.showToast('Call was not answered. Coin refunded.', 'info');
+            }
+        }, 1000);
+    }
+    
+    async endCall(callId, reason = 'ended') {
+        if (this.callTimer) {
+            clearInterval(this.callTimer);
+        }
+        
+        try {
+            const { update, ref } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js');
+            
+            // FIXED: Use this.currentCall.startTime
+            const duration = this.currentCall ? Math.floor((Date.now() - this.currentCall.startTime) / 1000) : 0;
+            
+            await update(ref(window.firebase.database, `calls/${callId}`), {
+                status: reason,
+                endTime: Date.now(),
+                duration: duration
+            });
+            
+            // If call was unanswered, refund coin
+            if (reason === 'unanswered') {
+                const { runTransaction } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js');
+                
+                await runTransaction(ref(window.firebase.database, `users/${this.user.uid}/coins`), (currentCoins) => {
+                    if (currentCoins === null) return 1;
+                    return currentCoins + 1;
+                });
+                
+                // Update local data
+                this.userData.coins = (this.userData.coins || 0) + 1;
+            }
+            
+            // End Agora call
+            if (this.agoraClient) {
+                await this.agoraClient.leave();
+                this.agoraClient = null;
+            }
+            
+            if (this.localAudioTrack) {
+                this.localAudioTrack.close();
+                this.localAudioTrack = null;
+            }
+            
+            // Show rating modal if call was answered
+            if (reason === 'ended') {
+                this.showRatingModal(callId);
+            } else {
+                this.showLoggedInUI();
+                this.loadAvailableProfiles();
+            }
+            
+        } catch (error) {
+            console.error('Error ending call:', error);
+            this.showToast('Error ending call', 'error');
+        }
+    }
+    
+    // FIXED: Wire up Agora token generation via Cloud Functions
+    async setupAgoraCall(channelName) {
+        try {
+            // Load Agora SDK on demand
+            await loadAgoraSDK();
+            
+            // Get Agora token from Cloud Function
+            const { getFunctions, httpsCallable } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js');
+            const functions = getFunctions(window.firebase.app);
+            
+            try {
+                const generateToken = httpsCallable(functions, 'generateAgoraToken');
+                const tokenResult = await generateToken({
+                    channelName: channelName,
+                    uid: this.user.uid
+                });
+                
+                const { token, appId } = tokenResult.data;
+                
+                // Create Agora client
+                this.agoraClient = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+                
+                // Join channel with token
+                await this.agoraClient.join(appId, channelName, token, this.user.uid);
+                
+                // Create and publish local audio track
+                this.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+                await this.agoraClient.publish([this.localAudioTrack]);
+                
+                console.log('✅ Agora call connected with token');
+                
+                // Listen for remote users
+                this.agoraClient.on("user-published", async (user, mediaType) => {
+                    await this.agoraClient.subscribe(user, mediaType);
+                    if (mediaType === "audio") {
+                        user.audioTrack.play();
+                        this.showToast('Connected! 5-minute timer started.', 'success');
+                        this.startCallTimer(300); // 5 minutes
+                    }
+                });
+                
+            } catch (error) {
+                console.error('Error getting Agora token:', error);
+                this.showToast('Audio connection error', 'error');
+            }
+            
+        } catch (error) {
+            console.error('Agora setup error:', error);
+            this.showToast('Audio system error', 'error');
+        }
+    }
+    
+    startCallTimer(seconds) {
+        let remaining = seconds;
+        const timerElement = document.getElementById('call-timer');
+        
+        if (this.callTimer) clearInterval(this.callTimer);
+        
+        this.callTimer = setInterval(() => {
+            remaining--;
+            const mins = Math.floor(remaining / 60);
+            const secs = remaining % 60;
+            timerElement.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            
+            if (remaining <= 0) {
+                clearInterval(this.callTimer);
+                this.endCall(this.currentCall?.id, 'timeout');
+                this.showToast('Call ended after 5 minutes', 'info');
+            }
+        }, 1000);
+    }
+    
+    toggleMic() {
+        if (this.localAudioTrack) {
+            if (this.localAudioTrack.muted) {
+                this.localAudioTrack.setMuted(false);
+                document.getElementById('mic-toggle').style.background = '#4CAF50';
+                this.showToast('Microphone on', 'info');
+            } else {
+                this.localAudioTrack.setMuted(true);
+                document.getElementById('mic-toggle').style.background = '#f44336';
+                this.showToast('Microphone muted', 'info');
+            }
+        }
+    }
+    
+    showAuthModal(mode) {
+        const modal = document.createElement('div');
+        modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 10000;';
+        
+        modal.innerHTML = `
+            <div style="background: white; border-radius: 15px; padding: 40px; max-width: 400px; width: 90%; position: relative;">
+                <div onclick="this.parentElement.parentElement.remove()" style="position: absolute; top: 15px; right: 15px; font-size: 1.5rem; cursor: pointer; color: #666;">×</div>
+                <h2 style="margin-bottom: 30px; text-align: center;">${mode === 'login' ? 'Login' : 'Sign Up'}</h2>
+                
+                ${mode === 'register' ? `
+                    <div style="margin-bottom: 20px;">
+                        <input type="text" id="register-name" placeholder="Display Name" 
+                               style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 15px; font-size: 16px;">
+                    </div>
+                ` : ''}
+                
+                <div style="margin-bottom: 20px;">
+                    <input type="email" id="${mode === 'login' ? 'login-email' : 'register-email'}" 
+                           placeholder="Email" 
+                           style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 15px; font-size: 16px;">
+                </div>
+                
+                <div style="margin-bottom: 30px;">
+                    <input type="password" id="${mode === 'login' ? 'login-password' : 'register-password'}" 
+                           placeholder="Password" 
+                           style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 15px; font-size: 16px;">
+                </div>
+                
+                <button class="btn btn-primary" onclick="WhisperApp.handleAuth('${mode}')" 
+                        style="width: 100%; padding: 12px; margin-bottom: 20px;">
+                    ${mode === 'login' ? 'Login' : 'Sign Up'}
+                </button>
+                
+                <div style="text-align: center; margin: 20px 0; color: #666;">or</div>
+                
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <button class="btn" onclick="WhisperApp.loginWithGoogle()" 
+                            style="background: #DB4437; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px;">
+                        <i class="fab fa-google"></i> Continue with Google
+                    </button>
+                    <button class="btn" onclick="WhisperApp.loginWithFacebook()" 
+                            style="background: #4267B2; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px;">
+                        <i class="fab fa-facebook"></i> Continue with Facebook
+                    </button>
+                </div>
+                
+                ${mode === 'login' ? `
+                    <div style="text-align: center; margin-top: 20px;">
+                        <p>Don't have an account? <a href="#" onclick="WhisperApp.showAuthModal('register'); this.closest('.modal').remove(); return false;" style="color: #667eea;">Sign up</a></p>
+                    </div>
+                ` : `
+                    <div style="text-align: center; margin-top: 20px;">
+                        <p>Already have an account? <a href="#" onclick="WhisperApp.showAuthModal('login'); this.closest('.modal').remove(); return false;" style="color: #667eea;">Login</a></p>
+                    </div>
+                `}
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+    }
+    
+    async handleAuth(mode) {
+        if (mode === 'login') {
+            const email = document.getElementById('login-email')?.value;
+            const password = document.getElementById('login-password')?.value;
+            if (email && password) {
+                await this.loginWithEmail(email, password);
+            } else {
+                this.showToast('Please enter email and password', 'error');
+            }
+        } else {
+            const email = document.getElementById('register-email')?.value;
+            const password = document.getElementById('register-password')?.value;
+            const name = document.getElementById('register-name')?.value;
+            if (email && password && name) {
+                await this.signUpWithEmail(email, password, name);
+            } else {
+                this.showToast('Please fill all fields', 'error');
+            }
+        }
+    }
+    
+    async loginWithEmail(email, password) {
+        try {
+            const { signInWithEmailAndPassword } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js');
+            await signInWithEmailAndPassword(window.firebase.auth, email, password);
+            this.showToast('Logged in successfully!', 'success');
+            document.querySelector('.modal')?.remove();
+        } catch (error) {
+            console.error('Login error:', error);
+            this.showToast(error.message, 'error');
+        }
+    }
+    
+    async signUpWithEmail(email, password, displayName) {
+        try {
+            const { createUserWithEmailAndPassword } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js');
+            const { set, ref } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js');
+            
+            const userCredential = await createUserWithEmailAndPassword(window.firebase.auth, email, password);
+            const user = userCredential.user;
+            
+            // Create user profile
+            const userData = {
+                email: email,
+                displayName: displayName,
+                coins: 5, // Free signup bonus
+                isAvailable: false,
+                createdAt: Date.now(),
+                profileId: 'user_' + Math.random().toString(36).substr(2, 9),
+                profilePhoto: `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=667eea&color=fff`,
+                callPrice: 1,
+                bio: 'New whisper user',
+                lastSeen: Date.now()
+            };
+            
+            // Set both private and public data
+            await set(ref(window.firebase.database, `users/${user.uid}`), {
+                email: email,
+                coins: 5,
+                createdAt: Date.now(),
+                isAdmin: false
+            });
+            
+            await set(ref(window.firebase.database, `publicProfiles/${user.uid}`), userData);
+            
+            this.showToast('Account created! 5 free coins added.', 'success');
+            document.querySelector('.modal')?.remove();
+            
+        } catch (error) {
+            console.error('Signup error:', error);
+            this.showToast(error.message, 'error');
+        }
+    }
+    
+    async loginWithGoogle() {
+        try {
+            const { signInWithPopup } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js');
+            const { GoogleAuthProvider } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js');
+            const provider = new GoogleAuthProvider();
+            await signInWithPopup(window.firebase.auth, provider);
+            this.showToast('Logged in with Google!', 'success');
+            document.querySelector('.modal')?.remove();
+        } catch (error) {
+            console.error('Google login error:', error);
+            this.showToast(error.message, 'error');
+        }
+    }
+    
+    async loginWithFacebook() {
+        try {
+            const { signInWithPopup } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js');
+            const { FacebookAuthProvider } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js');
+            const provider = new FacebookAuthProvider();
+            await signInWithPopup(window.firebase.auth, provider);
+            this.showToast('Logged in with Facebook!', 'success');
+            document.querySelector('.modal')?.remove();
+        } catch (error) {
+            console.error('Facebook login error:', error);
+            this.showToast(error.message, 'error');
+        }
+    }
+    
+    async logout() {
+        try {
+            await window.firebase.auth.signOut();
+            this.showToast('Logged out successfully', 'success');
+        } catch (error) {
+            console.error('Logout error:', error);
+        }
+    }
+    
+    async toggleAvailability() {
+        if (!this.user) return;
+        
+        try {
+            const { update, ref } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js');
+            const newStatus = !this.userData?.isAvailable;
+            
+            await update(ref(window.firebase.database, `publicProfiles/${this.user.uid}`), {
+                isAvailable: newStatus,
+                lastSeen: Date.now()
+            });
+            
+            this.userData.isAvailable = newStatus;
+            this.showToast(`You are now ${newStatus ? 'available' : 'unavailable'}`, 'success');
+            
+            // Update button
+            const toggleBtn = document.getElementById('availability-toggle');
+            if (toggleBtn) {
+                toggleBtn.innerHTML = `<i class="fas fa-toggle-${newStatus ? 'on' : 'off'}"></i> ${newStatus ? 'Available' : 'Go Available'}`;
+                if (newStatus) {
+                    toggleBtn.classList.add('btn-success');
+                } else {
+                    toggleBtn.classList.remove('btn-success');
+                }
+            }
+            
+            this.loadAvailableProfiles();
+            
+        } catch (error) {
+            console.error('Error toggling availability:', error);
+            this.showToast('Error updating availability', 'error');
+        }
+    }
+    
+    showBuyCoinsModal() {
+        this.showToast('Payment system coming soon. For now, coins are added manually by admin.', 'info');
+    }
+    
+    shareProfile(userId, userName) {
+        const url = `${window.location.origin}?ref=${userId}`;
+        if (navigator.share) {
+            navigator.share({
+                title: `Check out ${userName} on Whisper+me`,
+                text: `Connect with ${userName} on Whisper+me`,
+                url: url
+            });
+        } else {
+            navigator.clipboard.writeText(url);
+            this.showToast('Profile link copied!', 'success');
+        }
+    }
+    
+    showRatingModal(callId) {
+        const modal = document.createElement('div');
+        modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 10000;';
+        
+        modal.innerHTML = `
+            <div style="background: white; border-radius: 15px; padding: 40px; max-width: 400px; width: 90%;">
+                <h2 style="margin-bottom: 20px; text-align: center;">Rate Your Call</h2>
+                <div id="star-rating" style="display: flex; justify-content: center; gap: 10px; margin-bottom: 30px; font-size: 2rem;">
+                    <i class="fas fa-star" onclick="WhisperApp.setRating(1)" style="cursor: pointer; color: #ddd;"></i>
+                    <i class="fas fa-star" onclick="WhisperApp.setRating(2)" style="cursor: pointer; color: #ddd;"></i>
+                    <i class="fas fa-star" onclick="WhisperApp.setRating(3)" style="cursor: pointer; color: #ddd;"></i>
+                    <i class="fas fa-star" onclick="WhisperApp.setRating(4)" style="cursor: pointer; color: #ddd;"></i>
+                    <i class="fas fa-star" onclick="WhisperApp.setRating(5)" style="cursor: pointer; color: #ddd;"></i>
+                </div>
+                <textarea id="call-comment" placeholder="How was your experience? (optional)" 
+                          style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 20px; font-size: 16px; height: 100px;"></textarea>
+                <button class="btn btn-primary" onclick="WhisperApp.submitRating('${callId}')" style="width: 100%; padding: 12px;">
+                    Submit Rating
+                </button>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+    }
+    
+    setRating(rating) {
+        const stars = document.querySelectorAll('#star-rating .fa-star');
+        stars.forEach((star, index) => {
+            star.style.color = index < rating ? '#FFD700' : '#ddd';
+        });
+        this.currentRating = rating;
+    }
+    
+    async submitRating(callId) {
+        const rating = this.currentRating || 5;
+        const comment = document.getElementById('call-comment')?.value || '';
+        
+        try {
+            const { set, ref } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js');
+            
+            await set(ref(window.firebase.database, `ratings/${Date.now()}`), {
+                callId: callId,
+                rating: rating,
+                comment: comment,
+                reviewerId: this.user.uid,
+                timestamp: Date.now()
+            });
+            
+            this.showToast('Thank you for your rating!', 'success');
+            document.querySelector('.modal')?.remove();
+            
+            // Return to main view
+            this.showLoggedInUI();
+            this.loadAvailableProfiles();
+            
+        } catch (error) {
+            console.error('Error submitting rating:', error);
+            this.showToast('Error submitting rating', 'error');
+        }
+    }
+    
+    showHome() {
+        if (this.user) {
+            this.showLoggedInUI();
+            this.loadAvailableProfiles();
+        } else {
+            this.showLoggedOutUI();
+        }
+    }
+    
+    showProfileModal() {
+        this.showToast('Profile editing coming soon', 'info');
+    }
+    
+    showInviteModal() {
+        const url = window.location.origin;
+        if (navigator.share) {
+            navigator.share({
+                title: 'Join me on Whisper+me',
+                text: 'Connect anonymously and get paid for conversations!',
+                url: url
+            });
+        } else {
+            navigator.clipboard.writeText(url);
+            this.showToast('Invite link copied! Share with friends.', 'success');
+        }
+    }
 }
 
-function endAgoraCall() {
-    console.log('📞 Ending Agora call');
-    // TODO: Implement Agora call ending
+// Initialize app when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => new WhisperApp());
+} else {
+    new WhisperApp();
 }
-
-function toggleMute() {
-    console.log('🎤 Toggling mute');
-    // TODO: Implement mute toggle
-}
-
-console.log('👋 Whisper+me app.js loaded');

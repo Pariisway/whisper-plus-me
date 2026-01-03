@@ -1,33 +1,38 @@
-# Dependencies
-node_modules/
-
-# Environment variables
+# Firebase and environment
+.firebase/
+.firebaserc
 .env
 .env.local
+.env.production
+.env.development
+*.env
 
-# Build outputs
+# Node modules
+node_modules/
+package-lock.json
+
+# Build artifacts
 dist/
 build/
-
-# Logs
 *.log
-npm-debug.log*
 
-# Runtime data
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
 .DS_Store
 Thumbs.db
-
-# Backup files
-*.backup
-*.old
 
 # Temporary files
 *.tmp
 *.temp
 
-# Local server files
-localhost.*
-.cert/
+# Backup files
+*.backup
+backup_*
 
-# Test files
-test-*
+# Scripts (we don't need deployment scripts in production)
+*.sh
