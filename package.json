@@ -1,18 +1,18 @@
 {
   "name": "whisper-plus-me",
   "version": "1.0.0",
-  "description": "Anonymous audio chat app",
+  "description": "Live anonymous audio chat platform",
   "main": "index.html",
   "scripts": {
-    "test": "echo \"No tests specified\" && exit 0",
-    "deploy": "bash force-sync-github.sh"
+    "dev": "python3 -m http.server 8080",
+    "test": "echo \"No tests specified\"",
+    "deploy:github": "./deploy-all.sh",
+    "deploy:firebase": "./deploy-firebase.sh"
   },
-  "keywords": ["audio-chat", "anonymous", "firebase", "agora"],
-  "author": "Whisper+me",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/Pariisway/whisper-plus-me"
-  },
-  "homepage": "https://pariisway.github.io/whisper-plus-me/"
+  "keywords": ["audio", "chat", "anonymous", "live"],
+  "author": "Whisper+me Team",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "live-server": "^1.2.2"
+  }
 }

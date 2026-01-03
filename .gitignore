@@ -1,11 +1,13 @@
 # Firebase
 .firebase/
-.firebaserc
+firebase-debug.log
+*.firebaserc
 
-# Node
+# Node.js
 node_modules/
-npm-debug.log
-yarn-error.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # Environment variables
 .env
@@ -14,24 +16,42 @@ yarn-error.log
 .env.test.local
 .env.production.local
 
-# IDE
+# Build directories
+public/
+_site/
+_deploy/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# OS
-.DS_Store
-Thumbs.db
-
-# Functions
-functions/package-lock.json
-functions/.runtimeconfig.json
-
-# Build artifacts
-dist/
-build/
-
 # Temporary files
 *.tmp
 *.temp
+
+# Logs
+logs/
+*.log
+
+# Testing
+coverage/
+.nyc_output/
+
+# Package files
+package-lock.json
+yarn.lock
+
+# Local development
+local.settings.json
+.functions

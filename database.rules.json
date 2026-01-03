@@ -10,7 +10,7 @@
         
         "coins": {
           ".read": "auth != null && auth.uid === $uid",
-          ".write": "false"
+          ".write": "auth != null && auth.uid === $uid"
         },
         
         "isAdmin": {
@@ -21,8 +21,8 @@
     },
     
     "publicProfiles": {
+      ".read": true,
       "$uid": {
-        ".read": true,
         ".write": "auth != null && auth.uid === $uid"
       },
       ".indexOn": ["isAvailable", "whisperId"]
@@ -52,6 +52,11 @@
     "adminActions": {
       ".read": "auth != null && root.child('users/'+auth.uid+'/isAdmin').val() === true",
       ".write": "auth != null && root.child('users/'+auth.uid+'/isAdmin').val() === true"
+    },
+    
+    "reviews": {
+      ".read": "auth != null && root.child('users/'+auth.uid+'/isAdmin').val() === true",
+      ".write": "auth != null"
     }
   }
 }

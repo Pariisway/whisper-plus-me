@@ -1,47 +1,32 @@
 #!/bin/bash
 
-echo "🚀 Deploying Whisper+me to Production..."
+echo "🚀 Deploying Whisper+me..."
 
-echo "1. Cleaning up old files..."
-rm -f agora.js app-old.js index-old.html styles-old.css
+# Step 1: Commit all changes
+echo "📝 Committing changes..."
+git add .
+git commit -m "Deploy: $(date '+%Y-%m-%d %H:%M:%S')" || {
+    echo "❌ No changes to commit or commit failed"
+    echo "Continuing with deployment..."
+}
 
-echo "2. Creating necessary files..."
-ls -la
-
-echo "3. Setting up GitHub Pages..."
-touch .nojekyll
-
-echo "4. Files ready:"
-echo "   ✅ index.html - Main app with iPhone interface"
-echo "   ✅ styles.css - All styling consolidated"
-echo "   ✅ app.js - Production-ready JavaScript"
-echo "   ✅ admin.html - Admin dashboard"
-echo "   ✅ database.rules.json - Security rules"
-echo "   ✅ deploy.sh - This script"
+# Step 2: Push to GitHub
+echo "📤 Pushing to GitHub..."
+git push origin main || {
+    echo "❌ Failed to push to GitHub"
+    exit 1
+}
 
 echo ""
-echo "📋 NEXT STEPS:"
+echo "✅ Code pushed to GitHub!"
 echo ""
-echo "1. Set up Firebase Realtime Database rules in Firebase Console"
-echo "   Copy the content of database.rules.json"
+echo "📊 GitHub Actions will now deploy to Pages."
+echo "   Check: https://github.com/$(git config --get remote.origin.url | sed 's/.*github.com[:/]//;s/\.git$//')/actions"
 echo ""
-echo "2. Create Cloud Functions:"
-echo "   cd functions"
-echo "   npm install"
-echo "   firebase deploy --only functions"
+echo "🌐 Your site will be available at:"
+echo "   https://$(git config --get remote.origin.url | sed 's/.*github.com[:/]//;s/\.git$//' | tr ':' '/')"
 echo ""
-echo "3. Set environment variables:"
-echo "   firebase functions:config:set agora.cert=\"9113b7b993cb442882b983adbc0b950b\""
+echo "⏳ Please wait a few minutes for deployment to complete."
 echo ""
-echo "4. Commit and push to GitHub:"
-echo "   git add ."
-echo "   git commit -m '🚀 PRODUCTION LAUNCH - Whisper+me v1.0'"
-echo "   git push origin main"
-echo ""
-echo "5. Enable GitHub Pages in repository settings"
-echo "   Settings → Pages → Source: Deploy from branch"
-echo "   Branch: main, folder: / (root)"
-echo ""
-echo "🌐 Your app will be live at: https://Pariisway.github.io/whisper-plus-me/"
-echo ""
-echo "✅ PRODUCTION READY!"
+echo "🔧 To deploy Firebase Functions separately, run:"
+echo "   cd functions && npm install && firebase deploy --only functions"
