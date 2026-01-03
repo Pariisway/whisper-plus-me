@@ -1,18 +1,18 @@
-# Firebase and environment
+# Firebase
 .firebase/
 .firebaserc
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Environment variables
 .env
 .env.local
-*.env
-
-# Node modules
-node_modules/
-package-lock.json
-
-# Build artifacts
-dist/
-build/
-*.log
+.env.development.local
+.env.test.local
+.env.production.local
 
 # IDE
 .vscode/
@@ -24,14 +24,14 @@ build/
 .DS_Store
 Thumbs.db
 
+# Functions
+functions/package-lock.json
+functions/.runtimeconfig.json
+
+# Build artifacts
+dist/
+build/
+
 # Temporary files
 *.tmp
 *.temp
-*.backup
-backup_*
-
-# Scripts
-*.sh
-
-# Backup directories
-backup_*/

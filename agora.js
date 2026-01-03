@@ -91,7 +91,6 @@ window.AgoraManager = {
     },
     
     async setupRemoteUserHandlers(onUserJoined, onUserLeft) {
-        if (!this.client) return;
         
         this.client.on("user-published", async (user, mediaType) => {
             if (mediaType === "audio") {

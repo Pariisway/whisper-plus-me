@@ -1,19 +1,18 @@
 {
   "name": "whisper-plus-me",
   "version": "1.0.0",
-  "description": "Anonymous audio chat app with secure monetization",
+  "description": "Anonymous audio chat app",
   "main": "index.html",
   "scripts": {
-    "deploy": "bash force-sync-github.sh",
-    "test": "echo \"No tests specified\" && exit 0"
+    "test": "echo \"No tests specified\" && exit 0",
+    "deploy": "bash force-sync-github.sh"
   },
-  "keywords": [
-    "audio-chat",
-    "anonymous",
-    "firebase",
-    "agora",
-    "monetization"
-  ],
-  "author": "Whisper+me Team",
-  "license": "MIT"
+  "keywords": ["audio-chat", "anonymous", "firebase", "agora"],
+  "author": "Whisper+me",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Pariisway/whisper-plus-me"
+  },
+  "homepage": "https://pariisway.github.io/whisper-plus-me/"
 }
