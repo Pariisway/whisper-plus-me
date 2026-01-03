@@ -40,40 +40,6 @@
         console.log('✅ Firebase v10 initialized');
     </script>
     
-    <!-- Agora SDK (loaded on demand) -->
-    <script>
-        function loadAgoraSDK() {
-            return new Promise((resolve, reject) => {
-                if (window.AgoraRTC) {
-                    resolve(window.AgoraRTC);
-                    return;
-                }
-                const script = document.createElement('script');
-                script.src = 'https://download.agora.io/sdk/release/AgoraRTC_N-4.18.2.js';
-                script.onload = () => resolve(window.AgoraRTC);
-                script.onerror = reject;
-                document.head.appendChild(script);
-            });
-        }
-    </script>
-    
-    <!-- Stripe (loaded on demand) -->
-    <script>
-        function loadStripeSDK() {
-            return new Promise((resolve, reject) => {
-                if (window.Stripe) {
-                    resolve(window.Stripe);
-                    return;
-                }
-                const script = document.createElement('script');
-                script.src = 'https://js.stripe.com/v3/';
-                script.onload = () => resolve(window.Stripe);
-                script.onerror = reject;
-                document.head.appendChild(script);
-            });
-        }
-    </script>
-    
     <!-- Google Analytics -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-4QYRJLTXTT"></script>
     <script>
@@ -104,6 +70,14 @@
         .btn:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
         
         .hidden { display: none !important; }
+        
+        /* Pulse animation for availability dot */
+        @keyframes pulse {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.1); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+        .pulse { animation: pulse 2s infinite; }
     </style>
 </head>
 <body>
@@ -121,84 +95,5 @@
     
     <!-- AdSense -->
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1184595877548269" crossorigin="anonymous"></script>
-    
-    <!-- Global Auth Compatibility Wrapper -->
-    <script>
-        // Global compatibility functions for HTML onclick handlers
-        window.signInWithEmail = function() {
-            if (window.WhisperApp && window.WhisperApp.auth && window.WhisperApp.auth.loginWithEmail) {
-                const email = document.getElementById('login-email')?.value;
-                const password = document.getElementById('login-password')?.value;
-                if (email && password) {
-                    window.WhisperApp.auth.loginWithEmail(email, password);
-                } else {
-                    showToast('Please enter email and password', 'error');
-                }
-            } else {
-                showToast('Auth system not ready yet', 'error');
-            }
-        };
-        
-        window.signUpWithEmail = function() {
-            if (window.WhisperApp && window.WhisperApp.auth && window.WhisperApp.auth.signUpWithEmail) {
-                const email = document.getElementById('register-email')?.value;
-                const password = document.getElementById('register-password')?.value;
-                const name = document.getElementById('register-name')?.value;
-                if (email && password && name) {
-                    window.WhisperApp.auth.signUpWithEmail(email, password, name);
-                } else {
-                    showToast('Please fill all fields', 'error');
-                }
-            } else {
-                showToast('Auth system not ready yet', 'error');
-            }
-        };
-        
-        window.signInWithGoogle = function() {
-            if (window.WhisperApp && window.WhisperApp.auth && window.WhisperApp.auth.loginWithGoogle) {
-                window.WhisperApp.auth.loginWithGoogle();
-            } else {
-                showToast('Google auth not available', 'error');
-            }
-        };
-        
-        window.signInWithFacebook = function() {
-            if (window.WhisperApp && window.WhisperApp.auth && window.WhisperApp.auth.loginWithFacebook) {
-                window.WhisperApp.auth.loginWithFacebook();
-            } else {
-                showToast('Facebook auth not available', 'error');
-            }
-        };
-        
-        window.logout = function() {
-            if (window.WhisperApp && window.WhisperApp.auth && window.WhisperApp.auth.logout) {
-                window.WhisperApp.auth.logout();
-            } else {
-                showToast('Logout not available', 'error');
-            }
-        };
-        
-        // Global toast function
-        window.showToast = function(message, type = 'info') {
-            const container = document.getElementById('toast-container');
-            if (!container) return;
-            
-            const toast = document.createElement('div');
-            toast.className = `toast toast-${type}`;
-            toast.textContent = message;
-            toast.style.cssText = 'position: fixed; top: 20px; right: 20px; background: ' + 
-                (type === 'success' ? '#4CAF50' : type === 'error' ? '#f44336' : '#2196F3') + 
-                '; color: white; padding: 12px 24px; border-radius: 4px; z-index: 10000;';
-            
-            container.appendChild(toast);
-            setTimeout(() => toast.remove(), 3000);
-        };
-        
-        // Modal helper
-        window.closeModal = function() {
-            const modal = document.querySelector('.modal');
-            if (modal) modal.remove();
-        };
-    </script>
 </body>
 </html>
