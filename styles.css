@@ -80,6 +80,8 @@ body {
     padding: 20px;
     box-shadow: 0 5px 15px rgba(0,0,0,0.1);
     transition: transform 0.3s;
+    display: flex;
+    flex-direction: column;
 }
 
 .profile-card:hover {
@@ -99,12 +101,14 @@ body {
     border-radius: 50%;
     object-fit: cover;
     margin-right: 15px;
+    border: 3px solid #667eea;
 }
 
 .profile-info h3 {
     margin: 0;
     color: #333;
     font-size: 1.2rem;
+    font-weight: 600;
 }
 
 .status-dot {
@@ -124,12 +128,50 @@ body {
 }
 
 .call-price {
-    background: #4CAF50;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
-    padding: 3px 10px;
+    padding: 3px 12px;
     border-radius: 15px;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    display: inline-block;
     margin-top: 5px;
+}
+
+/* Social Links */
+.social-links {
+    display: flex;
+    gap: 12px;
+    margin: 10px 0;
+    flex-wrap: wrap;
+}
+
+.social-link {
+    color: white;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: opacity 0.3s;
+}
+
+.social-link:hover {
+    opacity: 0.8;
+}
+
+.social-twitter {
+    background: #1DA1F2;
+}
+
+.social-instagram {
+    background: linear-gradient(45deg, #405DE6, #5851DB, #833AB4, #C13584, #E1306C, #FD1D1D);
+}
+
+.social-website {
+    background: #667eea;
 }
 
 /* Buttons */
@@ -144,6 +186,7 @@ body {
     align-items: center;
     justify-content: center;
     gap: 8px;
+    font-size: 14px;
 }
 
 .btn-primary {
@@ -171,9 +214,14 @@ body {
     font-size: 0.9rem;
 }
 
-.btn:hover {
+.btn:hover:not(:disabled) {
     transform: translateY(-2px);
     box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 /* Call Interface */
@@ -238,6 +286,7 @@ body {
     justify-content: center;
     align-items: center;
     z-index: 10000;
+    backdrop-filter: blur(5px);
 }
 
 .modal-content {
@@ -248,6 +297,8 @@ body {
     width: 90%;
     position: relative;
     box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    max-height: 90vh;
+    overflow-y: auto;
 }
 
 .modal-close {
@@ -257,6 +308,70 @@ body {
     font-size: 1.5rem;
     cursor: pointer;
     color: #666;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: background 0.3s;
+}
+
+.modal-close:hover {
+    background: #f5f5f5;
+}
+
+/* Profile Edit Form */
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: #333;
+}
+
+.form-group input,
+.form-group textarea,
+.form-group select {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 14px;
+    transition: border 0.3s;
+}
+
+.form-group input:focus,
+.form-group textarea:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+}
+
+/* Upload Preview */
+.upload-preview {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid #667eea;
+    cursor: pointer;
+    transition: transform 0.3s;
+}
+
+.upload-preview:hover {
+    transform: scale(1.05);
+}
+
+.upload-hint {
+    color: #666;
+    font-size: 0.9rem;
+    margin-top: 8px;
+    text-align: center;
 }
 
 /* Admin Dashboard */
@@ -272,6 +387,7 @@ body {
     width: 100%;
     border-collapse: collapse;
     margin-top: 20px;
+    font-size: 0.9rem;
 }
 
 .data-table th,
@@ -284,6 +400,11 @@ body {
 .data-table th {
     background: #f5f5f5;
     font-weight: 600;
+    color: #333;
+}
+
+.data-table tr:hover {
+    background: #f9f9f9;
 }
 
 /* Responsive */
@@ -291,6 +412,7 @@ body {
     .profiles-grid {
         grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
         padding: 10px;
+        gap: 15px;
     }
     
     .iphone {
@@ -300,6 +422,15 @@ body {
     
     .screen {
         padding: 15px;
+    }
+    
+    .profile-card {
+        padding: 15px;
+    }
+    
+    .modal-content {
+        padding: 20px;
+        margin: 10px;
     }
 }
 
@@ -329,6 +460,9 @@ body {
     border-radius: 20px;
     color: white;
     font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 5px;
 }
 
 /* Toast */
@@ -337,16 +471,20 @@ body {
     top: 20px;
     right: 20px;
     z-index: 10000;
+    max-width: 300px;
 }
 
 .toast {
     background: #333;
     color: white;
-    padding: 15px 25px;
+    padding: 15px 20px;
     border-radius: 10px;
     margin-top: 10px;
     box-shadow: 0 5px 15px rgba(0,0,0,0.2);
     animation: slideInRight 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
 .toast-success {
@@ -372,42 +510,56 @@ body {
     }
 }
 
-/* Carousel */
-.carousel {
-    position: relative;
-    overflow: hidden;
+/* Profile Bio */
+.profile-bio {
+    color: #666;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    margin: 10px 0;
+    flex: 1;
 }
 
-.carousel-track {
+/* Action Buttons */
+.action-buttons {
     display: flex;
-    transition: transform 0.3s ease;
+    gap: 10px;
+    margin-top: 15px;
 }
 
-.carousel-item {
-    flex: 0 0 100%;
+/* Auth Modal Fix */
+.auth-modal {
+    max-width: 400px;
 }
 
-.carousel-btn {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-    background: rgba(255,255,255,0.8);
-    border: none;
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    cursor: pointer;
+.auth-modal input {
+    margin-bottom: 15px;
+}
+
+/* Form Actions */
+.form-actions {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.5rem;
-    z-index: 10;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 1px solid #eee;
 }
 
-.carousel-btn.prev {
-    left: 10px;
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+    width: 8px;
 }
 
-.carousel-btn.next {
-    right: 10px;
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #667eea;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #764ba2;
 }

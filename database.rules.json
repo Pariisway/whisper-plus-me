@@ -6,16 +6,16 @@
     "users": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
-        ".write": false,
+        ".write": "auth != null && auth.uid === $uid",
         
         "coins": {
           ".read": "auth != null && auth.uid === $uid",
-          ".write": false
+          ".write": "false"  // Can only be changed via Cloud Functions
         },
         
         "isAdmin": {
           ".read": "auth != null && auth.uid === $uid",
-          ".write": false
+          ".write": "false"  // Can only be set by existing admins
         }
       }
     },
@@ -23,9 +23,26 @@
     "publicProfiles": {
       "$uid": {
         ".read": true,
-        ".write": "auth != null && auth.uid === $uid"
+        ".write": "auth != null && auth.uid === $uid",
+        
+        // Individual field validation
+        "displayName": {
+          ".validate": "newData.isString() && newData.val().length >= 2 && newData.val().length <= 50"
+        },
+        "isAvailable": {
+          ".validate": "newData.isBoolean()"
+        },
+        "callPrice": {
+          ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 10"
+        },
+        "profilePhoto": {
+          ".validate": "newData.isString() && newData.val().matches('^https?://')"
+        },
+        "socialLinks": {
+          ".validate": "newData.hasChildren(['twitter', 'instagram', 'website'])"
+        }
       },
-      ".indexOn": ["isAvailable", "profileId"]
+      ".indexOn": ["isAvailable", "callPrice", "createdAt"]
     },
     
     "calls": {
@@ -35,14 +52,25 @@
           auth.uid === data.child('whisperId').val() ||
           root.child('users/'+auth.uid+'/isAdmin').val() === true
         )",
-        ".write": false
+        ".write": "false", // Can only be written by Cloud Functions
+        
+        // Fields that can be updated by users during call
+        "lastHeartbeatCaller": {
+          ".write": "auth != null && auth.uid === data.child('callerId').val()"
+        },
+        "lastHeartbeatWhisper": {
+          ".write": "auth != null && auth.uid === data.child('whisperId').val()"
+        }
       }
     },
     
     "reviews": {
       "$callId": {
         ".read": "auth != null && root.child('users/'+auth.uid+'/isAdmin').val() === true",
-        ".write": "auth != null"
+        ".write": "auth != null && (
+          auth.uid === data.child('reviewerId').val() ||
+          root.child('users/'+auth.uid+'/isAdmin').val() === true
+        )"
       }
     },
     
@@ -65,7 +93,7 @@
     "abuseStats": {
       "$uid": {
         ".read": "auth != null && root.child('users/'+auth.uid+'/isAdmin').val() === true",
-        ".write": false
+        ".write": "false" // Can only be written by Cloud Functions
       }
     },
     
@@ -76,14 +104,13 @@
       }
     },
     
-    "heartbeats": {
-      "$callId": {
+    "transactions": {
+      "$txId": {
         ".read": "auth != null && (
-          auth.uid === data.child('callerId').val() ||
-          auth.uid === data.child('whisperId').val() ||
+          auth.uid === data.child('userId').val() ||
           root.child('users/'+auth.uid+'/isAdmin').val() === true
         )",
-        ".write": "auth != null"
+        ".write": "false" // Can only be written by Cloud Functions
       }
     }
   }

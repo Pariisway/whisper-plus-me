@@ -1,4 +1,4 @@
-// Agora RTC - Secure token-based implementation
+// Agora RTC - Fixed UID consistency
 console.log('🎙️ Agora SDK loaded on demand');
 
 // Global function to load Agora SDK
@@ -16,40 +16,31 @@ window.loadAgoraSDK = function() {
     });
 };
 
-// Secure Agora manager
+// Fixed Agora manager with consistent UID
 window.AgoraManager = {
     client: null,
     localTrack: null,
     currentCallId: null,
     heartbeatInterval: null,
     
-    async getToken(channelName) {
-        try {
-            const getTokenFn = window.firebase.functions().httpsCallable('getAgoraToken');
-            const result = await getTokenFn({ channel: channelName });
-            return result.data.token;
-        } catch (error) {
-            console.error('Token error:', error);
-            throw error;
-        }
-    },
-    
-    async joinChannel(channelName) {
+    async joinChannel(channelName, uid, token) {
         try {
             await this.leaveChannel(); // Clean up any existing session
             
             const AgoraRTC = await loadAgoraSDK();
-            const token = await this.getToken(channelName);
             
             this.client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
             
-            // Join with UID from Firebase auth
-            const uid = window.firebase.auth().currentUser?.uid || Math.floor(Math.random() * 100000);
+            // FIXED: Use provided UID (Firebase UID converted to number for Agora)
+            const agoraUid = this.convertToNumericUid(uid);
+            
+            console.log('🎯 Joining Agora channel:', { channelName, uid, agoraUid });
+            
             await this.client.join(
                 "966c8e41da614722a88d4372c3d95dba", // App ID
                 channelName,
                 token,
-                uid
+                agoraUid
             );
             
             // Create and publish audio track
@@ -58,14 +49,25 @@ window.AgoraManager = {
             
             this.currentCallId = channelName;
             
-            // Start heartbeat for crash detection
-            this.startHeartbeat(channelName);
+            console.log('✅ Successfully joined Agora channel');
             
             return { client: this.client, track: this.localTrack };
         } catch (error) {
             console.error('Join channel error:', error);
             throw error;
         }
+    },
+    
+    // Convert Firebase UID string to numeric UID for Agora
+    convertToNumericUid(uid) {
+        // Simple hash function to convert string to number
+        let hash = 0;
+        for (let i = 0; i < uid.length; i++) {
+            const char = uid.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32bit integer
+        }
+        return Math.abs(hash);
     },
     
     async leaveChannel() {
@@ -81,23 +83,7 @@ window.AgoraManager = {
         }
         
         this.currentCallId = null;
-        this.stopHeartbeat();
-    },
-    
-    startHeartbeat(callId) {
-        this.heartbeatInterval = setInterval(() => {
-            const userId = window.firebase.auth().currentUser?.uid;
-            if (userId && callId && window.firebase?.database) {
-                // Determine if user is caller or whisper
-                const isCaller = window.whisperAppInstance?.currentCall?.callerId === userId;
-                const field = isCaller ? 'lastHeartbeatCaller' : 'lastHeartbeatWhisper';
-                
-                window.firebase.database().ref(`calls/${callId}/${field}`).set(Date.now());
-            }
-        }, 5000);
-    },
-    
-    stopHeartbeat() {
+        
         if (this.heartbeatInterval) {
             clearInterval(this.heartbeatInterval);
             this.heartbeatInterval = null;
