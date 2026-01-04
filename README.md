@@ -1,64 +1,24 @@
 # Whisper+me - Live Anonymous Audio Chat
 
-**Live Production Site: https://pariisway.github.io/whisper-plus-me/**
+## Setup Instructions
 
-## 🎯 Launch Checklist
-- [x] Firebase setup complete
-- [x] GitHub Pages configured
-- [x] Basic UI working
-- [x] Authentication working
-- [ ] Agora integration (TODO)
-- [ ] Stripe payment processing (TODO)
-- [ ] User profiles & ratings
-- [ ] Real-time calling system
+### 1. Firebase Setup
+1. Create a Firebase project at [firebase.google.com](https://firebase.google.com)
+2. Enable Authentication (Email/Password)
+3. Enable Realtime Database
+4. Enable Cloud Functions
+5. Add your web app to Firebase and get your configuration
 
-## 📱 Features Ready
-- ✅ Firebase Authentication (Google/Facebook/Email)
-- ✅ Responsive UI
-- ✅ User profiles display
-- ✅ Call interface
-- ✅ Coin system
-- ✅ Loading states & error handling
+### 2. Agora Setup
+1. Sign up at [agora.io](https://agora.io)
+2. Create a new project and get:
+   - App ID
+   - App Certificate (for token generation)
+3. Update the Cloud Functions with your Agora credentials
 
-## 🔧 Setup Required
+### 3. Deploy Cloud Functions
+```bash
+cd functions
+npm install
+firebase deploy --only functions
 
-### 1. Agora Setup
-1. Sign up at https://www.agora.io/
-2. Create a new project
-3. Get App ID
-4. Replace in app.js: `agoraAppId: 'YOUR_APP_ID'`
-
-### 2. Stripe Setup
-1. Sign up at https://stripe.com/
-2. Get publishable key
-3. Replace in app.js: `stripePublicKey: 'pk_live_...'`
-
-### 3. Firebase OAuth Setup
-1. Go to Firebase Console → Authentication → Sign-in method
-2. Enable Google, Facebook, Email/Password
-3. Add authorized domain: `pariisway.github.io`
-
-## 🚀 Quick Start
-1. Visit: https://pariisway.github.io/whisper-plus-me/
-2. Sign in with Google/Facebook
-3. Browse profiles
-4. Make test calls
-
-## 📞 Getting Test Users
-1. Share with 5-10 friends first
-2. Ask them to sign up and create profiles
-3. Make first calls between friends
-4. Fix any issues found
-5. Then share publicly
-
-## 🎯 First Month Goal
-- 25 active users
-- 10 calls per day average
-- $500+ in transactions
-- 4.5+ average rating
-
-## 📧 Support
-For issues or questions, contact: support@whisperplus.me
-
----
-*Built with ❤️ for anonymous connections*

@@ -2,61 +2,18 @@
   "rules": {
     ".read": false,
     ".write": false,
-    
     "users": {
       "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null && auth.uid === $uid",
-        
-        "coins": {
-          ".read": "auth != null && auth.uid === $uid",
-          ".write": "auth != null && auth.uid === $uid"
-        },
-        
-        "isAdmin": {
-          ".read": "auth != null && auth.uid === $uid",
-          ".write": "false"
-        }
+        ".read": "auth != null && auth.uid == $uid",
+        ".write": "auth != null && auth.uid == $uid",
+        ".indexOn": ["availability", "isListener", "lastActive"]
       }
     },
-    
-    "publicProfiles": {
-      ".read": true,
-      "$uid": {
-        ".write": "auth != null && auth.uid === $uid"
-      },
-      ".indexOn": ["isAvailable", "whisperId"]
-    },
-    
     "calls": {
       "$callId": {
-        ".read": "auth != null && (
-          auth.uid === data.child('callerId').val() ||
-          auth.uid === data.child('whisperId').val() ||
-          root.child('users/'+auth.uid+'/isAdmin').val() === true
-        )",
-        ".write": "false"
+        ".read": "auth != null",
+        ".write": "auth != null"
       }
-    },
-    
-    "payouts": {
-      ".read": "auth != null && root.child('users/'+auth.uid+'/isAdmin').val() === true",
-      ".write": "auth != null && root.child('users/'+auth.uid+'/isAdmin').val() === true"
-    },
-    
-    "callDisputes": {
-      ".read": "auth != null && root.child('users/'+auth.uid+'/isAdmin').val() === true",
-      ".write": "auth != null && root.child('users/'+auth.uid+'/isAdmin').val() === true"
-    },
-    
-    "adminActions": {
-      ".read": "auth != null && root.child('users/'+auth.uid+'/isAdmin').val() === true",
-      ".write": "auth != null && root.child('users/'+auth.uid+'/isAdmin').val() === true"
-    },
-    
-    "reviews": {
-      ".read": "auth != null && root.child('users/'+auth.uid+'/isAdmin').val() === true",
-      ".write": "auth != null"
     }
   }
 }
