@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whisper+me - Live Anonymous Audio Chat</title>
+    
+    <!-- Google Adsense -->
+    <meta name="google-adsense-account" content="ca-pub-1184595877548269">
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1184595877548269" crossorigin="anonymous"></script>
+    
+    <!-- Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-4QYRJLTXTT"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-4QYRJLTXTT');
+    </script>
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Main CSS -->
+    <link rel="stylesheet" href="styles.css">
+    
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+    
+    <!-- Agora SDK -->
+    <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.19.2.js"></script>
+    
+    <script>
+        // Initialize Firebase immediately after SDK loads
+        document.addEventListener('DOMContentLoaded', function() {
+            if (!firebase.apps.length) {
+                const firebaseConfig = {
+                    apiKey: "AIzaSyALbIJSI2C-p6IyMtj_F0ZqGyN1i79jOd4",
+                    authDomain: "whisper-chat-live.firebaseapp.com",
+                    databaseURL: "https://whisper-chat-live-default-rtdb.firebaseio.com",
+                    projectId: "whisper-chat-live",
+                    storageBucket: "whisper-chat-live.appspot.com",
+                    messagingSenderId: "302894848452",
+                    appId: "1:302894848452:web:61a7ab21a269533c426c91"
+                };
+                firebase.initializeApp(firebaseConfig);
+                console.log('✅ Firebase initialized');
+                
+                // Enable auth persistence
+                firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+            }
+        });
+    </script>
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div class="loading-screen" id="loading-screen">
+        <div class="spinner"></div>
+        <p style="margin-top: 1rem; color: #7c3aed;">Loading Whisper+me...</p>
+    </div>
+
+    <!-- Header -->
+    <header>
+        <div class="header-content">
+            <div class="logo">
+                <i class="fas fa-comment-alt"></i>
+                <span>Whisper+me</span>
+            </div>
+            <div class="user-menu" id="user-menu">
+                <!-- Guest Menu -->
+                <div id="guest-menu">
+                    <button class="btn btn-primary" onclick="App.showAuthModal('login')">
+                        <i class="fas fa-sign-in-alt"></i> Login
+                    </button>
+                    <button class="btn btn-secondary" onclick="App.showAuthModal('signup')" style="margin-left: 0.5rem;">
+                        <i class="fas fa-user-plus"></i> Sign Up
+                    </button>
+                </div>
+                <!-- Logged In Menu -->
+                <div id="logged-in-menu" style="display: none;">
+                    <div class="coins-badge" onclick="App.showDashboard()">
+                        <i class="fas fa-coins"></i>
+                        <span id="coins-count">0</span>
+                    </div>
+                    <button class="btn btn-secondary" onclick="App.showDashboard()">
+                        <i class="fas fa-user"></i> Dashboard
+                    </button>
+                    <button class="btn btn-danger" onclick="App.logout()">
+                        <i class="fas fa-sign-out-alt"></i> Logout
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main>
+        <!-- iPhone Interface -->
+        <section class="iphone-container">
+            <div class="iphone-wrapper">
+                <div class="iphone-notch"></div>
+                <div class="iphone-screen">
+                    <div class="phone-status-bar">
+                        <span id="current-time">9:41 AM</span>
+                        <span>Whisper+me</span>
+                    </div>
+                    <div class="phone-content">
+                        <div class="shuffle-indicator" id="shuffle-indicator">
+                            <i class="fas fa-random"></i> SHUFFLE MODE
+                        </div>
+                        <div class="shuffle-profile" id="shuffle-profile">
+                            <img src="https://ui-avatars.com/api/?name=User&background=7c3aed&color=fff" alt="Profile" class="shuffle-profile-img" id="shuffle-img">
+                            <h3 class="shuffle-profile-name" id="shuffle-name">Loading...</h3>
+                            <div class="shuffle-profile-price" id="shuffle-price">1 Coin</div>
+                            <div class="whisper-id-display" id="shuffle-id">ID: 00000</div>
+                            <div class="availability-indicator" id="shuffle-availability">
+                                <span class="availability-dot"></span>
+                                <span>Available</span>
+                            </div>
+                            <p class="shuffle-profile-bio" id="shuffle-bio">Swipe to find whispers...</p>
+                        </div>
+                        <div class="phone-controls">
+                            <button class="phone-btn phone-btn-call" onclick="App.startCall()" id="shuffle-call-btn">
+                                <i class="fas fa-phone-alt"></i>
+                            </button>
+                            <button class="phone-btn" onclick="App.nextShuffleProfile()" style="background: #666; color: white;">
+                                <i class="fas fa-arrow-right"></i>
+                            </button>
+                        </div>
+                        <div class="shuffle-timer" id="shuffle-timer">
+                            Swipe to see next whisper
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Profiles Grid -->
+        <section class="profiles-section">
+            <h2 class="section-title">Available Whispers</h2>
+            <div class="profiles-grid" id="profiles-container">
+                <!-- Profiles loaded dynamically -->
+                <div class="loading-profiles">Loading profiles...</div>
+            </div>
+        </section>
+
+        <!-- Coins Purchase Section -->
+        <section class="coins-section">
+            <h2 class="section-title">Buy Whisper Coins</h2>
+            <p style="text-align: center; color: #888; margin-bottom: 1rem;">
+                1 Coin = $15 • Each call costs 1 coin • Whispers earn $12 per coin
+            </p>
+            <div class="coins-options">
+                <div class="coin-option selected" onclick="App.selectCoinOption(1)">
+                    <div class="coin-amount">1 Coin</div>
+                    <div class="coin-price">$15</div>
+                </div>
+                <div class="coin-option" onclick="App.selectCoinOption(3)">
+                    <div class="coin-amount">3 Coins</div>
+                    <div class="coin-price">$45</div>
+                </div>
+                <div class="coin-option" onclick="App.selectCoinOption(5)">
+                    <div class="coin-amount">5 Coins</div>
+                    <div class="coin-price">$75</div>
+                </div>
+            </div>
+            <button class="btn btn-primary" onclick="App.buyCoins()" style="width: 100%; padding: 1rem; font-size: 1.1rem;">
+                <i class="fas fa-shopping-cart"></i> Buy Coins Now
+            </button>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+        <div style="max-width: 1200px; margin: 0 auto;">
+            <div class="logo" style="justify-content: center; margin-bottom: 1rem;">
+                <i class="fas fa-comment-alt"></i>
+                <span>Whisper+me</span>
+            </div>
+            <p style="color: #666; font-size: 0.9rem;">
+                © 2024 Whisper+me. Live anonymous audio chat.
+            </p>
+            <button id="admin-login-btn" onclick="App.checkAdminAccess()" style="display: none; background: none; border: none; color: #ef4444; margin-top: 1rem; cursor: pointer; font-size: 0.8rem;">
+                Admin Login
+            </button>
+        </div>
+    </footer>
+
+    <!-- MODALS -->
+    <!-- Auth Modal -->
+    <div class="modal-overlay" id="auth-modal" style="display: none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="auth-modal-title">Login to Whisper+me</h3>
+                <button class="close-btn" onclick="App.closeModal('auth-modal')">×</button>
+            </div>
+            <div class="modal-body">
+                <!-- Login Form -->
+                <div class="auth-form active" id="login-form">
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="login-email" placeholder="your@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="login-password" placeholder="Your password">
+                    </div>
+                    <button class="btn btn-primary" onclick="App.login()" style="width: 100%; padding: 1rem;">
+                        <i class="fas fa-sign-in-alt"></i> Login
+                    </button>
+                </div>
+                
+                <!-- Signup Form -->
+                <div class="auth-form" id="signup-form">
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="signup-email" placeholder="your@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="signup-password" placeholder="At least 6 characters">
+                    </div>
+                    <div class="form-group">
+                        <label>Confirm Password</label>
+                        <input type="password" id="signup-confirm" placeholder="Confirm your password">
+                    </div>
+                    <button class="btn btn-primary" onclick="App.signup()" style="width: 100%; padding: 1rem;">
+                        <i class="fas fa-user-plus"></i> Create Account
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard Modal -->
+    <div class="modal-overlay" id="dashboard-modal" style="display: none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>My Dashboard</h3>
+                <button class="close-btn" onclick="App.closeModal('dashboard-modal')">×</button>
+            </div>
+            <div class="modal-body">
+                <!-- Simplified Dashboard Header -->
+                <div class="dashboard-simple-header">
+                    <img id="dash-profile-pic" src="" alt="Profile" class="dashboard-simple-pic">
+                    <div class="dashboard-simple-info">
+                        <div id="dash-email" class="dashboard-email"></div>
+                        <div id="dash-user-id" class="dashboard-user-id"></div>
+                    </div>
+                </div>
+                
+                <!-- Profile Management Buttons -->
+                <div class="profile-management-buttons">
+                    <button class="btn btn-secondary" onclick="App.updateDisplayName()" style="margin: 5px;">
+                        <i class="fas fa-user-edit"></i> Change Name
+                    </button>
+                    <button class="btn btn-secondary" onclick="App.updateEmail()" style="margin: 5px;">
+                        <i class="fas fa-envelope"></i> Change Email
+                    </button>
+                    <button class="btn btn-secondary" onclick="App.updatePassword()" style="margin: 5px;">
+                        <i class="fas fa-lock"></i> Change Password
+                    </button>
+                    <button class="btn btn-secondary" onclick="App.resetPassword()" style="margin: 5px;">
+                        <i class="fas fa-key"></i> Reset Password
+                    </button>
+                </div>
+                
+                <!-- Profile Edit Section -->
+                <h4 style="margin: 1.5rem 0 1rem;">Edit Profile</h4>
+                <div class="form-group">
+                    <label>Profile Bio (shown on your profile card)</label>
+                    <textarea id="profile-bio" placeholder="Tell people about yourself..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Social Media Links</label>
+                    <input type="text" id="profile-twitter" placeholder="Twitter URL (optional)" style="margin-bottom: 0.5rem;">
+                    <input type="text" id="profile-instagram" placeholder="Instagram URL (optional)" style="margin-bottom: 0.5rem;">
+                    <input type="text" id="profile-tiktok" placeholder="TikTok URL (optional)">
+                </div>
+                <div class="form-group">
+                    <label>Profile Photo URL</label>
+                    <input type="url" id="profile-photo" oninput="App.previewProfilePic()" placeholder="https://example.com/photo.jpg" 
+                           pattern="^https:\/\/.*\.(png|jpg|jpeg|webp)$" 
+                           title="Must be a secure (HTTPS) image URL ending with .png, .jpg, .jpeg, or .webp">
+                    <button type="button" class="upload-image-btn" onclick="App.uploadProfilePic()">
+                        <i class="fas fa-upload"></i> Upload Image from Device
+                    </button>
+                    <div class="profile-pic-preview-container">
+                        <img id="profile-pic-preview" src="" alt="Profile Preview">
+                    </div>
+                    <p style="color: #666; font-size: 0.8rem; margin-top: 0.5rem;">
+                        Upload to a service like Imgur and paste the link. Only HTTPS URLs with .png, .jpg, .jpeg, or .webp extensions allowed.
+                    </p>
+                </div>
+                <div class="form-group">
+                    <label>PayPal Email for Payouts</label>
+                    <input type="email" id="paypal-email" placeholder="your.paypal@email.com">
+                </div>
+                
+                <!-- Availability Toggle -->
+                <div style="margin: 1.5rem 0; display: flex; align-items: center; gap: 1rem;">
+                    <label style="color: #9ca3af; font-weight: 600;">Available for Calls:</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="availability-toggle" onchange="App.toggleAvailability()">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                
+                <button class="btn btn-primary" onclick="App.saveProfile()" style="width: 100%; padding: 1rem; margin-top: 1rem;">
+                    <i class="fas fa-save"></i> Save Profile
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Profile Modal -->
+    <div class="modal-overlay" id="profile-modal" style="display: none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Profile</h3>
+                <button class="close-btn" onclick="App.closeModal('profile-modal')">×</button>
+            </div>
+            <div class="modal-body">
+                <div style="text-align: center;">
+                    <img id="modal-profile-img" src="" alt="Profile" class="profile-modal-img">
+                    <h3 id="modal-profile-name" style="margin: 1rem 0 0.5rem;"></h3>
+                    <div class="shuffle-profile-price" id="modal-profile-price">1 Coin per call</div>
+                    <div class="whisper-id-display" id="modal-profile-id" style="margin: 0.5rem 0;"></div>
+                </div>
+                
+                <div class="modal-social-links" id="modal-social-links">
+                    <!-- Social links will be added here -->
+                </div>
+                
+                <p id="modal-profile-bio" style="color: #9ca3af; line-height: 1.6; margin: 1rem 0;"></p>
+                
+                <div class="action-buttons">
+                    <button class="btn btn-primary" onclick="App.startCallFromModal()" style="flex: 2;">
+                        <i class="fas fa-phone-alt"></i> Call Now (1 Coin)
+                    </button>
+                    <button class="btn btn-secondary" onclick="App.shareProfile()" style="flex: 1;">
+                        <i class="fas fa-share-alt"></i> Share
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rating Modal -->
+    <div class="modal-overlay" id="rating-modal" style="display: none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Rate Your Call</h3>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 1rem;">How was your call experience?</p>
+                <div style="display: flex; justify-content: center; gap: 0.5rem; margin-bottom: 1.5rem;" id="rating-stars">
+                    <i class="fas fa-star" onclick="App.setRating(1)" style="font-size: 2rem; color: #666; cursor: pointer;"></i>
+                    <i class="fas fa-star" onclick="App.setRating(2)" style="font-size: 2rem; color: #666; cursor: pointer;"></i>
+                    <i class="fas fa-star" onclick="App.setRating(3)" style="font-size: 2rem; color: #666; cursor: pointer;"></i>
+                    <i class="fas fa-star" onclick="App.setRating(4)" style="font-size: 2rem; color: #666; cursor: pointer;"></i>
+                    <i class="fas fa-star" onclick="App.setRating(5)" style="font-size: 2rem; color: #666; cursor: pointer;"></i>
+                </div>
+                <div class="form-group">
+                    <label>Feedback (sent to admin)</label>
+                    <textarea id="rating-comment" placeholder="Share your experience..."></textarea>
+                </div>
+                <button class="btn btn-primary" onclick="App.submitRating()" style="width: 100%; padding: 1rem;">
+                    Submit Rating
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Call Interface -->
+    <div class="iphone-container" id="call-interface" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000;">
+        <div class="iphone-wrapper">
+            <div class="iphone-notch"></div>
+            <div class="iphone-screen">
+                <div class="phone-status-bar">
+                    <span id="call-time">9:41 AM</span>
+                    <span>Live Call</span>
+                </div>
+                <div class="phone-content">
+                    <div class="call-status" id="call-status">Connecting...</div>
+                    <div class="call-timer" id="call-timer">00:00</div>
+                    <div class="call-price" id="call-price">Active: 1 Coin</div>
+                    <div class="phone-controls">
+                        <button class="phone-btn phone-btn-hangup" onclick="App.endCall()">
+                            <i class="fas fa-phone-slash"></i>
+                        </button>
+                    </div>
+                    <div class="mic-status" id="mic-status">
+                        <i class="fas fa-microphone"></i>
+                        <span>Microphone Active</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification -->
+    <div class="notification" id="notification"></div>
+
+    <!-- App Script -->
+    <script src="app.js"></script>
+</body>
+</html>

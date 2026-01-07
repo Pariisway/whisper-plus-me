@@ -1,0 +1,15 @@
+{
+  "production": {
+    "firebase": {
+      "project": "whisper-chat-live",
+      "site": "whisper-plus-me"
+    },
+    "agora": {
+      "appId": "966c8e41da614722a88d4372c3d95dba",
+      "certificate": "9113b7b993cb442882b983adbc0b950b"
+    },
+    "admin": {
+      "email": "ifanifwasafifth@gmail.com"
+    }
+  }
+}
