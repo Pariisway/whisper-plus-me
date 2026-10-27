@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>About Whisper+Me — Anonymous Voice Support, Open 24/7</title>
+  <meta name="description" content="Whisper+Me is a safe, anonymous voice space where anyone can speak freely and be heard without judgment. Learn about our mission, our safe spaces, and how we protect your privacy.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://whisperplusme.com/about.html">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <meta name="theme-color" content="#0b0e23">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Poppins:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+
+  <!-- Google Analytics 4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-3FZCXS1T84"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){ dataLayer.push(arguments); }
+    gtag('js', new Date());
+    gtag('config', 'G-3FZCXS1T84');
+    gtag('config', 'G-HJLVLCXVR9');
+  </script>
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1184595877548269" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: #080614;
+      color: #b8b8cc;
+      min-height: 100vh;
+      line-height: 1.75;
+    }
+    body::before {
+      content: '';
+      position: fixed; top: -200px; left: -200px;
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, rgba(123,47,247,0.18) 0%, transparent 70%);
+      pointer-events: none; z-index: 0;
+    }
+    body::after {
+      content: '';
+      position: fixed; bottom: -150px; right: -150px;
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, rgba(0,227,174,0.10) 0%, transparent 70%);
+      pointer-events: none; z-index: 0;
+    }
+
+    /* Header */
+    .site-header {
+      position: sticky; top: 0; z-index: 100;
+      text-align: center; padding: 16px 20px;
+      background: rgba(8,6,20,0.92);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid rgba(123,47,247,0.25);
+      font-family: 'Cinzel', serif;
+      font-size: 22px; font-weight: 800;
+      letter-spacing: 3px; text-transform: uppercase;
+    }
+    .site-header a { text-decoration: none; }
+    .hdr-word { color: #e6d6ff; text-shadow: 0 0 8px #7a00ff, 0 0 22px #7a00ff; }
+    .hdr-plus {
+      background: linear-gradient(90deg, #7b2ff7, #00e3ae);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text; margin: 0 1px;
+    }
+
+    .page-wrap {
+      position: relative; z-index: 1;
+      max-width: 860px; margin: 0 auto;
+      padding: 48px 24px 80px;
+    }
+
+    /* Back */
+    .back-btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      color: #00e3ae; text-decoration: none;
+      font-size: 14px; font-weight: 600;
+      margin-bottom: 40px; padding: 8px 18px;
+      border: 1px solid rgba(0,227,174,0.25);
+      border-radius: 50px; background: rgba(0,227,174,0.06);
+      transition: background 0.2s;
+    }
+    .back-btn:hover { background: rgba(0,227,174,0.12); }
+
+    /* Hero */
+    .about-hero { text-align: center; margin-bottom: 56px; }
+    .about-pill {
+      display: inline-block;
+      background: linear-gradient(90deg, rgba(123,47,247,0.25), rgba(0,227,174,0.12));
+      border: 1px solid rgba(123,47,247,0.4);
+      border-radius: 50px; padding: 5px 18px;
+      font-size: 11px; font-weight: 700;
+      color: #b08fff; letter-spacing: 1.5px;
+      text-transform: uppercase; margin-bottom: 20px;
+    }
+    .about-hero h1 {
+      font-size: clamp(32px, 6vw, 54px);
+      font-weight: 900; color: #fff;
+      line-height: 1.08; letter-spacing: -1px;
+      margin-bottom: 20px;
+    }
+    .about-hero h1 span {
+      background: linear-gradient(90deg, #7b2ff7, #00e3ae);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .about-hero p {
+      font-size: 18px; color: rgba(255,255,255,0.6);
+      max-width: 620px; margin: 0 auto;
+      line-height: 1.7;
+    }
+
+    /* Ad slot */
+    .ad-slot {
+      display: flex; justify-content: center;
+      margin: 32px 0; min-height: 90px;
+    }
+
+    /* Cards */
+    .card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 20px; padding: 32px 28px;
+      margin-bottom: 28px;
+    }
+    .card-icon { font-size: 36px; margin-bottom: 14px; }
+    .card h2 {
+      font-size: 22px; font-weight: 700;
+      color: #e0d8ff; margin-bottom: 12px;
+    }
+    .card p { font-size: 15px; color: #999; line-height: 1.8; }
+    .card p + p { margin-top: 12px; }
+
+    /* Rooms grid */
+    .rooms-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px; margin-top: 20px;
+    }
+    .room-tile {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px; padding: 18px 16px;
+      text-align: center;
+    }
+    .room-tile-purple {
+      background: rgba(123,47,247,0.1);
+      border-color: rgba(123,47,247,0.25);
+    }
+    .room-tile-teal {
+      background: rgba(0,227,174,0.08);
+      border-color: rgba(0,227,174,0.2);
+    }
+    .room-emoji { font-size: 28px; margin-bottom: 8px; }
+    .room-title { font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+    .room-desc  { font-size: 12px; color: #666; }
+
+    /* Stats row */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 14px; margin-top: 20px;
+    }
+    .stat-tile {
+      background: rgba(123,47,247,0.1);
+      border: 1px solid rgba(123,47,247,0.2);
+      border-radius: 14px; padding: 20px 16px;
+      text-align: center;
+    }
+    .stat-num  { font-size: 28px; font-weight: 900; color: #fff; }
+    .stat-label{ font-size: 12px; color: #888; margin-top: 4px; }
+
+    /* Values list */
+    .values-list { list-style: none; padding: 0; margin-top: 16px; }
+    .values-list li {
+      display: flex; align-items: flex-start; gap: 14px;
+      padding: 14px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      font-size: 15px; color: #999;
+    }
+    .values-list li:last-child { border-bottom: none; }
+    .values-list .val-icon {
+      width: 36px; height: 36px; flex-shrink: 0;
+      border-radius: 10px;
+      background: linear-gradient(135deg, rgba(123,47,247,0.3), rgba(0,227,174,0.15));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .values-list strong { color: #e0d8ff; display: block; margin-bottom: 2px; }
+
+    /* CTA */
+    .cta-block {
+      text-align: center; padding: 48px 24px;
+      background: linear-gradient(135deg, rgba(123,47,247,0.12), rgba(0,227,174,0.06));
+      border: 1px solid rgba(123,47,247,0.2);
+      border-radius: 24px; margin-top: 12px;
+    }
+    .cta-block h2 { font-size: 26px; font-weight: 800; color: #fff; margin-bottom: 12px; }
+    .cta-block p  { color: rgba(255,255,255,0.55); margin-bottom: 28px; font-size: 15px; }
+    .cta-btn {
+      display: inline-block; padding: 16px 44px;
+      background: linear-gradient(90deg, #7b2ff7, #00e3ae);
+      border: none; border-radius: 50px;
+      color: #fff; font-size: 16px; font-weight: 800;
+      cursor: pointer; text-decoration: none;
+      box-shadow: 0 8px 32px rgba(123,47,247,0.4);
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .cta-btn:hover { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(123,47,247,0.55); }
+
+    /* Footer */
+    .page-footer {
+      text-align: center; padding: 32px 0 0;
+      font-size: 12px; color: #333;
+    }
+    .page-footer a { color: #555; margin: 0 10px; text-decoration: none; }
+  </style>
+</head>
+<body>
+
+<header class="site-header">
+  <a href="/"><span class="hdr-word">Whisper</span><span class="hdr-plus">+</span><span class="hdr-word">Me</span></a>
+</header>
+
+<div class="page-wrap">
+
+  <a href="/" class="back-btn">← Back to Whisper+Me</a>
+
+  <!-- Hero -->
+  <div class="about-hero">
+    <div class="about-pill">Our Mission</div>
+    <h1>A safe space where<br><span>someone always listens.</span></h1>
+    <p>Whisper+Me was built for one reason: everyone deserves to be heard. No face. No name. No judgment. Just real human voices, real connection, and real support — available 24 hours a day, 7 days a week.</p>
+  </div>
+
+  <!-- AdSense — top of content -->
+  <div class="ad-slot">
+    <ins class="adsbygoogle"
+         style="display:block;width:100%;max-width:728px;height:90px;"
+         data-ad-client="ca-pub-1184595877548269"
+         data-ad-slot="about-leaderboard"
+         data-ad-format="horizontal"
+         data-full-width-responsive="true"></ins>
+  </div>
+  <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+
+  <!-- Our Story -->
+  <div class="card">
+    <div class="card-icon">💬</div>
+    <h2>Why We Built Whisper+Me</h2>
+    <p>The idea came from a simple, painful truth: millions of people go to bed every night with something heavy on their chest and no one safe to say it to. Text messages feel hollow. Video calls feel exposed. Therapy has a waiting list. Friends get tired.</p>
+    <p>Paris Wade, Whisper+Me's founder, experienced this firsthand. The solution wasn't another social network. It was something closer to the concept behind the film <em>The Listener</em> — a trained, caring stranger on the other end of a line, ready to hear you out without agenda, without judgment, without ever knowing your name.</p>
+    <p>Whisper+Me makes that real. Anyone can join. Anyone can listen. Anyone can be heard.</p>
+  </div>
+
+  <!-- How It Works -->
+  <div class="card">
+    <div class="card-icon">🎙️</div>
+    <h2>How It Works</h2>
+    <p>Whisper+Me is a live, anonymous voice platform. You join a room, speak when you're ready, and real people listen. There are no profiles that expose your identity, no video feeds, and no recordings. Just voice — the most human form of communication — protected by anonymity.</p>
+    <p>You can join a public support room to speak with a group, or connect one-on-one with another member. Every interaction happens through our secure, real-time audio infrastructure. When the call ends, it's gone. Nothing is stored. Nothing is tracked.</p>
+  </div>
+
+  <!-- Rooms -->
+  <div class="card">
+    <div class="card-icon">🏠</div>
+    <h2>Safe Spaces Available Right Now</h2>
+    <p>Our rooms are organized around emotional states and communities — not topics or interests. You don't have to explain yourself to enter. You just show up.</p>
+    <div class="rooms-grid">
+      <div class="room-tile">
+        <div class="room-emoji">🫂</div>
+        <div class="room-title">Vent &amp; Release</div>
+        <div class="room-desc">Let it all out without holding back</div>
+      </div>
+      <div class="room-tile">
+        <div class="room-emoji">🌿</div>
+        <div class="room-title">Anxiety &amp; Stress</div>
+        <div class="room-desc">You are not alone in this</div>
+      </div>
+      <div class="room-tile">
+        <div class="room-emoji">🌙</div>
+        <div class="room-title">Night Owls</div>
+        <div class="room-desc">For those awake when the world is quiet</div>
+      </div>
+      <div class="room-tile">
+        <div class="room-emoji">💔</div>
+        <div class="room-title">Grief &amp; Loss</div>
+        <div class="room-desc">Speak your truth, heal at your pace</div>
+      </div>
+      <div class="room-tile room-tile-purple">
+        <div class="room-emoji">🏳️‍🌈</div>
+        <div class="room-title">LGBTQ+ Safe Space</div>
+        <div class="room-desc">You belong here exactly as you are</div>
+      </div>
+      <div class="room-tile room-tile-teal">
+        <div class="room-emoji">🤝</div>
+        <div class="room-title">Real Connection</div>
+        <div class="room-desc">Meet genuine people who get it</div>
+      </div>
+      <div class="room-tile">
+        <div class="room-emoji">🧠</div>
+        <div class="room-title">Mental Health</div>
+        <div class="room-desc">No diagnosis needed — just honesty</div>
+      </div>
+      <div class="room-tile">
+        <div class="room-emoji">🌈</div>
+        <div class="room-title">Rainbow Youth</div>
+        <div class="room-desc">A safe space for LGBTQ+ young adults</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AdSense — mid content -->
+  <div class="ad-slot">
+    <ins class="adsbygoogle"
+         style="display:block;width:100%;max-width:728px;height:90px;"
+         data-ad-client="ca-pub-1184595877548269"
+         data-ad-slot="about-mid"
+         data-ad-format="horizontal"
+         data-full-width-responsive="true"></ins>
+  </div>
+  <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+
+  <!-- Our Values -->
+  <div class="card">
+    <div class="card-icon">🔒</div>
+    <h2>What We Stand For</h2>
+    <ul class="values-list">
+      <li>
+        <div class="val-icon">🔒</div>
+        <div><strong>Full Anonymity</strong>No real name, no face, no profile that can be traced back to you. Your privacy is non-negotiable.</div>
+      </li>
+      <li>
+        <div class="val-icon">🎙️</div>
+        <div><strong>Real Voices, Real People</strong>No bots, no AI companions, no scripts. Every voice you hear belongs to a real human being.</div>
+      </li>
+      <li>
+        <div class="val-icon">💙</div>
+        <div><strong>No Judgment, Ever</strong>We enforce a strict kindness standard. Harassment, hate speech, and cruelty result in immediate removal.</div>
+      </li>
+      <li>
+        <div class="val-icon">🌈</div>
+        <div><strong>Inclusive by Design</strong>Whisper+Me is explicitly built to be safe for LGBTQ+ members, people of color, and anyone who has felt unwelcome elsewhere.</div>
+      </li>
+      <li>
+        <div class="val-icon">📵</div>
+        <div><strong>No Recordings</strong>Calls are never recorded, stored, or reviewed. What you say stays between the people in the room.</div>
+      </li>
+      <li>
+        <div class="val-icon">⏰</div>
+        <div><strong>Always Open</strong>Emotional support doesn't follow business hours. Whisper+Me is live and staffed with real members 24 hours a day, 7 days a week.</div>
+      </li>
+    </ul>
+  </div>
+
+  <!-- Who It's For -->
+  <div class="card">
+    <div class="card-icon">🌍</div>
+    <h2>Who Whisper+Me Is For</h2>
+    <p>Whisper+Me is for anyone who has ever typed "I'm fine" when they weren't. For anyone who has something heavy to say and no safe place to say it. For people going through grief, anxiety, loneliness, relationship pain, identity struggles, or just a bad week.</p>
+    <p>It's for the person awake at 3am with a racing mind. For the teenager who can't talk to their parents. For the adult who feels like a burden to their friends. For anyone who has ever wished there was just someone — anyone — on the other end of the line.</p>
+    <p>You don't need to be in crisis to use Whisper+Me. You just need to feel like talking.</p>
+  </div>
+
+  <!-- Safety -->
+  <div class="card">
+    <div class="card-icon">🛡️</div>
+    <h2>Your Safety Is Our Priority</h2>
+    <p>Every room is moderated. Our community guidelines are enforced strictly and swiftly. Users can report and block anyone at any time with a single tap. Accounts that violate our safe space standards are removed immediately.</p>
+    <p>We do not collect more data than we need. We do not sell your data. We do not share your identity. Our infrastructure uses end-to-end encrypted voice channels and Firebase's industry-standard security. For full details, read our <a href="/privacy.html" style="color:#00e3ae;">Privacy Policy</a>.</p>
+  </div>
+
+  <!-- AdSense — bottom -->
+  <div class="ad-slot">
+    <ins class="adsbygoogle"
+         style="display:block;width:100%;max-width:728px;height:90px;"
+         data-ad-client="ca-pub-1184595877548269"
+         data-ad-slot="about-bottom"
+         data-ad-format="horizontal"
+         data-full-width-responsive="true"></ins>
+  </div>
+  <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+
+  <!-- CTA -->
+  <div class="cta-block">
+    <h2>Someone Is Always Here to Listen.</h2>
+    <p>Join thousands of people who have found their safe space on Whisper+Me.<br>Anonymous. Free. Open right now.</p>
+    <a href="/" class="cta-btn">Enter Your Safe Space →</a>
+  </div>
+
+  <div class="page-footer">
+    <a href="/terms.html">Terms of Service</a>
+    <a href="/privacy.html">Privacy Policy</a>
+    <a href="/about.html">About</a>
+    <span style="margin-left:10px;">© 2026 WhisperPlusMe</span>
+  </div>
+
+</div>
+</body>
+</html>

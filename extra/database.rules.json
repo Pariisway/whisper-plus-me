@@ -1,0 +1,192 @@
+{
+  "rules": {
+    "users": {
+      ".read": "auth != null",
+      ".indexOn": [
+        "online",
+        "lastSeen"
+      ],
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid && auth.token.firebase.sign_in_provider !== 'anonymous'"
+      }
+    },
+    "chat": {
+      "$room": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        ".indexOn": [
+          "ts"
+        ]
+      }
+    },
+    "liveMics": {
+      ".read": "auth != null",
+      ".write": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous'"
+    },
+    "memberRooms": {
+      ".read": "auth != null",
+      ".indexOn": [
+        "createdAt",
+        "ownerId"
+      ],
+      "$roomId": {
+        ".write": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous'",
+        ".validate": "newData.hasChildren(['name','cost','ownerId','ownerName','createdAt'])"
+      }
+    },
+    "memberRoomSessions": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "memberRoomCooldown": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    },
+    "memberRoomLedger": {
+      ".read": "auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
+      ".write": false
+    },
+    "siteRevenue": {
+      ".read": "auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
+      ".write": false
+    },
+    "calls": {
+      ".read": "auth != null",
+      ".indexOn": [
+        "from",
+        "to"
+      ],
+      "$callId": {
+        ".write": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && (newData.child('from').val() === auth.uid || newData.child('to').val() === auth.uid || data.child('from').val() === auth.uid || data.child('to').val() === auth.uid)"
+      }
+    },
+    "callLedger": {
+      ".read": "auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
+      ".write": false
+    },
+    "coinPurchases": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    },
+    "liveMicLog": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    },
+    "fcmTokens": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "memberRoomEarnings": {
+      ".read": "auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
+      ".write": false
+    },
+    "presetRooms": {
+      ".read": "auth != null",
+      ".write": "auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'"
+    },
+    "roomModerators": {
+      ".read": "auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
+      ".write": "auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'"
+    },
+    "stripeConnectAccounts": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    },
+    "spirits": {
+      ".read": "auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null"
+      }
+    },
+    "spiritPending": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "presence": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChildren(['room','isAnonymous','ts'])"
+      }
+    },
+    "orgCodes": {
+      ".read": "auth != null",
+      "$code": {
+        ".write": "auth != null"
+      }
+    },
+    "spiritFeed": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      ".indexOn": [
+        "createdAt",
+        "uid"
+      ]
+    },
+    "config": {
+      ".read": "auth != null",
+      ".write": "auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'"
+    },
+    "spiritCallHistory": {
+      ".read": "auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
+        ".indexOn": [
+          "createdAt"
+        ]
+      }
+    },
+    "spiritWorkers": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && (auth.uid === $uid || auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2')"
+      }
+    },
+    "organizations": {
+      ".read": "auth != null",
+      ".write": "auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'"
+    },
+    "spiritCalls": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      ".indexOn": [
+        "workerId",
+        "callerId",
+        "status"
+      ]
+    },
+    "spiritAdminResources": {
+      ".read": "auth != null",
+      ".write": "auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
+      ".indexOn": [
+        "active"
+      ]
+    },
+    "spiritSurveys": {
+      ".read": "auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
+      "$callId": {
+        ".write": "auth != null"
+      }
+    },
+    "orgUsers": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'"
+      }
+    }
+  }
+}

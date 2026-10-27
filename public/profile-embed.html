@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Whisper+Me — Profile</title>
+<meta name="robots" content="noindex, nofollow">
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #0b0e23;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    overflow: hidden;
+  }
+  #wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100vh;
+    border: 1px solid rgba(123,47,247,0.25);
+    border-radius: 14px;
+    overflow: hidden;
+    background: linear-gradient(180deg, #14102b, #0b0e23);
+    padding: 20px 18px 16px;
+    text-align: center;
+  }
+  #brand {
+    font-size: 11px; font-weight: 800; color: #a993d9;
+    letter-spacing: 0.4px; margin-bottom: 14px;
+  }
+  #brand .plus {
+    background: linear-gradient(90deg,#7b2ff7,#00e3ae);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+  #avatar {
+    width: 84px; height: 84px; border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid rgba(123,47,247,0.5);
+    box-shadow: 0 0 24px rgba(123,47,247,0.35);
+    margin-bottom: 12px;
+    background: #1a1030;
+  }
+  #name {
+    font-size: 18px; font-weight: 800; color: #fff;
+    margin-bottom: 6px;
+  }
+  #bio {
+    font-size: 12.5px; color: #b6acd9; line-height: 1.5;
+    max-width: 280px; margin-bottom: 16px;
+    font-style: italic;
+  }
+  #priceTag {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; font-weight: 700; color: #8be8cf;
+    background: rgba(0,227,174,0.12);
+    border: 1px solid rgba(0,227,174,0.35);
+    border-radius: 12px; padding: 4px 12px;
+    margin-bottom: 18px;
+  }
+  #callBtn {
+    display: block; width: 100%; max-width: 260px;
+    padding: 13px; border: none; border-radius: 20px;
+    background: linear-gradient(90deg,#7b2ff7,#00e3ae);
+    color: #fff; font-size: 14px; font-weight: 800;
+    cursor: pointer; text-decoration: none;
+  }
+  #footerLink {
+    margin-top: auto;
+    font-size: 10.5px; color: #665f85; text-decoration: none;
+    border-bottom: 1px solid rgba(102,95,133,0.4);
+    padding-top: 14px;
+  }
+  #loading { color: #888; font-size: 13px; margin: auto; }
+</style>
+</head>
+<body>
+
+<div id="wrap">
+  <div id="brand">Whisper<span class="plus">+</span>Me</div>
+  <div id="loading">Loading profile…</div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+<script src="firebase.js"></script>
+
+<script>
+(function(){
+  var params = new URLSearchParams(window.location.search);
+  var uid = (params.get("uid") || "").replace(/[^a-zA-Z0-9_-]/g, "");
+
+  function sanitize(str){
+    return String(str||"")
+      .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+      .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+
+  function showError(msg){
+    document.getElementById("loading").textContent = msg;
+  }
+
+  function render(user){
+    var wrap = document.getElementById("wrap");
+    var name  = user.name  || "A Whisper+Me creator";
+    var bio   = user.bio   || "";
+    var price = user.price || 1;
+    var photo = user.photo || "";
+    var callUrl = "https://whisperplusme.com/?user=" + encodeURIComponent(uid);
+
+    var html = "<div id='brand'>Whisper<span class='plus'>+</span>Me</div>";
+    if(photo){
+      html += "<img id='avatar' src='" + sanitize(photo) + "' alt=''>";
+    } else {
+      html += "<div id='avatar' style='display:flex;align-items:center;justify-content:center;font-size:32px;color:#7b2ff7;'>🎤</div>";
+    }
+    html += "<div id='name'>" + sanitize(name) + "</div>";
+    if(bio) html += "<div id='bio'>\u201C" + sanitize(bio.slice(0,90)) + (bio.length > 90 ? "\u2026" : "") + "\u201D</div>";
+    html += "<div id='priceTag'>\ud83c\udfa4 " + price + " coin" + (price === 1 ? "" : "s") + " ($" + (price*3) + ") per call</div>";
+    html += "<a id='callBtn' href='" + callUrl + "' target='_blank' rel='noopener'>\ud83d\udcde Call Me on Whisper+Me</a>";
+    html += "<a id='footerLink' href='https://whisperplusme.com/' target='_blank' rel='noopener'>Powered by Whisper+Me</a>";
+    wrap.innerHTML = html;
+  }
+
+  if(!uid){
+    showError("No profile specified.");
+    return;
+  }
+
+  firebase.auth().onAuthStateChanged(function(authUser){
+    if(!authUser){
+      firebase.auth().signInAnonymously().catch(function(){
+        showError("Couldn't connect \u2014 refresh to try again.");
+      });
+      return;
+    }
+    firebase.database().ref("users/" + uid).once("value").then(function(snap){
+      var user = snap.val();
+      if(!user){ showError("Profile not found."); return; }
+      render(user);
+    }).catch(function(){
+      showError("Couldn't load this profile.");
+    });
+  });
+})();
+</script>
+
+</body>
+</html>

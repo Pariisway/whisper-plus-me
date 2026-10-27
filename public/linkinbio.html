@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Whisper+Me — Join a Live Room</title>
+<meta name="description" content="Free anonymous voice chat. Real people, real conversations. Tap a room and start talking — no sign-up required.">
+<meta property="og:title" content="Whisper+Me — Join a Live Room">
+<meta property="og:description" content="Free anonymous voice chat. Real people, real conversations.">
+<meta property="og:image" content="https://whisperplusme.com/og-image.png?v=4">
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0;
+    min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: #fff;
+  }
+
+  /* ── Background photo, fixed + darkened so text stays legible ── */
+  #bgPhoto {
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(180deg, rgba(9,8,20,0.55) 0%, rgba(9,8,20,0.82) 45%, rgba(6,5,16,0.97) 100%),
+      url('crowd-bg.jpg');
+    background-size: cover;
+    background-position: center 30%;
+    background-repeat: no-repeat;
+    z-index: -1;
+  }
+
+  #page {
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 44px 18px 56px;
+    position: relative;
+  }
+
+  /* ── Brand — big, leading with light like the room itself ── */
+  #brand { text-align: center; margin-bottom: 8px; animation: riseIn 0.6s ease both; }
+  #brand .word {
+    font-size: 44px;
+    font-weight: 800;
+    letter-spacing: 0.2px;
+    text-shadow: 0 0 30px rgba(123,47,247,0.5), 0 2px 12px rgba(0,0,0,0.6);
+  }
+  #brand .plus {
+    background: linear-gradient(90deg,#c084fc,#00e3ae);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+  #tagline {
+    text-align: center;
+    font-size: 17px;
+    font-weight: 500;
+    color: #e4dcfa;
+    line-height: 1.55;
+    max-width: 380px;
+    margin: 14px auto 30px;
+    text-shadow: 0 2px 10px rgba(0,0,0,0.7);
+    animation: riseIn 0.6s ease 0.08s both;
+  }
+
+  @keyframes riseIn { from { opacity:0; transform: translateY(10px); } to { opacity:1; transform: translateY(0); } }
+  @keyframes cardIn  { from { opacity:0; transform: translateY(14px) scale(0.97); } to { opacity:1; transform: translateY(0) scale(1); } }
+  @keyframes pulse    { 0%,100%{opacity:1;} 50%{opacity:.25;} }
+  @keyframes glowPulse { 0%,100% { box-shadow: 0 0 0 1px rgba(255,92,92,0.5), 0 0 22px rgba(255,92,92,0.25); } 50% { box-shadow: 0 0 0 1px rgba(255,92,92,0.8), 0 0 34px rgba(255,92,92,0.45); } }
+
+  /* ── Hero (whichever room is actually live right now) ── */
+  #hero {
+    position: relative;
+    border-radius: 22px;
+    padding: 22px 20px 20px;
+    margin-bottom: 26px;
+    background: linear-gradient(155deg, rgba(123,47,247,0.30), rgba(0,227,174,0.14));
+    border: 1px solid rgba(123,47,247,0.5);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    overflow: hidden;
+    cursor: pointer;
+    display: none;
+    animation: riseIn 0.6s ease 0.15s both;
+  }
+  #hero.is-live { animation: riseIn 0.6s ease 0.15s both, glowPulse 2.2s ease-in-out infinite; }
+  #heroBadge {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 10.5px; font-weight: 800; letter-spacing: 0.5px;
+    color: #ff8080; background: rgba(255,92,92,0.16);
+    border: 1px solid rgba(255,92,92,0.45);
+    border-radius: 10px; padding: 3px 9px; margin-bottom: 12px;
+  }
+  #heroBadge.idle { color: #8be8cf; background: rgba(0,227,174,0.14); border-color: rgba(0,227,174,0.45); }
+  .live-dot { width: 6px; height: 6px; border-radius: 50%; background: #ff5c5c; animation: pulse 1.3s infinite; flex-shrink: 0; }
+  #heroBadge.idle .live-dot { background: #00e3ae; animation: none; }
+
+  #heroLabel { font-size: 22px; font-weight: 800; margin-bottom: 4px; position: relative; }
+  #heroSub   { font-size: 13.5px; color: #e2d9f7; margin-bottom: 16px; position: relative; line-height: 1.5; }
+  #heroBtn {
+    display: block; width: 100%; padding: 15px;
+    border: none; border-radius: 16px;
+    background: linear-gradient(90deg,#7b2ff7,#00e3ae);
+    color: #fff; font-size: 15px; font-weight: 800;
+    cursor: pointer; position: relative;
+  }
+
+  /* ── Room grid ── solid, opaque cards matching the real app's
+       .room-card treatment exactly, just larger for a landing page ── */
+  .group-label {
+    font-size: 11px; font-weight: 800; letter-spacing: 0.9px; text-transform: uppercase;
+    color: #b6acd9; margin: 22px 4px 10px;
+    text-shadow: 0 1px 6px rgba(0,0,0,0.6);
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  @media (min-width: 640px) {
+    .grid { grid-template-columns: repeat(4, 1fr); }
+  }
+  .room-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 88px;
+    padding: 14px 16px;
+    /* Solid, opaque background — no transparency, so the photo behind
+       never bleeds through and text stays sharp */
+    background: linear-gradient(135deg, #241a44 0%, #16112b 100%);
+    border: 1px solid rgba(123,47,247,0.45);
+    border-radius: 14px;
+    box-shadow: 0 3px 12px rgba(0,0,0,0.5),
+                inset 0 1px 0 rgba(255,255,255,0.05);
+    cursor: pointer;
+    opacity: 0;
+    animation: cardIn 0.5s ease both;
+    transition: border-color 0.18s, transform 0.12s, box-shadow 0.18s;
+  }
+  .room-card:active { transform: scale(0.96); }
+  .room-card.live {
+    border-color: rgba(0,227,174,0.75) !important;
+    box-shadow: 0 0 0 1px rgba(0,227,174,0.5), 0 0 22px rgba(0,227,174,0.25),
+                inset 0 1px 0 rgba(255,255,255,0.06);
+    animation: cardIn 0.5s ease both, liveCardGlow 2.4s ease-in-out infinite;
+  }
+  @keyframes liveCardGlow {
+    0%,100% { box-shadow: 0 0 0 1px rgba(0,227,174,0.5), 0 0 18px rgba(0,227,174,0.22), inset 0 1px 0 rgba(255,255,255,0.06); }
+    50%     { box-shadow: 0 0 0 1px rgba(0,227,174,0.85), 0 0 30px rgba(0,227,174,0.4), inset 0 1px 0 rgba(255,255,255,0.06); }
+  }
+
+  .room-card-label {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #f0ecff;
+    line-height: 1.3;
+  }
+  .room-card-desc {
+    font-size: 10.5px;
+    color: #9186b3;
+    margin-top: 5px;
+    line-height: 1.35;
+  }
+  .room-live-badge {
+    position: absolute; top: 10px; right: 10px;
+    display: inline-flex; align-items: center; gap: 3px;
+    font-size: 8.5px; font-weight: 800; letter-spacing: 0.3px;
+    color: #7dffd8; background: rgba(0,227,174,0.16);
+    border: 1px solid rgba(0,227,174,0.4);
+    border-radius: 8px; padding: 2px 6px;
+  }
+  .room-live-badge .live-dot { width: 4px; height: 4px; background: #00e3ae; animation: pulse 1.3s infinite; }
+
+  /* ── Footer ── */
+  #footer { text-align: center; margin-top: 34px; }
+  #footer a {
+    color: #cabdf2; font-size: 12.5px; text-decoration: none;
+    border-bottom: 1px solid rgba(202,189,242,0.4);
+    padding-bottom: 1px;
+  }
+
+  #loadingNote { text-align: center; font-size: 12px; color: #b6acd9; margin-bottom: 18px; }
+</style>
+</head>
+<body>
+
+<div id="bgPhoto"></div>
+
+<div id="page">
+  <div id="brand">
+    <div class="word">Whisper<span class="plus">+</span>Me</div>
+  </div>
+  <div id="tagline">Free anonymous voice chat. Real people. Because some things need to be said out loud.</div>
+
+  <div id="loadingNote">Checking what's live right now…</div>
+
+  <div id="hero">
+    <span id="heroBadge"><span class="live-dot"></span><span id="heroBadgeText">LIVE NOW</span></span>
+    <div id="heroLabel"></div>
+    <div id="heroSub"></div>
+    <button id="heroBtn">Join the Conversation</button>
+  </div>
+
+  <div id="groups"></div>
+
+  <div id="footer">
+    <a href="https://whisperplusme.com/" id="fullSiteLink">Open the full site →</a>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+<script src="firebase.js"></script>
+
+<script>
+(function(){
+  var GROUPS = [
+    { label: "Start Here", rooms: [
+      { id:"general", label:"💬 General", desc:"Everyone welcome — start here" }
+    ]},
+    { label: "Support & Healing", rooms: [
+      { id:"vent",         label:"🫂 Vent & Release",     desc:"Safe space to let it all out" },
+      { id:"anxiety",      label:"🌿 Anxiety & Stress",   desc:"You are not alone here" },
+      { id:"nightowls",    label:"🌙 Night Owls",         desc:"For those awake at 3am" },
+      { id:"grief",        label:"🕊️ Grief & Loss",       desc:"Speak your truth, heal together" },
+      { id:"mentalhealth", label:"💙 Mental Health",      desc:"No judgment, just support" },
+      { id:"gangstalking", label:"🔍 Gang Stalking Help", desc:"Find support, share experiences" }
+    ]},
+    { label: "Connect & Create", rooms: [
+      { id:"voices",     label:"🎙️ Live Voices",     desc:"Hop on mic and be heard" },
+      { id:"connection", label:"🤝 Real Connection", desc:"Meet genuine people" },
+      { id:"creators",   label:"✨ Creators Lounge", desc:"Build, share, inspire" }
+    ]},
+    { label: "18+ Rooms", rooms: [
+      { id:"spicy",    label:"🌶️ Spicy",    desc:"Hot & steamy" },
+      { id:"hotdates", label:"🔥 Hot Dates", desc:"Find a date tonight" },
+      { id:"sugar",    label:"🍬 Sugar",     desc:"Sweet arrangements" }
+    ]},
+    { label: "LGBTQ+ Spaces", rooms: [
+      { id:"lgbt_safe",  label:"🏳️‍🌈 LGBTQ+ Safe Space", desc:"You belong here, always" },
+      { id:"lgbt_chat",  label:"💜 Queer Connect",        desc:"LGBTQ+ community & friends" },
+      { id:"lgbt_youth", label:"🌈 Rainbow Youth",        desc:"Young LGBTQ+ voices welcome" }
+    ]},
+    { label: "Spiritual", rooms: [
+      { id:"psychics",   label:"🔮 Psychic Circle",      desc:"Readings, insights & intuition" },
+      { id:"astrology",  label:"⭐ Astrology Lounge",    desc:"Charts, signs & cosmic energy" },
+      { id:"tarot",      label:"🃏 Tarot & Palm Reading", desc:"Cards, palms & divination" },
+      { id:"apothecary", label:"🌿 The Apothecary",      desc:"Herbs, remedies & natural healing" }
+    ]}
+  ];
+  var GENERAL = GROUPS[0].rooms[0];
+  var ALL_ROOMS = GROUPS.reduce(function(a,g){ return a.concat(g.rooms); }, []);
+
+  function goToRoom(roomId){
+    window.location.href = "/embed.html?room=" + encodeURIComponent(roomId);
+  }
+
+  function renderGroups(){
+    var html = "";
+    var cardIndex = 0;
+    GROUPS.forEach(function(g){
+      html += "<div class='group-label'>" + g.label + "</div><div class='grid'>";
+      g.rooms.forEach(function(r){
+        var delay = (cardIndex % 6) * 0.05;
+        html += "<div class='room-card' data-room='" + r.id + "' id='card-" + r.id + "' "
+          + "style='animation-delay:" + delay + "s'>"
+          + "<span class='room-live-badge' id='live-" + r.id + "' style='display:none'><span class='live-dot'></span>LIVE</span>"
+          + "<div class='room-card-label'>" + r.label + "</div>"
+          + "<div class='room-card-desc'>" + r.desc + "</div>"
+          + "</div>";
+        cardIndex++;
+      });
+      html += "</div>";
+    });
+    document.getElementById("groups").innerHTML = html;
+    document.querySelectorAll(".room-card").forEach(function(el){
+      el.addEventListener("click", function(){ goToRoom(el.getAttribute("data-room")); });
+    });
+  }
+
+  function showHero(room, liveCount){
+    var hero = document.getElementById("hero");
+    var badge = document.getElementById("heroBadge");
+    var badgeText = document.getElementById("heroBadgeText");
+    var label = document.getElementById("heroLabel");
+    var sub = document.getElementById("heroSub");
+    var btn = document.getElementById("heroBtn");
+
+    if(liveCount > 0){
+      badge.classList.remove("idle");
+      hero.classList.add("is-live");
+      badgeText.textContent = liveCount + (liveCount === 1 ? " PERSON LIVE" : " PEOPLE LIVE");
+      sub.textContent = room.desc + " — join right now";
+      btn.textContent = "Join the Conversation";
+    } else {
+      badge.classList.add("idle");
+      hero.classList.remove("is-live");
+      badgeText.textContent = "ALWAYS OPEN";
+      sub.textContent = room.desc;
+      btn.textContent = "Start Chatting";
+    }
+    label.textContent = room.label;
+    hero.style.display = "block";
+    hero.onclick = function(){ goToRoom(room.id); };
+    btn.onclick = function(e){ e.stopPropagation(); goToRoom(room.id); };
+    document.getElementById("loadingNote").style.display = "none";
+  }
+
+  function checkLiveActivity(){
+    var pending = ALL_ROOMS.length;
+    var bestRoom = GENERAL, bestCount = 0;
+
+    ALL_ROOMS.forEach(function(r){
+      firebase.database().ref("liveMics/" + r.id).once("value").then(function(snap){
+        var count = 0;
+        snap.forEach(function(c){ if(c.val() && c.val().active) count++; });
+        if(count > bestCount){ bestCount = count; bestRoom = r; }
+        var badgeEl = document.getElementById("live-" + r.id);
+        var cardEl  = document.getElementById("card-" + r.id);
+        if(badgeEl) badgeEl.style.display = count > 0 ? "inline-flex" : "none";
+        if(cardEl)  cardEl.classList.toggle("live", count > 0);
+      }).catch(function(){}).then(function(){
+        pending--;
+        if(pending === 0) showHero(bestRoom, bestCount);
+      });
+    });
+
+    /* Safety net: if reads hang, still show General after 4s */
+    setTimeout(function(){
+      if(document.getElementById("hero").style.display === "none"){
+        showHero(GENERAL, 0);
+      }
+    }, 4000);
+  }
+
+  renderGroups();
+
+  firebase.auth().onAuthStateChanged(function(user){
+    if(!user){
+      firebase.auth().signInAnonymously().catch(function(){
+        document.getElementById("loadingNote").textContent = "Couldn't connect — refresh to try again.";
+      });
+      return;
+    }
+    checkLiveActivity();
+  });
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Whisper+Me Diagnostics</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0a0a0a; color: #e0e0e0; font-family: 'Courier New', monospace; padding: 16px; }
+  h1 { color: #00e3ae; font-size: 18px; margin-bottom: 4px; }
+  .sub { color: #555; font-size: 12px; margin-bottom: 16px; }
+  .card { background: #111; border: 1px solid #222; border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+  .card h2 { font-size: 13px; color: #7b2ff7; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; }
+  .row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 13px; }
+  .label { color: #888; min-width: 200px; }
+  .val { color: #fff; word-break: break-all; }
+  .ok   { color: #00e3ae; font-weight: bold; }
+  .fail { color: #ff4444; font-weight: bold; }
+  .warn { color: #ffaa00; font-weight: bold; }
+  button {
+    background: linear-gradient(90deg, #7b2ff7, #00e3ae);
+    border: none; color: #fff; padding: 10px 20px;
+    border-radius: 20px; font-size: 14px; cursor: pointer;
+    font-family: 'Courier New', monospace; margin-bottom: 16px;
+  }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  #log { background: #050505; border: 1px solid #1a1a1a; border-radius: 8px; padding: 12px;
+         font-size: 12px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+  .log-ok   { color: #00e3ae; }
+  .log-fail { color: #ff4444; }
+  .log-info { color: #888; }
+  .log-warn { color: #ffaa00; }
+  .copy-btn { background: #222; font-size: 11px; padding: 4px 10px; margin-left: 8px; }
+  #results { margin-top: 16px; }
+</style>
+</head>
+<body>
+
+<h1>🔧 Whisper+Me Diagnostics</h1>
+<p class="sub">Paste this page's URL into your site's tab, OR open this file locally and fill in the config below.</p>
+
+<div class="card">
+  <h2>⚙️ Config Override (if running standalone)</h2>
+  <div style="font-size:12px;color:#666;margin-bottom:8px;">
+    Only needed if running this file outside your site. Leave blank if opening from your deployed site domain.
+  </div>
+  <div class="row">
+    <span class="label">Firebase Project ID</span>
+    <input id="cfg-projectId" placeholder="whisperplusme-46d9c" style="background:#222;border:1px solid #333;color:#fff;padding:6px 10px;border-radius:6px;flex:1;font-family:monospace;font-size:12px;">
+  </div>
+  <div class="row">
+    <span class="label">CF Base URL</span>
+    <input id="cfg-cfBase" placeholder="https://us-central1-whisperplusme-46d9c.cloudfunctions.net" style="background:#222;border:1px solid #333;color:#fff;padding:6px 10px;border-radius:6px;flex:1;font-family:monospace;font-size:12px;">
+  </div>
+  <div class="row">
+    <span class="label">Firebase ID Token (optional)</span>
+    <input id="cfg-token" placeholder="Paste your Firebase ID token here for full function tests" style="background:#222;border:1px solid #333;color:#fff;padding:6px 10px;border-radius:6px;flex:1;font-family:monospace;font-size:12px;">
+  </div>
+  <div style="font-size:11px;color:#555;margin-top:6px;">
+    To get your token: open your site, open DevTools console, run: <span style="color:#00e3ae;">firebase.auth().currentUser.getIdToken(true).then(t => console.log(t))</span>
+  </div>
+</div>
+
+<button id="runBtn" onclick="runAll()">▶ Run All Diagnostics</button>
+
+<div id="results" style="display:none">
+
+<div class="card" id="card-env">
+  <h2>1. Environment Detection</h2>
+  <div id="env-results"></div>
+</div>
+
+<div class="card" id="card-firebase">
+  <h2>2. Firebase SDK & Auth</h2>
+  <div id="firebase-results"></div>
+</div>
+
+<div class="card" id="card-db">
+  <h2>3. Firebase Database Rules</h2>
+  <div id="db-results"></div>
+</div>
+
+<div class="card" id="card-functions">
+  <h2>4. Cloud Functions (Stripe)</h2>
+  <div id="functions-results"></div>
+</div>
+
+<div class="card" id="card-users">
+  <h2>5. Users Data (Profile Cards)</h2>
+  <div id="users-results"></div>
+</div>
+
+<div class="card" id="card-chat">
+  <h2>6. Chat Data</h2>
+  <div id="chat-results"></div>
+</div>
+
+<div class="card">
+  <h2>📋 Full Log
+    <button class="copy-btn" onclick="copyLog()">Copy</button>
+  </h2>
+  <div id="log"></div>
+</div>
+
+<div class="card" id="card-summary">
+  <h2>🏁 Summary & What To Fix</h2>
+  <div id="summary-results"></div>
+</div>
+
+</div>
+
+<script>
+const logEl = document.getElementById('log');
+const issues = [];
+const passes = [];
+
+function log(msg, type='info') {
+  const cls = type==='ok'?'log-ok':type==='fail'?'log-fail':type==='warn'?'log-warn':'log-info';
+  logEl.innerHTML += `<span class="${cls}">[${new Date().toISOString().slice(11,19)}] ${msg}</span>\n`;
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function row(container, label, value, status) {
+  const cls = status==='ok'?'ok':status==='fail'?'fail':status==='warn'?'warn':'val';
+  const icon = status==='ok'?'✅':status==='fail'?'❌':status==='warn'?'⚠️':'ℹ️';
+  document.getElementById(container).innerHTML +=
+    `<div class="row"><span class="label">${label}</span><span class="${cls}">${icon} ${value}</span></div>`;
+}
+
+function cfBase() {
+  const inp = document.getElementById('cfg-cfBase').value.trim();
+  return inp || 'https://us-central1-whisperplusme-46d9c.cloudfunctions.net';
+}
+
+function getToken() {
+  const inp = document.getElementById('cfg-token').value.trim();
+  if (inp) return Promise.resolve(inp);
+  try {
+    const u = firebase.auth().currentUser;
+    if (u) return u.getIdToken(true);
+  } catch(e){}
+  return Promise.resolve(null);
+}
+
+async function checkEnv() {
+  log('--- Environment ---');
+  const onSite = window.location.hostname.includes('whisperplusme') || window.location.hostname === 'localhost';
+  row('env-results', 'Running on site domain', window.location.hostname, onSite?'ok':'warn');
+  if (!onSite) {
+    issues.push('⚠️ Running standalone — Firebase/auth tests may fail without a token. Open this on your live site for full results.');
+    log('Not on site domain — some tests need a token', 'warn');
+  }
+  row('env-results', 'CF Base URL', cfBase(), 'info');
+}
+
+async function checkFirebase() {
+  log('--- Firebase SDK ---');
+  try {
+    const fb = typeof firebase !== 'undefined';
+    row('firebase-results', 'firebase global exists', fb?'yes':'NO', fb?'ok':'fail');
+    if (!fb) { issues.push('❌ firebase is not defined — Firebase SDK not loaded on page'); return; }
+    passes.push('Firebase SDK loaded');
+
+    const auth = firebase.auth();
+    row('firebase-results', 'firebase.auth()', 'available', 'ok');
+
+    const user = auth.currentUser;
+    row('firebase-results', 'currentUser', user ? user.email : 'null (not logged in)', user?'ok':'warn');
+    if (!user) {
+      log('No current user — auth tests limited', 'warn');
+      issues.push('⚠️ Not logged in during diagnostics — paste a token in Config above to test functions');
+    } else {
+      passes.push('User is logged in: ' + user.email);
+      log('Logged in as ' + user.email, 'ok');
+      const tok = await user.getIdToken(true).catch(()=>null);
+      row('firebase-results', 'getIdToken()', tok?'success':'FAILED', tok?'ok':'fail');
+      if (!tok) issues.push('❌ getIdToken() failed — auth broken');
+      else passes.push('ID token obtained');
+    }
+  } catch(e) {
+    row('firebase-results', 'Error', e.message, 'fail');
+    issues.push('❌ Firebase error: ' + e.message);
+    log('Firebase error: ' + e.message, 'fail');
+  }
+}
+
+async function checkDatabase() {
+  log('--- Database Rules ---');
+  try {
+    const db = firebase.database();
+
+    // Test chat read
+    try {
+      const snap = await db.ref('chat').orderByChild('ts').limitToLast(3).once('value');
+      const msgs = [];
+      snap.forEach(c => msgs.push(c.val()));
+      row('db-results', 'Read /chat (last 3)', `${msgs.length} messages found`, msgs.length>=0?'ok':'fail');
+      log('Chat read ok, ' + msgs.length + ' messages', 'ok');
+      passes.push('Chat readable');
+    } catch(e) {
+      row('db-results', 'Read /chat', 'DENIED: ' + e.message, 'fail');
+      issues.push('❌ Cannot read /chat: ' + e.message);
+      log('Chat read denied: ' + e.message, 'fail');
+    }
+
+    // Test users read
+    try {
+      const snap = await db.ref('users').limitToFirst(5).once('value');
+      const users = snap.val() || {};
+      const count = Object.keys(users).length;
+      row('db-results', 'Read /users (first 5)', `${count} users found`, count>0?'ok':'warn');
+      log('Users read ok, ' + count + ' users', count>0?'ok':'warn');
+      if (count === 0) issues.push('⚠️ /users is empty — no profiles to show. Have users signed up and saved profiles?');
+      else passes.push(count + ' users in database');
+
+      // Check if users have required fields
+      let missingFields = [];
+      Object.entries(users).forEach(([uid, u]) => {
+        if (!u.name) missingFields.push(uid + ' missing name');
+        if (!u.photo) missingFields.push(uid + ' missing photo');
+      });
+      if (missingFields.length) {
+        row('db-results', 'User profile completeness', missingFields.join(', '), 'warn');
+        issues.push('⚠️ Some users missing name/photo: ' + missingFields.join(', '));
+      } else if (count > 0) {
+        row('db-results', 'User profile fields', 'name & photo present', 'ok');
+        passes.push('User profiles have name and photo');
+      }
+    } catch(e) {
+      row('db-results', 'Read /users', 'DENIED: ' + e.message, 'fail');
+      issues.push('❌ Cannot read /users: ' + e.message);
+      log('Users read denied: ' + e.message, 'fail');
+    }
+
+    // Test calls read (known to fail)
+    try {
+      const uid = firebase.auth().currentUser?.uid;
+      if (uid) {
+        await db.ref('calls').orderByChild('from').equalTo(uid).once('value');
+        row('db-results', 'Read /calls (own)', 'allowed', 'ok');
+        passes.push('/calls readable for own calls');
+      } else {
+        row('db-results', 'Read /calls', 'skipped (not logged in)', 'warn');
+      }
+    } catch(e) {
+      row('db-results', 'Read /calls', 'DENIED — cleanupStuckCalls will error (non-critical)', 'warn');
+      issues.push('⚠️ /calls permission denied for broad query — this causes the console error but does NOT break calls');
+      log('Calls read denied (expected for broad query): ' + e.message, 'warn');
+    }
+
+  } catch(e) {
+    row('db-results', 'Database error', e.message, 'fail');
+    issues.push('❌ Database error: ' + e.message);
+  }
+}
+
+async function checkFunctions() {
+  log('--- Cloud Functions ---');
+  const base = cfBase();
+  const token = await getToken();
+
+  if (!token) {
+    row('functions-results', 'Auth token', 'MISSING — paste token in config to test', 'fail');
+    issues.push('❌ Cannot test Stripe functions without auth token. Paste it in Config above.');
+    log('No token — skipping function tests', 'warn');
+    return;
+  }
+  row('functions-results', 'Auth token', 'present (' + token.length + ' chars)', 'ok');
+
+  // Test createCoinCheckout
+  try {
+    log('Testing createCoinCheckout...', 'info');
+    const res = await fetch(base + '/createCoinCheckout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ qty: 1 })
+    });
+    const data = await res.json();
+    log('createCoinCheckout response: ' + JSON.stringify(data), res.ok?'ok':'fail');
+    if (res.ok && data.url) {
+      row('functions-results', 'createCoinCheckout', 'SUCCESS — got Stripe URL', 'ok');
+      passes.push('createCoinCheckout works');
+    } else {
+      row('functions-results', 'createCoinCheckout', 'FAILED: ' + (data.error||JSON.stringify(data)), 'fail');
+      issues.push('❌ createCoinCheckout error: ' + (data.error||JSON.stringify(data)));
+    }
+  } catch(e) {
+    row('functions-results', 'createCoinCheckout', 'NETWORK ERROR: ' + e.message, 'fail');
+    issues.push('❌ createCoinCheckout network error: ' + e.message);
+    log('createCoinCheckout network error: ' + e.message, 'fail');
+  }
+
+  // Test createStripeConnectLink
+  try {
+    log('Testing createStripeConnectLink...', 'info');
+    const res = await fetch(base + '/createStripeConnectLink', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }
+    });
+    const data = await res.json();
+    log('createStripeConnectLink response: ' + JSON.stringify(data), res.ok?'ok':'fail');
+    if (res.ok && data.url) {
+      row('functions-results', 'createStripeConnectLink', 'SUCCESS — got Stripe link', 'ok');
+      passes.push('createStripeConnectLink works');
+    } else {
+      row('functions-results', 'createStripeConnectLink', 'FAILED: ' + (data.error||JSON.stringify(data)), 'fail');
+      issues.push('❌ createStripeConnectLink error: ' + (data.error||JSON.stringify(data)));
+    }
+  } catch(e) {
+    row('functions-results', 'createStripeConnectLink', 'NETWORK ERROR: ' + e.message, 'fail');
+    issues.push('❌ createStripeConnectLink network error: ' + e.message);
+  }
+
+  // Test generateAgoraToken
+  try {
+    log('Testing generateAgoraToken...', 'info');
+    const res = await fetch(base + '/generateAgoraToken?channel=test123&uid=0');
+    const data = await res.json();
+    if (res.ok && data.token) {
+      row('functions-results', 'generateAgoraToken', 'SUCCESS', 'ok');
+      passes.push('Agora token generation works');
+    } else {
+      row('functions-results', 'generateAgoraToken', 'FAILED: ' + (data.error||JSON.stringify(data)), 'fail');
+      issues.push('❌ generateAgoraToken error: ' + (data.error||JSON.stringify(data)));
+    }
+  } catch(e) {
+    row('functions-results', 'generateAgoraToken', 'ERROR: ' + e.message, 'fail');
+    issues.push('❌ generateAgoraToken error: ' + e.message);
+  }
+}
+
+async function checkUsers() {
+  log('--- Users / Profile Cards ---');
+  try {
+    const allUsers = window.allUsers;
+    if (typeof allUsers === 'undefined') {
+      row('users-results', 'window.allUsers', 'NOT FOUND — app.js may not be loaded or user not logged in', 'fail');
+      issues.push('❌ window.allUsers not found — profile cards cannot load');
+      log('window.allUsers undefined', 'fail');
+
+      // Try reading direct from DB
+      try {
+        const snap = await firebase.database().ref('users').once('value');
+        const users = snap.val() || {};
+        const count = Object.keys(users).length;
+        row('users-results', 'Direct DB read /users', count + ' users', count>0?'ok':'warn');
+        log('Direct DB users: ' + count, count>0?'ok':'warn');
+        if (count > 0) issues.push('⚠️ Users exist in DB but window.allUsers is not set — loadAllUsers() may not have run');
+      } catch(e) {
+        row('users-results', 'Direct DB read /users', 'ERROR: ' + e.message, 'fail');
+      }
+      return;
+    }
+
+    const entries = Object.entries(allUsers);
+    row('users-results', 'window.allUsers count', entries.length + ' users', entries.length>0?'ok':'warn');
+    log('allUsers has ' + entries.length + ' entries', entries.length>0?'ok':'warn');
+
+    if (entries.length === 0) {
+      issues.push('⚠️ window.allUsers is empty — no profile cards will show. Users need to sign up and save a name.');
+      return;
+    }
+
+    const myUid = firebase.auth().currentUser?.uid;
+    const others = entries.filter(([uid]) => uid !== myUid);
+    row('users-results', 'Other users (not you)', others.length, others.length>0?'ok':'warn');
+    if (others.length === 0) {
+      issues.push('⚠️ You are the only user — cards show "No members yet" because it filters out yourself. Add another test account.');
+    } else {
+      passes.push(others.length + ' other users available for profile cards');
+    }
+
+    // Show user details
+    entries.slice(0,5).forEach(([uid, u]) => {
+      const fields = [u.name?'✅name':'❌name', u.photo?'✅photo':'❌photo', u.price?'✅price':'⚠️price'];
+      row('users-results', uid.slice(0,12)+'...', fields.join(' '), u.name&&u.photo?'ok':'warn');
+    });
+
+  } catch(e) {
+    row('users-results', 'Error', e.message, 'fail');
+    issues.push('❌ Users check error: ' + e.message);
+  }
+}
+
+async function checkChat() {
+  log('--- Chat ---');
+  try {
+    const snap = await firebase.database().ref('chat').orderByChild('ts').limitToLast(5).once('value');
+    const msgs = [];
+    snap.forEach(c => msgs.push(c.val()));
+    row('chat-results', 'Messages in DB', msgs.length + ' (last 5)', msgs.length>0?'ok':'warn');
+    log('Chat messages in DB: ' + msgs.length, msgs.length>0?'ok':'warn');
+
+    if (msgs.length === 0) {
+      issues.push('⚠️ No chat messages in DB yet — send one first to test');
+    } else {
+      passes.push('Chat has ' + msgs.length + ' messages in DB');
+      msgs.forEach((m, i) => {
+        row('chat-results', 'msg[' + i + ']', `uid:${(m.uid||'').slice(0,8)} text:"${(m.text||m.type||'').slice(0,30)}" ts:${m.ts||'MISSING'}`, m.ts?'ok':'warn');
+        if (!m.ts) issues.push('❌ Chat message missing ts field — orderByChild("ts") will fail');
+      });
+
+      // Check if renderChatMessages would find the DOM element
+      const chatBox = document.getElementById('phoneChatMsgs');
+      row('chat-results', '#phoneChatMsgs in DOM', chatBox?'found':'NOT FOUND (expected if chat tab not open)', chatBox?'ok':'info');
+    }
+
+    // Check chatListener
+    const listenerActive = typeof chatListener !== 'undefined' && chatListener !== null;
+    row('chat-results', 'chatListener active', listenerActive ? 'yes' : 'no (call bootChat() or navigate to chat tab)', listenerActive?'ok':'warn');
+
+  } catch(e) {
+    row('chat-results', 'Chat read error', e.message, 'fail');
+    issues.push('❌ Chat read error: ' + e.message);
+    log('Chat error: ' + e.message, 'fail');
+  }
+}
+
+function buildSummary() {
+  const el = document.getElementById('summary-results');
+  let html = '';
+  if (passes.length) {
+    html += '<div style="margin-bottom:12px;"><div style="color:#00e3ae;font-weight:bold;margin-bottom:6px;">✅ Working (' + passes.length + ')</div>';
+    passes.forEach(p => { html += `<div style="font-size:12px;color:#aaa;margin-bottom:3px;">• ${p}</div>`; });
+    html += '</div>';
+  }
+  if (issues.length) {
+    html += '<div><div style="color:#ff4444;font-weight:bold;margin-bottom:6px;">❌ Issues to Fix (' + issues.length + ')</div>';
+    issues.forEach(i => { html += `<div style="font-size:12px;color:#ffaaaa;margin-bottom:6px;padding:6px;background:#1a0a0a;border-radius:6px;">${i}</div>`; });
+    html += '</div>';
+  }
+  if (!issues.length && passes.length) {
+    html += '<div style="color:#00e3ae;font-size:16px;text-align:center;padding:20px;">🎉 All checks passed! Ready to launch.</div>';
+  }
+  el.innerHTML = html;
+}
+
+function copyLog() {
+  const text = logEl.innerText;
+  navigator.clipboard.writeText(text).then(() => alert('Log copied!')).catch(() => alert('Copy failed — select and copy manually'));
+}
+
+async function runAll() {
+  const btn = document.getElementById('runBtn');
+  btn.disabled = true;
+  btn.textContent = 'Running…';
+  document.getElementById('results').style.display = 'block';
+
+  // Clear previous
+  ['env-results','firebase-results','db-results','functions-results','users-results','chat-results','summary-results']
+    .forEach(id => { document.getElementById(id).innerHTML = ''; });
+  logEl.innerHTML = '';
+  issues.length = 0;
+  passes.length = 0;
+
+  await checkEnv();
+  await checkFirebase();
+  await checkDatabase();
+  await checkFunctions();
+  await checkUsers();
+  await checkChat();
+  buildSummary();
+
+  btn.disabled = false;
+  btn.textContent = '▶ Run Again';
+  document.getElementById('summary-results').scrollIntoView({ behavior: 'smooth' });
+}
+</script>
+</body>
+</html>

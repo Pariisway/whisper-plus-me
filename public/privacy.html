@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Privacy Policy — Whisper+Me</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <meta name="theme-color" content="#0b0e23">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Poppins', Arial, sans-serif;
+      background: #080614;
+      color: #b8b8cc;
+      min-height: 100vh;
+      line-height: 1.75;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      top: -200px; left: -200px;
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, rgba(123,47,247,0.18) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+    body::after {
+      content: '';
+      position: fixed;
+      bottom: -150px; right: -150px;
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, rgba(0,227,174,0.10) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .site-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      text-align: center;
+      padding: 16px 20px;
+      background: rgba(8,6,20,0.92);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid rgba(123,47,247,0.25);
+      font-family: 'Cinzel', serif;
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+    }
+    .hdr-word { color: #e6d6ff; text-shadow: 0 0 8px #7a00ff, 0 0 22px #7a00ff; }
+    .hdr-plus {
+      background: linear-gradient(90deg, #7b2ff7, #00e3ae);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin: 0 1px;
+    }
+
+    .page-wrap {
+      position: relative;
+      z-index: 1;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 40px 24px 80px;
+    }
+
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: #00e3ae;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 36px;
+      padding: 8px 16px;
+      border: 1px solid rgba(0,227,174,0.25);
+      border-radius: 50px;
+      background: rgba(0,227,174,0.06);
+      transition: background 0.2s, border-color 0.2s;
+    }
+    .back-btn:hover {
+      background: rgba(0,227,174,0.12);
+      border-color: rgba(0,227,174,0.5);
+    }
+
+    .section-block {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 20px;
+      padding: 36px 32px;
+    }
+
+    .section-title-pill {
+      display: inline-block;
+      background: linear-gradient(90deg, rgba(123,47,247,0.3), rgba(0,227,174,0.15));
+      border: 1px solid rgba(123,47,247,0.35);
+      border-radius: 50px;
+      padding: 4px 16px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #b08fff;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    h1 { color: #fff; font-size: 28px; font-weight: 700; margin-bottom: 6px; }
+    .date { font-size: 12px; color: #444; margin-bottom: 28px; display: block; }
+    h2 {
+      color: #e0d8ff;
+      font-size: 15px;
+      font-weight: 700;
+      margin-top: 28px;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(123,47,247,0.2);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+    }
+    h2:first-of-type { margin-top: 0; }
+    p, li { font-size: 14px; color: #999; line-height: 1.8; }
+    ul { padding-left: 20px; margin-top: 6px; }
+    li { margin-bottom: 6px; }
+    a { color: #00e3ae; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    strong { color: #ccc; }
+  </style>
+</head>
+<body>
+
+<header class="site-header">
+  <a href="/" style="text-decoration:none;">
+    <span class="hdr-word">Whisper</span><span class="hdr-plus">+</span><span class="hdr-word">Me</span>
+  </a>
+</header>
+
+<div class="page-wrap">
+
+  <a href="/" class="back-btn">← Back to Whisper+Me</a>
+
+  <div class="section-block">
+    <div class="section-title-pill">Privacy</div>
+    <h1>Privacy Policy</h1>
+    <span class="date">Last updated: May 2026</span>
+
+    <h2>1. Information We Collect</h2>
+    <ul>
+      <li><strong>Account data:</strong> email address, display name, profile photo, bio, social links.</li>
+      <li><strong>Usage data:</strong> call history (caller/receiver IDs, timestamps, coin amounts).</li>
+      <li><strong>Location data:</strong> latitude/longitude when you enable location sharing. Deleted immediately when you turn it off.</li>
+      <li><strong>Payment data:</strong> handled entirely by Stripe. We do not store card numbers.</li>
+      <li><strong>Chat messages:</strong> community chat messages are stored in Firebase and visible to all logged-in users.</li>
+    </ul>
+
+    <h2>2. How We Use Your Information</h2>
+    <ul>
+      <li>To operate the call and coin system.</li>
+      <li>To display your profile to other members.</li>
+      <li>To process payouts via Stripe Connect.</li>
+      <li>To detect and prevent fraud and abuse.</li>
+    </ul>
+
+    <h2>3. Location Data</h2>
+    <p>Location is only collected when you explicitly enable it in the app. You can turn it off at any time from your profile settings. Location data is not shared with third parties beyond what is necessary to display the live map feature.</p>
+
+    <h2>4. Data Sharing</h2>
+    <ul>
+      <li><strong>Agora:</strong> voice call data passes through Agora's RTC servers. See <a href="https://www.agora.io/en/privacy-policy/" target="_blank">Agora's Privacy Policy</a>.</li>
+      <li><strong>Stripe:</strong> payment and payout data. See <a href="https://stripe.com/privacy" target="_blank">Stripe's Privacy Policy</a>.</li>
+      <li><strong>Firebase (Google):</strong> database, authentication, and storage. See <a href="https://firebase.google.com/support/privacy" target="_blank">Firebase Privacy</a>.</li>
+      <li>We do not sell your personal data to third parties.</li>
+    </ul>
+
+    <h2>5. Data Retention</h2>
+    <p>Account data is retained until you request deletion. Call records are retained for up to 90 days for fraud prevention. Chat messages may be retained indefinitely as part of the community log.</p>
+
+    <h2>6. Your Rights</h2>
+    <p>Depending on your jurisdiction you may have the right to access, correct, or delete your personal data. Contact us at <a href="mailto:whisper.me.support@gmail.com">whisper.me.support@gmail.com</a> to exercise these rights.</p>
+
+    <h2>7. Children</h2>
+    <p>Whisper+Me is not intended for users under 18. We do not knowingly collect data from minors. If you believe a minor has created an account, contact us immediately.</p>
+
+    <h2>8. Security</h2>
+    <p>We use Firebase Security Rules, server-side token verification, and Stripe's PCI-compliant infrastructure to protect your data. No system is 100% secure; use the Service at your own risk.</p>
+
+    <h2>9. Contact</h2>
+    <p><a href="mailto:whisper.me.support@gmail.com">whisper.me.support@gmail.com</a></p>
+  </div>
+
+</div>
+</body>
+</html>

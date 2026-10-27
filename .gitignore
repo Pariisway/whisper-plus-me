@@ -1,0 +1,12 @@
+node_modules/
+.firebase/
+firebase-debug.log
+*.local
+.env
+serviceAccount*.json
+.runtimeconfig.json
+functions/.runtimeconfig.json
+.env
+node_modules/
+deploy-config.json
+*firebase-adminsdk*.json

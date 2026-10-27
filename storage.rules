@@ -1,0 +1,64 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    /* Spirits feature — unchanged, already correctly scoped per-uid */
+    match /spiritPhotos/{uid}/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == uid
+                   && request.resource.size < 3 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+
+    /* Profile photos — readable by anyone (needed for public share-card
+       previews on social media), but only the owning account can write
+       their own photo. Previously ANY authenticated user — including
+       guests — could overwrite ANY other member's profile photo. */
+    match /profilePhotos/{uid} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == uid
+                   && request.resource.size < 3 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+
+    /* Room photos — set via the admin panel only. Previously any
+       authenticated user could write here directly via the Storage
+       SDK, bypassing the admin-only UI restriction entirely. */
+    match /roomPhotos/{roomId} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.auth.uid == 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'
+                   && request.resource.size < 3 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+
+    /* Chat images — any signed-in user (including guests) can post an
+       image to a room they can already access, matching the existing
+       chat message permission model. Size-capped either way. */
+    match /chatImages/{room}/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+
+    /* Push/site notification images — admin panel only */
+    match /notificationImages/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.auth.uid == 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'
+                   && request.resource.size < 3 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+
+    /* Everything else: denied by default. The old fallback rule here
+       was "allow read, write: if request.auth != null" for ANY path —
+       meaning any signed-in user (including anonymous guests) could
+       read or write literally any file anywhere in the bucket. All
+       real paths are now covered explicitly above; nothing should
+       need this fallback going forward. */
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
