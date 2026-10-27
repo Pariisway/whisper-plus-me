@@ -51,6 +51,36 @@ service firebase.storage {
                    && request.resource.contentType.matches('image/.*');
     }
 
+    /* ── Whisper+me Nights ── */
+    /* Nights profile photos: members can see them; only the owner uploads. */
+    match /nights/avatars/{uid}/{file} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == uid
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+    /* Photo IDs for age/identity checks: owner uploads, only the admin can view. */
+    match /nights/ids/{uid}/{file} {
+      allow read: if request.auth != null && request.auth.uid == 'v6aIXY12MDY9ci1wWJmCiLOAKoG2';
+      allow write: if request.auth != null && request.auth.uid == uid
+                   && request.resource.size < 10 * 1024 * 1024
+                   && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
+    }
+    /* Venue license documents: the applicant uploads, the admin reviews. */
+    match /nights/venueDocs/{uid}/{file} {
+      allow read: if request.auth != null && (request.auth.uid == uid || request.auth.uid == 'v6aIXY12MDY9ci1wWJmCiLOAKoG2');
+      allow write: if request.auth != null && request.auth.uid == uid
+                   && request.resource.size < 10 * 1024 * 1024
+                   && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
+    }
+    /* Ticket cover photos: public, uploaded by the venue owner. */
+    match /nights/ticketImages/{uid}/{file} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == uid
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+
     /* Everything else: denied by default. The old fallback rule here
        was "allow read, write: if request.auth != null" for ANY path —
        meaning any signed-in user (including anonymous guests) could
