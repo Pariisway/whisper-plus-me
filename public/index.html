@@ -184,17 +184,17 @@
 <!-- MEMBERS GRID (screen 0, injected below phone) -->
 <div id="membersContainer" style="display:none;" aria-label="Members"></div>
 
-<!-- WHISPER+ME NIGHTS: cross-promo for date-night tickets (/nights) -->
-<section aria-label="Whisper+me Nights" style="max-width:960px;margin:28px auto 8px;padding:0 16px;">
-  <a href="/nights/" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px;
+<!-- WHISPER+ME DATES: promo for the 🎟️ Dates screen -->
+<section aria-label="Whisper+me Dates" style="max-width:960px;margin:28px auto 8px;padding:0 16px;">
+  <a href="/?dates=1" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px;
      padding:22px 24px;border-radius:18px;text-decoration:none;color:#f0e7db;
      background:linear-gradient(135deg,#2a1622 0%,#17101a 60%,#0c0a0e 100%);border:1px solid rgba(214,177,107,.35);">
     <span style="flex:1 1 280px;min-width:0;">
-      <span style="display:block;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#d6b16b;">New · Whisper+me Nights</span>
+      <span style="display:block;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#d6b16b;">New · Whisper+me Dates</span>
       <span style="display:block;font-size:22px;font-weight:700;margin:6px 0 4px;">Take the conversation out.</span>
       <span style="display:block;font-size:14px;color:#a79c93;">Dinner, a movie, drinks: book date-night tickets at local spots and split it or treat your company.</span>
     </span>
-    <span style="flex:none;padding:11px 20px;border-radius:999px;background:#d6b16b;color:#1a1308;font-weight:700;font-size:14px;">See tonight's tickets →</span>
+    <span style="flex:none;padding:11px 20px;border-radius:999px;background:#d6b16b;color:#1a1308;font-weight:700;font-size:14px;">See date tickets →</span>
   </a>
 </section>
 
@@ -203,7 +203,7 @@
 <!-- LEGAL LINKS -->
 <div style="text-align:center;padding:12px 0 4px;font-size:11px;">
   <a href="/about.html"   style="color:#555;margin:0 10px;text-decoration:none;">About</a>
-  <a href="/nights/"      style="color:#555;margin:0 10px;text-decoration:none;">Nights Out</a>
+  <a href="/?dates=1"     style="color:#555;margin:0 10px;text-decoration:none;">Dates</a>
   <a href="/nights/venue" style="color:#555;margin:0 10px;text-decoration:none;">List your venue</a>
   <a href="/terms.html"   style="color:#555;margin:0 10px;text-decoration:none;">Terms of Service</a>
   <a href="/privacy.html" style="color:#555;margin:0 10px;text-decoration:none;">Privacy Policy</a>
@@ -227,6 +227,7 @@
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-functions.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 <script src="firebase.js"></script>
 
 <!-- ── Mapbox ── -->
@@ -237,6 +238,7 @@
 
 <!-- ── App ── -->
 <script src="app.js" defer></script>
+<script src="dates.js" defer></script>
 
 <!-- ── Firebase Cloud Messaging ── -->
 <script>

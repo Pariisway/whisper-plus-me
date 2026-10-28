@@ -1,4 +1,4 @@
-// ConnectUs — venue dashboard (apply, create tickets, bookings, door check-in, payouts)
+// Whisper+me Dates — venue dashboard (apply, create tickets, see dates, door check-in, payouts)
 import {
   collection, doc, addDoc, updateDoc, query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -11,14 +11,14 @@ import {
 applyBrand("Venue");
 
 const S = { user: null, venue: null, tickets: [], bookings: [], payouts: [], tab: "tickets",
-  draft: { title: "", category: "Dinner + Movie", items: [], size: 2, price: "", when: "", qty: 10, note: "" } };
+  draft: { title: "", category: "Dinner", items: [], size: 2, price: "", when: "", qty: 10, note: "" } };
 let unsubs = [];
 const stop = () => { unsubs.forEach(u => u()); unsubs = []; };
 
-const CATS = ["Dinner + Movie", "Dinner", "Drinks", "Live Music", "Party", "Activity"];
+const CATS = ["Dinner", "Activities", "Concerts", "Movies", "Other"];
 const TYPES = ["Restaurant", "Movie theater", "Lounge", "Bar", "Live music", "Nightclub", "Entertainment", "Other"];
 const PRESETS = ["2 movie tickets", "3-course dinner", "2 cocktails each", "Bottle of wine", "Popcorn combo", "Reserved booth", "Dessert", "Valet parking", "Skip-the-line entry", "Appetizer platter"];
-const TABS = [["tickets", "Tickets"], ["bookings", "Bookings"], ["checkin", "Door check-in"], ["payouts", "Payouts"], ["profile", "Venue profile"]];
+const TABS = [["tickets", "Tickets"], ["bookings", "Dates booked"], ["checkin", "Door check-in"], ["payouts", "Payouts"], ["profile", "Venue profile"]];
 
 authApi.onChange(rawUser => {
   const user = rawUser && !rawUser.isAnonymous ? rawUser : null; // Whisper+me guests need a real account here
@@ -37,7 +37,7 @@ authApi.onChange(rawUser => {
 function listen() {
   const vid = S.venue.id;
   unsubs.push(onSnapshot(query(collection(db, "tickets"), where("venueId", "==", vid), orderBy("startsAt", "desc"), limit(100)), s => { S.tickets = s.docs.map(d => ({ id: d.id, ...d.data() })); render(true); }));
-  unsubs.push(onSnapshot(query(collection(db, "bookings"), where("venueId", "==", vid), orderBy("createdAt", "desc"), limit(150)), s => { S.bookings = s.docs.map(d => ({ id: d.id, ...d.data() })); render(true); }));
+  unsubs.push(onSnapshot(query(collection(db, "dates"), where("venueId", "==", vid), orderBy("createdAt", "desc"), limit(150)), s => { S.bookings = s.docs.map(d => ({ id: d.id, ...d.data() })); render(true); }));
   unsubs.push(onSnapshot(query(collection(db, "payouts"), where("venueId", "==", vid), orderBy("createdAt", "desc"), limit(150)), s => { S.payouts = s.docs.map(d => ({ id: d.id, ...d.data() })); render(true); }));
   const p = new URLSearchParams(location.search);
   if (p.get("stripe") === "done") {
@@ -119,8 +119,8 @@ function render(keep) {
     ${v.payoutsEnabled ? "" : `<div class="banner"><span>Connect a bank account through Stripe so we can send you money from ticket sales.</span></div>`}
     <div class="stats">
       <div class="stat"><small>Live tickets</small><b>${S.tickets.filter(t => t.status === "live" && !t.adminHidden && toDate(t.startsAt) > new Date()).length}</b></div>
-      <div class="stat"><small>Upcoming parties</small><b>${upcoming.length}</b></div>
-      <div class="stat"><small>Sales to date</small><b>${money(v.sales || 0)}</b></div>
+      <div class="stat"><small>Upcoming dates</small><b>${upcoming.length}</b></div>
+      <div class="stat"><small>Earned to date</small><b>${money(S.payouts.filter(p => p.status !== "void").reduce((a, p) => a + p.amount, 0))}</b></div>
       <div class="stat"><small>Payout coming</small><b>${money(due)}</b></div>
     </div>
     <div class="admin"><nav class="amenu" aria-label="Venue sections">${TABS.map(([k, l]) => `<button data-tab="${k}" aria-current="${S.tab === k}">${l}</button>`).join("")}</nav>
@@ -147,7 +147,7 @@ function vTickets() {
         <div class="fields">
           <div class="field full"><label for="f-title">Ticket name</label><input id="f-title" value="${esc(d.title)}" placeholder="e.g. Candlelight Booth" maxlength="40"></div>
           <div class="field"><label for="f-cat">Category</label><select id="f-cat">${CATS.map(c => `<option ${d.category === c ? "selected" : ""}>${c}</option>`).join("")}</select></div>
-          <div class="field"><span class="lbl">Party size</span><div class="seg" role="group" aria-label="Party size">${[2, 4, 6].map(n => `<button type="button" data-size="${n}" aria-pressed="${+d.size === n}">${n} people</button>`).join("")}</div></div>
+          <div class="field"><span class="lbl">Party size</span><div class="seg" role="group" aria-label="Party size">${[2, 4].map(n => `<button type="button" data-size="${n}" aria-pressed="${+d.size === n}">${n} people</button>`).join("")}</div></div>
           <div class="field full"><span class="lbl">What's included</span>
             <div class="chosen">${d.items.map((it, i) => `<span class="tag">${esc(it)}<button type="button" data-rm="${i}" aria-label="Remove ${esc(it)}">×</button></span>`).join("")}</div>
             <div class="item-entry"><input id="f-item" maxlength="40" placeholder="Type an item and press Enter" aria-label="Add an included item"><button type="button" class="btn sm" id="addItem">Add</button></div>
@@ -175,24 +175,31 @@ function vTickets() {
 }
 
 function vBookings() {
-  const pill = { payment: ["warn", "Paying"], awaiting: ["warn", "Waiting on payments"], confirmed: ["ok", "Confirmed"], canceled: ["rose", "Canceled"], refunded: ["rose", "Refunded"] };
-  return `<div class="ahead"><div><h2>Bookings</h2><p>Every reservation for your tickets. Only confirmed bookings are fully paid. Guests show the code at the door.</p></div></div>
-    ${S.bookings.length ? `<div class="table-wrap"><table><thead><tr><th>Code</th><th>Ticket</th><th>When</th><th>Party</th><th>Total</th><th>Status</th><th>Checked in</th></tr></thead><tbody>
-    ${S.bookings.map(b => { const [c, l] = pill[b.status] || ["gold", b.status]; return `<tr><td class="num">${esc(b.code)}</td><td><b>${esc(b.title)}</b></td><td>${esc(fmtWhen(b.startsAt))}</td><td class="num">${b.size}</td><td class="num">${money(b.total)}</td><td><span class="pill ${c}">${l}</span></td><td>${b.checkedInAt ? `<span class="pill ok">${esc(ago(b.checkedInAt))}</span>` : "—"}</td></tr>`; }).join("")}
-    </tbody></table></div>` : `<div class="empty"><h3>No bookings yet</h3><p>Once members book your tickets they show up here.</p></div>`}`;
+  const pill = { forming: ["warn", "Filling up"], confirmed: ["ok", "Booked"], completed: ["gold", "Done"], canceled: ["rose", "Canceled"] };
+  const list = S.bookings.filter(b => b.live || b.status !== "forming");
+  return `<div class="ahead"><div><h2>Dates booked</h2><p>Every date booked on your tickets. "Booked" means fully paid. Each guest has their own door code. You're paid after the date happens.</p></div></div>
+    ${list.length ? `<div class="table-wrap"><table><thead><tr><th>Ticket</th><th>When</th><th>Guests</th><th>Total</th><th>Status</th><th>Checked in</th></tr></thead><tbody>
+    ${list.map(b => {
+      const [c, l] = pill[b.status] || ["gold", b.status];
+      const going = (b.seats || []).filter(x => x.uid && ["paid", "joined"].includes(x.status));
+      const here = (b.seats || []).filter(x => x.checkedInAt).length;
+      return `<tr><td><b>${esc(b.title)}</b></td><td>${esc(fmtWhen(b.startsAt))}</td><td>${going.map(x => esc(x.name)).join(", ") || "—"} <span class="muted">(party of ${b.size})</span></td><td class="num">${money(b.total)}</td><td><span class="pill ${c}">${l}</span></td><td class="num">${b.status === "confirmed" || b.status === "completed" ? `${here} of ${going.length}` : "—"}</td></tr>`;
+    }).join("")}
+    </tbody></table></div>` : `<div class="empty"><h3>No dates yet</h3><p>When members book your tickets, they show up here.</p></div>`}`;
 }
 
 function vCheckin() {
   const today = S.bookings.filter(b => b.status === "confirmed" && toDate(b.startsAt)?.toDateString() === new Date().toDateString());
-  return `<div class="ahead"><div><h2>Door check-in</h2><p>Ask the guest for the code on their ticket (it starts with WN-) and enter it here.</p></div></div>
+  const seatsToday = today.flatMap(b => (b.seats || []).filter(x => x.code).map(x => ({ ...x, title: b.title, startsAt: b.startsAt })));
+  return `<div class="ahead"><div><h2>Door check-in</h2><p>Each guest has their own code starting with WN-. Enter it when they arrive. Checking guests in matters: it's how no-shows are handled fairly.</p></div></div>
     <form class="panel" id="checkinForm"><div class="checkin"><input id="ci-code" placeholder="WN-XXXXX" autocomplete="off" aria-label="Ticket code" maxlength="8"><button class="btn gold" type="submit">Check in</button></div><div id="ciResult"></div></form>
-    <div class="section-title"><h2 style="font-size:22px">Tonight's parties</h2><span class="muted" style="font-size:13px">${today.filter(b => b.checkedInAt).length} of ${today.length} checked in</span></div>
-    ${today.length ? `<div class="table-wrap"><table><thead><tr><th>Code</th><th>Ticket</th><th>Time</th><th>Party</th><th>Status</th></tr></thead><tbody>${today.map(b => `<tr><td class="num">${esc(b.code)}</td><td>${esc(b.title)}</td><td>${esc(fmtWhen(b.startsAt).split(" · ")[1])}</td><td class="num">${b.size}</td><td>${b.checkedInAt ? '<span class="pill ok">Here</span>' : '<span class="pill gold">Expected</span>'}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty" style="padding:var(--s-5)"><p style="margin:0">No confirmed parties today.</p></div>`}`;
+    <div class="section-title"><h2 style="font-size:22px">Tonight's guests</h2><span class="muted" style="font-size:13px">${seatsToday.filter(x => x.checkedInAt).length} of ${seatsToday.length} checked in</span></div>
+    ${seatsToday.length ? `<div class="table-wrap"><table><thead><tr><th>Guest</th><th>Ticket</th><th>Time</th><th>Status</th></tr></thead><tbody>${seatsToday.map(x => `<tr><td><b>${esc(x.name)}</b></td><td>${esc(x.title)}</td><td>${esc(fmtWhen(x.startsAt).split(" · ")[1])}</td><td>${x.checkedInAt ? '<span class="pill ok">Here</span>' : '<span class="pill gold">Expected</span>'}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty" style="padding:var(--s-5)"><p style="margin:0">No guests booked for today.</p></div>`}`;
 }
 
 function vPayouts() {
   const v = S.venue;
-  return `<div class="ahead"><div><h2>Payouts</h2><p>For each confirmed booking you get the ticket price minus the ${esc(BRAND.name)} fee. Payouts go out weekly to the bank account you connected through Stripe.</p></div>${v.payoutsEnabled ? '<span class="pill ok">Bank connected</span>' : ""}</div>
+  return `<div class="ahead"><div><h2>Payouts</h2><p>After each date happens, you get the ticket price minus the ${esc(BRAND.name)} fee. Payouts go to the bank account you connected through Stripe.</p></div>${v.payoutsEnabled ? '<span class="pill ok">Bank connected</span>' : ""}</div>
     ${S.payouts.length ? `<div class="table-wrap"><table><thead><tr><th>Booking</th><th>Ticket price</th><th>Fee</th><th>You get</th><th>Status</th></tr></thead><tbody>
     ${S.payouts.map(p => `<tr><td class="num">${esc(p.code || p.bookingId)}</td><td class="num">${money(p.gross)}</td><td class="num">${money(p.fee)}</td><td class="num"><b>${money(p.amount)}</b></td><td>${p.status === "paid" ? '<span class="pill ok">Paid</span>' : p.status === "void" ? '<span class="pill rose">Refunded</span>' : '<span class="pill warn">Coming</span>'}</td></tr>`).join("")}
     </tbody></table></div>` : `<div class="empty"><h3>Nothing yet</h3><p>Payouts appear here after your first confirmed booking.</p></div>`}`;
@@ -280,7 +287,7 @@ document.addEventListener("submit", async e => {
     await busy(e.submitter, async () => {
       try {
         const r = await call("checkIn", { code });
-        out.innerHTML = `<div class="banner ${r.already ? "" : "ok"}" style="margin-top:12px"><span><b>${r.already ? "Already checked in" : "Checked in"}:</b> ${esc(r.title)} · party of ${r.size} · ${r.guests.map(esc).join(", ")}</span></div>`;
+        out.innerHTML = `<div class="banner ${r.already ? "" : "ok"}" style="margin-top:12px"><span><b>${r.already ? "Already checked in" : "Checked in"}: ${esc(r.guest)}</b> · ${esc(r.title)} · party: ${r.party.map(x => esc(x.name) + (x.here ? " ✓" : "")).join(", ")}</span></div>`;
         $("#ci-code").value = "";
       } catch (x) { out.innerHTML = `<div class="banner rose" style="margin-top:12px"><span>${esc(x.message)}</span></div>`; }
     });

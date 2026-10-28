@@ -51,7 +51,7 @@ service firebase.storage {
                    && request.resource.contentType.matches('image/.*');
     }
 
-    /* ── Whisper+me Nights ── */
+    /* ── Whisper+me Dates ── */
     /* Nights profile photos: members can see them; only the owner uploads. */
     match /nights/avatars/{uid}/{file} {
       allow read: if request.auth != null;

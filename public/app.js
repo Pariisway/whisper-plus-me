@@ -7,7 +7,7 @@ let currentUser   = null;
 let mapInstance   = null;
 let mapContainer  = null;
 let mapMarkers    = {};
-let screens       = ["phone","chat","map","dashboard"];
+let screens       = ["phone","chat","map","dashboard","dates"]; /* "dates" = Whisper+me Dates (dates.js) */
 let active        = 0;
 let profiles      = [];
 
@@ -803,6 +803,10 @@ function deviceContent(type, i){
       + "</div></div>";
   }
 
+  if(type === "dates"){
+    return window.Dates ? window.Dates.phoneHTML() : "<div id='datesPhone' class='dt-phone'></div>";
+  }
+
   if(type === "map"){
     return "<div id='mapMount' style='width:100%;height:100%;border-radius:inherit;overflow:hidden;'></div>";
   }
@@ -897,7 +901,7 @@ function renderStage(){
                     : offset < 0    ? "carousel-far-left"
                     : "carousel-far-right";
         var shellCls = "phone-shell " + posCls + (visible ? " phone-shell-visible" : "");
-        var peekLabels = { phone:"Phone", chat:"Chat", map:"Map", dashboard:"Dashboard" };
+        var peekLabels = { phone:"Phone", chat:"Chat", map:"Map", dashboard:"Dashboard", dates:"Dates" };
         var innerPE = visible ? "" : "pointer-events:none!important;";
         return "<div class='" + shellCls + "' id='phone-shell-" + i + "' "
           + "data-peek-label='" + (peekLabels[s] || "") + "' "
@@ -922,8 +926,8 @@ function renderStage(){
 }
 
 function renderMenu(){
-  var icons  = ["📱","💬","🗺️","📊"];
-  var labels = ["Phone","Chat","Map","Dash"];
+  var icons  = ["📱","💬","🗺️","📊","🎟️"];
+  var labels = ["Phone","Chat","Map","Dash","Dates"];
   var guest  = isGuest();
   return "<div class='menu' role='tablist' aria-label='Navigation'>"
     + screens.map(function(s,i){
@@ -1154,6 +1158,10 @@ function contentPanel(){
       + "<div style='text-align:center;color:#555;font-size:13px;padding:20px;grid-column:1/-1;'>Loading rooms…</div>"
       + "</div>"
       + "</div>";
+  }
+
+  if(active === 4){
+    return window.Dates ? window.Dates.panelHTML() : "";
   }
 
   if(active === 2){
@@ -1398,6 +1406,7 @@ function afterRender(){
     }
   }
   if(active === 1){ bootChat(); setTimeout(renderMemberRooms, 300); }
+  if(active === 4 && window.Dates){ window.Dates.mounted(); }
 }
 
 /* ═══════════════════════════════════════════
@@ -1405,7 +1414,7 @@ function afterRender(){
 ═══════════════════════════════════════════ */
 window.setActive = function(i){
   if(isGuest() && i !== 1){
-    var featureNames = ["Browsing members","","The live map","Your dashboard"];
+    var featureNames = ["Browsing members","","The live map","Your dashboard","Dates"];
     promptGuestUpgrade(featureNames[i] || "This feature");
     return;
   }
@@ -1415,6 +1424,7 @@ window.setActive = function(i){
   if(active === 0){ renderProfileCards(); }
   if(active === 1){ bootChat(); setTimeout(renderMemberRooms, 300); }
   if(active === 2){ bootMap(); }
+  if(active === 4 && window.Dates){ window.Dates.boot(); }
   scrollToTop();
 };
 

@@ -1,51 +1,33 @@
 rules_version = '2';
 
-// Whisper+me Nights — Firestore security rules
-// (Whisper+me itself uses the Realtime Database; Firestore is only used by Nights.)
-// Money and bookings are written ONLY by Cloud Functions (admin SDK bypasses these rules).
-// Clients can write: their own profile, venue applications, a venue's own tickets,
-// chat text messages, and reports.
+// Whisper+me Dates — Firestore security rules.
+// (Whisper+me itself uses the Realtime Database; Firestore is only used by Dates.)
+// Money, deposits, strikes and dates are written ONLY by Cloud Functions (which bypass these rules).
+// Clients can write: venue applications, a venue's own tickets, their own "ID uploaded" flag, and reports.
 
 service cloud.firestore {
   match /databases/{db}/documents {
 
-    function signedIn() { return request.auth != null; }
+    function signedIn() { return request.auth != null && request.auth.token.firebase.sign_in_provider != 'anonymous'; }
     function me() { return request.auth.uid; }
     // Same admin account as Whisper+me (see database.rules.json).
-    function isAdmin() { return signedIn() && (request.auth.token.admin == true || request.auth.uid in ['v6aIXY12MDY9ci1wWJmCiLOAKoG2']); }
-    function userData(uid) { return get(/databases/$(db)/documents/users/$(uid)).data; }
-    function isActive() {
-      return signedIn()
-        && exists(/databases/$(db)/documents/users/$(me()))
-        && userData(me()).status == 'active';
-    }
+    function isAdmin() { return request.auth != null && (request.auth.token.admin == true || request.auth.uid in ['v6aIXY12MDY9ci1wWJmCiLOAKoG2']); }
     function venueData(vid) { return get(/databases/$(db)/documents/venues/$(vid)).data; }
     function ownsVenue(vid) { return signedIn() && venueData(vid).ownerUid == me(); }
     function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
 
-    // ---------- platform settings ----------
     match /settings/{id} {
       allow read: if true;
-      allow write: if false; // admin changes go through the adminAction function (logged)
+      allow write: if false; // admin changes go through nightsAdminAction (logged)
     }
 
-    // ---------- member profiles ----------
-    match /users/{uid} {
-      allow read: if signedIn();
-      allow create: if signedIn() && me() == uid
-        && request.resource.data.keys().hasOnly(['name','birthYear','bio','tags','city','photoURL','openToMeet','status','verified','idUploaded','createdAt','lastActive'])
-        && request.resource.data.status == 'active'
-        && request.resource.data.verified == false
-        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 40
-        && request.resource.data.birthYear is int;
-      allow update: if signedIn() && me() == uid
-        && !changed().hasAny(['status','verified','verifiedAt','createdAt','reportsCount','bookingsCount','suspendedReason','warnings','lastWarning','warningAt'])
-        && request.resource.data.name.size() <= 40
-        && (!('bio' in request.resource.data) || request.resource.data.bio.size() <= 300);
-      allow delete: if false;
+    // Dates profile: deposit, strikes, break, verification. Members can only flag that they uploaded an ID.
+    match /members/{uid} {
+      allow read: if isAdmin() || (signedIn() && me() == uid);
+      allow update: if signedIn() && me() == uid && changed().hasOnly(['idUploaded']) && request.resource.data.idUploaded == true;
+      allow create, delete: if false;
     }
 
-    // ---------- venues ----------
     match /venues/{vid} {
       allow read: if resource.data.status == 'approved' || isAdmin()
         || (signedIn() && resource.data.ownerUid == me());
@@ -60,7 +42,7 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ---------- tickets (date packages) ----------
+    // Tickets: anyone can browse live ones (even before signing up).
     match /tickets/{tid} {
       allow read: if (resource.data.status == 'live' && resource.data.adminHidden == false)
         || isAdmin() || ownsVenue(resource.data.venueId);
@@ -70,63 +52,30 @@ service cloud.firestore {
         && request.resource.data.adminHidden == false
         && request.resource.data.sold == 0
         && request.resource.data.held == 0
-        && request.resource.data.size in [2, 4, 6]
+        && request.resource.data.size in [2, 4]
+        && request.resource.data.category in ['Dinner', 'Activities', 'Concerts', 'Movies', 'Other']
         && request.resource.data.price is int && request.resource.data.price >= 500
         && request.resource.data.quantity is int && request.resource.data.quantity > 0
         && request.resource.data.items is list && request.resource.data.items.size() > 0;
-      // Venue can edit details and pause/resume, but never inventory counters or an admin hide.
       allow update: if ownsVenue(resource.data.venueId)
-        && !changed().hasAny(['sold','held','venueId','adminHidden','hiddenReason'])
+        && !changed().hasAny(['sold','held','venueId','adminHidden','hiddenReason','price','size'])
         && request.resource.data.status in ['live','paused','ended']
         && request.resource.data.quantity >= resource.data.sold + resource.data.held;
       allow delete: if false;
     }
 
-    // ---------- bookings (functions only) ----------
-    match /bookings/{bid} {
+    // Dates (bookings): people on it or who asked to join, the venue, the admin,
+    // and anyone signed in for dates that are open to requests.
+    match /dates/{id} {
       allow read: if isAdmin()
-        || (signedIn() && me() in resource.data.memberUids)
+        || (signedIn() && me() in resource.data.involvedUids)
+        || (signedIn() && resource.data.open == true && resource.data.live == true)
         || ownsVenue(resource.data.venueId);
       allow write: if false;
     }
 
-    // Public list of seats anyone can join (functions only).
-    match /openSeats/{bid} {
-      allow read: if signedIn();
-      allow write: if false;
-    }
-
-    // ---------- chats ----------
-    // Chat id is the two member uids sorted and joined with "_".
-    match /chats/{cid} {
-      allow read: if signedIn() && me() in resource.data.members;
-      allow create: if isActive()
-        && request.resource.data.members.size() == 2
-        && me() in request.resource.data.members
-        && request.resource.data.members[0] < request.resource.data.members[1]
-        && cid == request.resource.data.members[0] + '_' + request.resource.data.members[1];
-      // Members may only reset their own unread counter.
-      allow update: if signedIn() && me() in resource.data.members
-        && changed().hasOnly(['unread'])
-        && request.resource.data.unread[me()] == 0;
-
-      match /messages/{mid} {
-        allow read: if signedIn() && me() in get(/databases/$(db)/documents/chats/$(cid)).data.members;
-        allow create: if isActive()
-          && me() in get(/databases/$(db)/documents/chats/$(cid)).data.members
-          && request.resource.data.from == me()
-          && request.resource.data.type == 'text'
-          && request.resource.data.hidden == false
-          && request.resource.data.text is string
-          && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 1000
-          && request.resource.data.keys().hasOnly(['from','type','text','hidden','createdAt']);
-        allow update, delete: if false;
-      }
-    }
-
-    // ---------- reports ----------
     match /reports/{rid} {
-      allow create: if isActive()
+      allow create: if signedIn()
         && request.resource.data.by == me()
         && request.resource.data.status == 'open'
         && request.resource.data.aboutType in ['user','venue']
@@ -136,18 +85,12 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // ---------- money ledger & admin-only ----------
     match /payouts/{id} {
       allow read: if isAdmin() || ownsVenue(resource.data.venueId);
       allow write: if false;
     }
-    match /stats/{id} {
-      allow read: if isAdmin();
-      allow write: if false;
-    }
-    match /adminLog/{id} {
-      allow read: if isAdmin();
-      allow write: if false;
-    }
+    match /ledger/{id}   { allow read: if isAdmin(); allow write: if false; }
+    match /stats/{id}    { allow read: if isAdmin(); allow write: if false; }
+    match /adminLog/{id} { allow read: if isAdmin(); allow write: if false; }
   }
 }

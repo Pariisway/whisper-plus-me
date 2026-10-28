@@ -1,13 +1,16 @@
 {
-  "name": "whisper-nights-functions",
+  "name": "whisper-dates-functions",
   "private": true,
-  "description": "Whisper+me Nights backend: bookings, split payments, payouts, moderation, admin actions",
+  "description": "Whisper+me Dates backend: deposits, split holds, bookings, no-shows, payouts",
   "main": "index.js",
-  "engines": { "node": "22" },
+  "engines": {
+    "node": "22"
+  },
   "scripts": {
     "serve": "firebase emulators:start --only functions,firestore,auth,storage",
     "deploy": "firebase deploy --only functions",
-    "logs": "firebase functions:log"
+    "logs": "firebase functions:log",
+    "test": "node test/dates.test.js"
   },
   "dependencies": {
     "firebase-admin": "^12.6.0",
