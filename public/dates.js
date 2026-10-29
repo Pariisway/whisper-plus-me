@@ -17,11 +17,13 @@
   var CATS = ["All", "Dinner", "Activities", "Concerts", "Movies", "Other"];
   var CAT_ICON = { All: "✨", Dinner: "🍽️", Activities: "🎳", Concerts: "🎤", Movies: "🎬", Other: "⭐" };
   var DEFAULTS = { minAge: 21, hostFee: 10, hostPayoutHours: 72, lateCancelHours: 48 };
+  var MAX_QTY = 6; // spots per checkout (you + friends), same as the server
 
   var S = {
     started: false, uid: null, anon: false, cat: "All",
     settings: Object.assign({}, DEFAULTS),
     meetups: [], mine: [], loadedMine: false, member: undefined, hostContact: null,
+    mode: "mg", connects: [], myCon: [], credit: 0, depositOnFile: 0,
     myDates: [], unsubs: []
   };
 
@@ -135,6 +137,12 @@
 .dt-sheet h4{margin:4px 0 -4px;font-size:13px;color:#c9a7ff;letter-spacing:.04em}\
 .dt-sheet .lbl{font-size:11.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#9a8fb5;margin-bottom:6px}\
 .dt-sheet .lbl small{text-transform:none;letter-spacing:0;font-weight:600}\
+.dt-seg{display:flex;gap:4px;margin:0 12px 8px;padding:4px;border-radius:999px;background:#15152a;border:1px solid rgba(255,255,255,.08)}\
+.dt-seg button{flex:1;border:0;border-radius:999px;padding:8px 6px;background:transparent;color:#a59cc4;font-weight:800;font-size:13px;cursor:pointer;min-height:36px}\
+.dt-seg button[aria-pressed=true]{background:linear-gradient(90deg,#7b2ff7,#e0457b);color:#fff}\
+.dt-card.cm{border-color:rgba(224,69,123,.45)}\
+.dt-seat{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#0b0b16;border-radius:12px;padding:8px 10px;margin-top:6px;font-size:13px;flex-wrap:wrap}\
+.dt-qty{display:flex;align-items:center;gap:10px;flex:none}.dt-qty b{font-size:20px;min-width:22px;text-align:center}.dt-qty .dt-btn{width:42px;padding:0;font-size:20px}\
 .dt-facts{display:flex;gap:8px}.dt-facts div{flex:1;background:#0b0b16;border-radius:12px;padding:9px 6px;text-align:center;font-size:11.5px;color:#9a8fb5}.dt-facts b{display:block;color:#fff;font-size:16px}\
 .dt-opt{display:flex;gap:10px;align-items:center;width:100%;text-align:left;padding:11px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:#0b0b16;color:#fff;cursor:pointer}\
 .dt-opt .t{flex:1;min-width:0}.dt-opt small{display:block;color:#9a8fb5;font-size:12px}\
@@ -186,6 +194,11 @@
       S.meetups = s.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }).filter(function (m) { return ms(m.startsAt) > now + 2 * 3600000 && (left(m) > 0 || m.hostUid === S.uid); });
       refresh();
     }, function (e) { console.warn("M&G list", e.message); }));
+    S.unsubs.push(f.collection("connects").where("status", "==", "live").where("hidden", "==", false).orderBy("startsAt").limit(60).onSnapshot(function (s) {
+      var now = Date.now();
+      S.connects = s.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }).filter(function (c) { return ms(c.startsAt) > now + 2 * 3600000 && (c.quantity - c.sold - c.held) > 0; });
+      refresh();
+    }, function (e) { console.warn("Connect Me list", e.message); }));
     if (S.anon) return; // guests just browse
     S.unsubs.push(f.doc("members/" + u.uid).onSnapshot(function (s) { S.member = s.exists ? s.data() : null; refresh(); }, function () { S.member = null; refresh(); }));
     // Bookings made with the old "for 2 / group of 4" tickets still show until they're done.
@@ -196,18 +209,20 @@
   }
   function loadMine() {
     if (!me()) return;
-    fn("myMeetups").then(function (r) { S.mine = r.meetups || []; S.hostContact = r.hostContact || null; S.loadedMine = true; refresh(); }, function () { S.loadedMine = true; });
+    fn("myMeetups").then(function (r) { S.mine = r.meetups || []; S.hostContact = r.hostContact || null; S.credit = r.credit || 0; S.depositOnFile = r.depositOnFile || 0; S.loadedMine = true; refresh(); }, function () { S.loadedMine = true; });
+    fn("myConnects").then(function (r) { S.myCon = r.connects || []; refresh(); }, function () {});
   }
   function stop() { S.unsubs.forEach(function (u) { try { u(); } catch (e) {} }); S.unsubs = []; S.started = false; }
   firebase.auth().onAuthStateChanged(function (u) {
     if (!u) { stop(); S.uid = null; S.mine = []; S.member = undefined; return; }
-    // Came in from a shared M&G link: take them straight to it.
-    var pending = null; try { pending = sessionStorage.getItem("wpmMeetup"); } catch (e) {}
+    // Came in from a shared M&G or Connect Me link: take them straight to it.
+    var pending = null; try { pending = sessionStorage.getItem("wpmMeetup") || sessionStorage.getItem("wpmConnect"); } catch (e) {}
     if (pending) setTimeout(function () { if (window.setActive && typeof active !== "undefined" && active !== 4) window.setActive(4); }, 900);
   });
 
   function myTickets() { return S.mine.filter(function (m) { return !m.host && (["live", "paying", "review"].indexOf(m.status) > -1 || m.startsAt > Date.now() - 3 * 86400000); }); }
-  function upcomingTickets() { return S.mine.filter(function (m) { return !m.host && m.status === "live" && m.code; }); }
+  function upcomingTickets() { return S.mine.filter(function (m) { return !m.host && m.status === "live" && m.code; }).concat(myCons().filter(function (o) { return o.status === "paid" || o.invite; })); }
+  function myCons() { return S.myCon.filter(function (o) { return o.invite || o.status === "paid" || o.startsAt > Date.now() - 2 * 86400000; }); }
   function myHosted() { return S.mine.filter(function (m) { return m.host && (["draft", "pending", "changes", "live", "review", "paying"].indexOf(m.status) > -1 || m.startsAt > Date.now() - 7 * 86400000); }); }
 
   /* ---------- venue search (free OpenStreetMap data via Photon) ---------- */
@@ -254,35 +269,79 @@
   function phoneInner() {
     var u = anyUser();
     if (!u) return "<div class='dt-empty'>Sign in to see M&Gs.</div>";
-    var list = S.meetups.filter(function (m) { return S.cat === "All" || m.category === S.cat; });
+    var cm = S.mode === "cm";
+    var pool = cm ? S.connects : S.meetups;
+    var list = pool.filter(function (m) { return S.cat === "All" || m.category === S.cat; });
     var n = upcomingTickets().length;
-    var head = "<div class='dt-head'><div><h2>⭐ M&G</h2><small>Meet people in person</small></div>"
-      + (S.anon ? "" : "<button class='dt-mybtn' onclick='Dates.showTickets()'>🎟️ My tickets" + (n ? "<b>" + n + "</b>" : "") + "</button>") + "</div>";
+    var head = "<div class='dt-head'><div>" + (cm ? "<h2>💞 Connect Me</h2><small>Night-out packages · invite who you want</small>" : "<h2>⭐ M&G</h2><small>Meet & Greet · meet people in person</small>") + "</div>"
+      + (S.anon ? "" : "<button class='dt-mybtn' onclick='Dates.showTickets()'>🎟️ My tickets" + (n ? "<b>" + n + "</b>" : "") + "</button>") + "</div>"
+      + "<div class='dt-seg' role='tablist'><button aria-pressed='" + !cm + "' onclick=\"Dates.setMode('mg')\">⭐ M&G</button><button aria-pressed='" + cm + "' onclick=\"Dates.setMode('cm')\">💞 Connect Me</button></div>";
     var cats = "<div class='dt-cats' data-noswipe role='group' aria-label='Categories' onwheel='Dates.catWheel(event,this)' onscroll='Dates.catScroll(this)'>" + CATS.map(function (c, i) {
       return "<button class='dt-cat' aria-pressed='" + (S.cat === c) + "' onclick='Dates.setCatIdx(" + i + ")'>" + CAT_ICON[c] + " " + esc(c) + "</button>";
     }).join("") + "</div><div class='dt-catbar' data-noswipe onclick='Dates.catJump(event,this)'><i></i></div>";
-    var hostCta = "<button class='dt-hostcta' onclick='Dates.hostMeetup()'><b>⭐ Host your own M&G</b><br>Meet your fans or followers. Set a price, we review it, you keep " + hostKeep() + "%.</button>";
-    var body = list.length ? list.map(card).join("") + hostCta
-      : "<div class='dt-empty'>" + (S.meetups.length ? "Nothing in " + esc(S.cat.toLowerCase()) + " right now.<br>Try another category." : "No M&Gs on sale right now.<br>New ones are added all the time.") + "</div>" + hostCta;
+    var hostCta; hostCta = "<button class='dt-hostcta' onclick='Dates.hostMeetup()'><b>⭐ Host your own M&G</b><br>Meet & Greet your fans or followers. Set a price, we review it, you keep " + hostKeep() + "%.</button>";
+    if (cm) hostCta = "";
+    var body = list.length ? list.map(cm ? conCard : card).join("") + hostCta
+      : "<div class='dt-empty'>" + (pool.length ? "Nothing in " + esc(S.cat.toLowerCase()) + " right now.<br>Try another category." : cm ? "No Connect Me packages right now.<br>New ones are added all the time." : "No M&Gs on sale right now.<br>New ones are added all the time.") + "</div>" + hostCta;
     return head + cats + "<div class='dt-list'>" + body + "</div>";
+  }
+
+  /* ---------- Connect Me (night-out packages) ---------- */
+  function conCard(c) {
+    var l = c.quantity - c.sold - c.held;
+    return "<button class='dt-card cm' onclick=\"Dates.openConnect('" + c.id + "')\">"
+      + "<div class='dt-poster' style='background:" + grad(c.hue != null ? c.hue : hue(c.title)) + "'>" + (c.imageURL ? "<img src='" + esc(c.imageURL) + "' alt=''>" : "")
+      + "<div class='k'><span>💞 " + (CAT_ICON[c.category] || "") + " " + esc(c.category || "Night out") + "</span>" + (l <= 3 ? "<span class='dt-hot'>" + l + " left</span>" : "<span>For " + c.size + "</span>") + "</div>"
+      + "<b>" + esc(c.title) + "</b></div>"
+      + "<div class='dt-body'><div class='v'><div class='t'><div>📍 " + esc(c.venueName) + (c.city ? ", " + esc(c.city.split(",")[0]) : "") + "</div><div>" + esc(when(c.startsAt)) + "</div><div>" + esc((c.items || []).slice(0, 2).join(" · ")) + "</div></div></div>"
+      + "<div class='dt-price'><b>" + money(c.price) + "</b><small>for " + c.size + "</small></div></div></button>";
+  }
+  function connectHow() {
+    return "<div class='dt-box' style='border-color:rgba(224,69,123,.4)'><h3>How Connect Me works</h3><p>Night-out packages at real places, for a set day and time. You buy it, then bring who you want.</p><ol class='dt-steps'>"
+      + "<li><b>1</b><strong>Buy it</strong>One price covers everyone (dinner for 2, bowling for 4…).</li>"
+      + "<li><b>2</b><strong>Invite</strong>Pick a member here, or send a link anywhere. They join free to accept.</li>"
+      + "<li><b>3</b><strong>Check in</strong>Each of you taps “I'm here” at the place, or shows your code.</li>"
+      + "</ol></div>";
+  }
+  function conBox(o) {
+    if (o.invite) return "<div class='dt-box' style='border-color:rgba(224,69,123,.5)'><div class='dt-row'><h3 style='margin:0'>💌 " + esc(o.buyerName) + " invited you</h3><span class='dt-pill purple'>Paid for</span></div>"
+      + "<p style='margin:6px 0'>" + esc(o.title) + " · " + esc(o.venueName) + " · " + esc(when(o.startsAt)) + "</p>"
+      + "<button class='dt-btn' onclick=\"Dates.openInvite('" + esc(o.token) + "')\">See invite</button></div>";
+    var now = Date.now(), live = o.status === "paid", hereOpen = live && now > o.startsAt - 3600000 && now < o.startsAt + 3 * 3600000;
+    var st = live ? (o.here ? ["ok", "Checked in"] : ["ok", "Booked"]) : o.status === "canceled" ? ["bad", "Canceled · money back as credit"] : ["purple", "Done"];
+    var maps = "https://maps.google.com/?q=" + encodeURIComponent(o.venueName + ", " + o.address + ", " + o.city);
+    var seats = (o.seats || []).map(function (x) {
+      var label = x.role === "buyer" ? (o.buyer ? "You" : esc(x.name)) : x.status === "accepted" ? esc(x.name) : x.status === "invited" ? "Invited · waiting for them" : "Open spot";
+      var acts = "";
+      if (o.buyer && live && x.role === "guest" && x.status !== "accepted") acts = "<span class='dt-actions'><button class='dt-btn ghost' style='min-height:34px;padding:6px 12px' onclick=\"Dates.connectInviteMember('" + o.id + "'," + x.i + ")\">👋 Member</button><button class='dt-btn' style='min-height:34px;padding:6px 12px' onclick=\"Dates.shareSeat('" + o.id + "'," + x.i + ")\">↗ Send link</button>" + (x.status === "invited" ? "<button class='dt-btn ghost' style='min-height:34px;padding:6px 12px' onclick=\"Dates.newConnectLink('" + o.id + "'," + x.i + ",this)\">New link</button>" : "") + "</span>";
+      else if (o.buyer && live && x.role === "guest" && x.status === "accepted" && !x.here) acts = "<button class='dt-btn ghost' style='min-height:30px;padding:4px 10px;font-size:11.5px' onclick=\"Dates.newConnectLink('" + o.id + "'," + x.i + ",this)\">Swap</button>";
+      return "<div class='dt-seat'><span>" + (x.here ? "✅ " : x.status === "accepted" ? "👤 " : "➕ ") + label + "</span>" + acts + "</div>";
+    }).join("");
+    return "<div class='dt-box' style='border-color:rgba(224,69,123,.4)'><div class='dt-row'><h3 style='margin:0'>💞 " + esc(o.title) + "</h3><span class='dt-pill " + st[0] + "'>" + st[1] + "</span></div>"
+      + "<p style='margin:6px 0'>" + esc(when(o.startsAt)) + (o.buyer ? "" : " · from " + esc(o.buyerName)) + "</p>"
+      + (live && o.address ? "<div class='dt-rules'>📍 <b>" + esc(o.venueName) + "</b><br>" + esc(o.address) + ", " + esc(o.city) + (o.venuePhone ? "<br>📞 <a href='tel:" + esc(String(o.venuePhone).replace(/[^0-9+]/g, "")) + "' style='color:#00e3ae'>" + esc(o.venuePhone) + "</a>" : "") + "<br><a href='" + maps + "' target='_blank' rel='noopener' style='color:#00e3ae'>Open in Maps</a></div>" : "")
+      + (o.buyer || seats ? "<div style='margin-top:8px'><div class='lbl' style='font-size:11px;color:#9a8fb5;font-weight:800;letter-spacing:.08em'>WHO'S GOING</div>" + seats + "</div>" : "")
+      + (live && o.code ? "<div style='text-align:center;margin-top:10px'><div class='dt-code' style='color:#ff8fb3'>" + esc(o.code) + "</div><div style='font-size:12px;color:#9a8fb5'>Your code. Show it if the staff asks.</div></div>" : "")
+      + (live ? "<div class='dt-actions' style='margin-top:10px'>" + (hereOpen && !o.here ? "<button class='dt-btn teal' onclick=\"Dates.imHere('" + o.id + "',this)\">📍 I'm here</button>" : !o.here ? "<span style='font-size:12px;color:#9a8fb5'>“I'm here” opens an hour before.</span>" : "") + "</div>" : "")
+      + "</div>";
   }
 
   /* ---------- panel below the phone ---------- */
   var ST = { draft: ["warn", "Deposit not paid"], pending: ["purple", "Being reviewed"], changes: ["warn", "Needs a change"], live: ["ok", "On sale"], review: ["warn", "Being checked"], paying: ["ok", "Payout coming"], completed: ["ok", "Done"], canceled: ["bad", "Canceled"], rejected: ["bad", "Not approved"], expired: ["bad", "Expired"] };
   function howItWorks() {
-    return "<div class='dt-box'><h3>How M&G works</h3><ol class='dt-steps'>"
-      + "<li><b>1</b><strong>Pick one</strong>Dinners, shows and hangouts with people you know from here.</li>"
+    return "<div class='dt-box'><h3>How M&G works</h3><p><b>M&G stands for Meet &amp; Greet:</b> real-life hangouts at public places with creators, hosts and members you know from Whisper+Me.</p><ol class='dt-steps'>"
+      + "<li><b>1</b><strong>Pick one</strong>Dinners, shows, game nights. Bring friends: up to " + MAX_QTY + " spots at once.</li>"
       + "<li><b>2</b><strong>Get your spot</strong>One price per person. The address and your code show up right away.</li>"
-      + "<li><b>3</b><strong>Show your code</strong>At the door. If the host cancels or no-shows, you get every cent back.</li>"
+      + "<li><b>3</b><strong>Show your code</strong>At the door. If the host cancels or doesn't show, you get all your money back.</li>"
       + "</ol></div>";
   }
   function ticketBox(m) {
-    var st = m.status === "live" ? (m.guestCheckedIn ? ["ok", "Checked in"] : ["ok", "You're going"]) : m.status === "canceled" ? ["bad", "Canceled · refunded"] : m.status === "completed" || m.status === "paying" ? ["purple", "Done"] : ST[m.status] || ["warn", m.status];
+    var st = m.status === "live" ? (m.guestCheckedIn ? ["ok", "Checked in"] : ["ok", "You're going"]) : m.status === "canceled" ? ["bad", "Canceled · money back as credit"] : m.status === "completed" || m.status === "paying" ? ["purple", "Done"] : ST[m.status] || ["warn", m.status];
     var maps = "https://maps.google.com/?q=" + encodeURIComponent(m.venueName + ", " + m.address + ", " + m.city);
     return "<div class='dt-box'><div class='dt-row'><h3 style='margin:0'>" + esc(m.title) + "</h3><span class='dt-pill " + st[0] + "'>" + st[1] + "</span></div>"
       + "<p style='margin:6px 0'>" + (m.official ? "Whisper+Me M&G" : "with " + esc(m.hostName)) + " · " + esc(when(m.startsAt)) + "</p>"
       + (m.address && m.status !== "canceled" ? "<div class='dt-rules'>📍 <b>" + esc(m.venueName) + "</b><br>" + esc(m.address) + ", " + esc(m.city) + (m.venuePhone ? "<br>📞 <a href='tel:" + esc(String(m.venuePhone).replace(/[^0-9+]/g, "")) + "' style='color:#00e3ae'>" + esc(m.venuePhone) + "</a>" : "") + "<br><a href='" + maps + "' target='_blank' rel='noopener' style='color:#00e3ae'>Open in Maps</a></div>" : "")
-      + (m.status === "live" && m.code ? "<div style='text-align:center;margin-top:10px'><div class='dt-code'>" + esc(m.code) + "</div><div style='font-size:12px;color:#9a8fb5'>Show this code to " + esc(hostLabel(m)) + " when you get there.</div></div>" : "")
+      + (m.status === "live" && m.code ? "<div style='text-align:center;margin-top:10px'><div class='dt-code'>" + esc(m.code) + "</div><div style='font-size:12px;color:#9a8fb5'>" + ((m.qty || 1) > 1 ? "<b style='color:#fff'>Good for " + m.qty + " people.</b> " : "") + "Show this code to " + esc(hostLabel(m)) + " when you get there.</div></div>" : "")
       + "<div class='dt-actions' style='margin-top:10px'>"
       + (m.status === "live" ? "<button class='dt-btn ghost' onclick=\"Dates.shareMeetup('" + m.id + "')\">↗ Bring a friend</button>" : "")
       + (m.canReport && !m.reported ? "<button class='dt-btn ghost' onclick=\"Dates.reportMeetup('" + m.id + "')\">Report a problem</button>" : "")
@@ -297,10 +356,14 @@
       case "changes": return "Fix what we asked below, then save. It comes right back to us.";
       case "live": return m.sold ? "On sale. Share your link to sell more. On the day, check guests in with their codes." : "On sale! Share your link: most spots sell from the host's own posts.";
       case "review": return "We're checking how it went before paying you. We'll be in touch if we need anything.";
-      case "paying": return "You'll get " + money(m.hostCut * m.sold) + " on " + esc(day(m.payoutAt)) + ", plus your deposit back. Buyers can report a problem until then.";
-      case "completed": return m.hostEarned ? "Paid " + money(m.hostEarned) + " to your Whisper+Me earnings." : "All done.";
+      case "paying": return "You'll get " + money(m.hostCut * m.sold) + " on " + esc(day(m.payoutAt)) + ". Buyers can report a problem until then." + payoutHint();
+      case "completed": return (m.hostEarned ? "Added " + money(m.hostEarned) + " to your earnings." : "All done.") + payoutHint();
       default: return "";
     }
+  }
+  function payoutHint() {
+    var u = window.me || {};
+    return u.stripeAccountId ? " It's sent to your bank once your earnings reach $50." : " <b>Set up payouts</b> (👤 Profile → Wallet) so we can send it to your bank.";
   }
   function hostBox(m) {
     var st = ST[m.status] || ["warn", m.status];
@@ -315,26 +378,38 @@
       + "<div class='dt-actions'>"
       + (m.status === "draft" ? "<button class='dt-btn' onclick=\"Dates.payHostDeposit('" + m.id + "',this)\">Pay " + money((m.hostDeposit || {}).amount) + " deposit</button>" : "")
       + (m.status === "live" && dayOf ? "<button class='dt-btn teal' onclick=\"Dates.checkInGuest('" + m.id + "')\">✅ Check in guests (" + m.checkedIn + ")</button>" : "")
+      + ((m.status === "paying" || m.status === "completed") && !m.official && !(window.me || {}).stripeAccountId && window.connectStripe ? "<button class='dt-btn gold' onclick='connectStripe()'>💸 Set up payouts</button>" : "")
       + (m.status === "live" ? "<button class='dt-btn' onclick=\"Dates.shareMeetup('" + m.id + "')\">↗ Share</button>" : "")
       + (open && !m.official ? "<button class='dt-btn ghost' onclick=\"Dates.hostMeetup('" + m.id + "')\">✏️ " + (m.status === "changes" ? "Fix it" : "Edit") + "</button>" : "")
       + (open && !m.official ? "<button class='dt-btn ghost' onclick=\"Dates.cancelMeetup('" + m.id + "',this)\">Cancel</button>" : "")
       + "</div></div>";
   }
   function hostPitch() {
-    return "<div class='dt-box' style='border-color:rgba(214,177,107,.4)'><h3>⭐ Host an M&G</h3>"
-      + "<p>Meet your fans or followers in person at a public place. You set the price per spot and keep <b>" + hostKeep() + "%</b>.</p>"
+    return "<div class='dt-box' style='border-color:rgba(214,177,107,.4)'><h3>⭐ Host an M&G (Meet &amp; Greet)</h3>"
+      + "<p>Meet your fans or followers in person at a public place. You set the price per spot and keep <b>" + hostKeep() + "%</b>. Card fees are on us.</p>"
       + "<ol class='dt-steps' style='margin-bottom:12px'>"
       + "<li><b>1</b><strong>Post it</strong>Pick the place, time, price and spots.</li>"
       + "<li><b>2</b><strong>We review it</strong>Usually within a day. Then share your link.</li>"
-      + "<li><b>3</b><strong>Get paid</strong>Check guests in. Paid " + payoutDays() + " days after.</li></ol>"
-      + "<p style='font-size:12px'>Small deposit to post: one spot's price (or $5 if it's a 1-spot M&G). It comes back with your pay.</p>"
+      + "<li><b>3</b><strong>Get paid</strong>Check guests in. Your money hits your earnings " + payoutDays() + " days after, then your bank.</li></ol>"
+      + "<p style='font-size:12px'>One-time deposit: one spot's price (or $5 for a 1-spot M&G). It stays on your account and covers all your M&Gs; it's only kept if you cancel late or don't show." + (S.depositOnFile ? " <b style='color:#fff'>You have " + money(S.depositOnFile) + " on file.</b>" : "") + " To cash out, set up payouts once in 👤 Profile → Wallet.</p>"
       + "<button class='dt-btn gold' onclick='Dates.hostMeetup()'>⭐ Host one</button></div>";
   }
+  function creditBox() {
+    return S.credit > 0 ? "<div class='dt-box' style='border-color:rgba(0,227,174,.45)'><div class='dt-row'><h3 style='margin:0'>💳 Whisper+Me credit</h3><span class='dt-pill ok'>" + money(S.credit) + "</span></div>"
+      + "<p style='margin:8px 0'>It's used first on your next M&G or Connect Me, with no card needed.</p><button class='dt-btn ghost' onclick='Dates.creditToCard(this)'>Send it to my card instead</button></div>" : "";
+  }
   function panelInner() {
-    if (!me()) return S.anon ? howItWorks() : "";
-    var out = "";
-    var t = myTickets(), h = myHosted();
+    if (!me()) return S.anon ? (S.mode === "cm" ? connectHow() : howItWorks()) : "";
+    var out = creditBox();
+    var t = myTickets(), h = myHosted(), c = myCons();
+    if (S.mode === "cm") {
+      out += c.length ? "<div class='dt-sec'>💞 Your Connect Me</div>" + c.map(conBox).join("") : "";
+      out += connectHow();
+      if (t.length) out += "<div class='dt-sec'>🎟️ M&G tickets</div>" + t.map(ticketBox).join("");
+      return out;
+    }
     if (t.length) out += "<div class='dt-sec'>🎟️ My tickets</div>" + t.map(ticketBox).join("");
+    if (c.length) out += "<div class='dt-sec'>💞 Your Connect Me</div>" + c.map(conBox).join("");
     if (h.length) out += "<div class='dt-sec'>⭐ M&Gs you host</div>" + h.map(hostBox).join("");
     if (!t.length) out += howItWorks();
     out += hostPitch();
@@ -346,7 +421,10 @@
   }
 
   function openPending() {
-    if (typeof active === "undefined" || active !== 4 || !S.meetups.length) return;
+    if (typeof active === "undefined" || active !== 4) return;
+    var tok = null; try { tok = sessionStorage.getItem("wpmConnect"); } catch (e) {}
+    if (tok && anyUser()) { try { sessionStorage.removeItem("wpmConnect"); } catch (e) {} S.mode = "cm"; setTimeout(function () { refresh(); Dates.openInvite(tok); }, 50); return; }
+    if (!S.meetups.length) return;
     var mid = null; try { mid = sessionStorage.getItem("wpmMeetup"); } catch (e) {}
     if (!mid) return;
     try { sessionStorage.removeItem("wpmMeetup"); } catch (e) {}
@@ -388,6 +466,89 @@
     mounted: function () { start(); refresh(); },
     setCat: function (c) { S.cat = c; refresh(); },
     setCatIdx: function (i) { S.cat = CATS[i] || "All"; refresh(); },
+    setMode: function (m) { S.mode = m === "cm" ? "cm" : "mg"; S.cat = "All"; refresh(); },
+
+    /* ---------- Connect Me ---------- */
+    openConnect: function (id) {
+      var c = S.connects.filter(function (x) { return x.id === id; })[0];
+      if (!c) return toast("That package just sold out.", "warn");
+      var l = c.quantity - c.sold - c.held, needYear = !S.anon && S.member === null;
+      openModal("<div style='margin:-18px -18px 0;border-radius:14px 14px 0 0;overflow:hidden'><div class='dt-poster' style='height:150px;background:" + grad(c.hue != null ? c.hue : hue(c.title)) + "'>"
+        + (c.imageURL ? "<img src='" + esc(c.imageURL) + "' alt=''>" : "") + "<div class='k'><span>💞 Connect Me</span>" + (l <= 3 ? "<span class='dt-hot'>" + l + " left</span>" : "") + "</div><b style='font-size:23px'>" + esc(c.title) + "</b></div></div>"
+        + "<div><b>" + esc(when(c.startsAt)) + "</b><br><small style='color:#9a8fb5'>📍 " + esc(c.venueName) + (c.city ? ", " + esc(c.city) : "") + "</small></div>"
+        + "<div class='dt-facts'><div><b>" + money(c.price) + "</b>for " + c.size + " people</div><div><b>" + money(Math.round(c.price / c.size)) + "</b>each</div><div><b>" + l + "</b>left</div></div>"
+        + (c.about ? "<p style='margin:0;line-height:1.55;font-size:14px'>" + esc(c.about) + "</p>" : "")
+        + ((c.items || []).length ? "<div><div class='lbl'>Included</div><div style='font-size:14px;line-height:1.6'>" + c.items.map(function (i) { return "✓ " + esc(i); }).join("<br>") + "</div></div>" : "")
+        + "<div class='dt-rules'><b>How it works:</b> buy it, then invite who you're bringing: pick a member here, or send them a link (they join free to accept). The address and everyone's code show up right after. At the place, each of you taps <b>“I'm here.”</b></div>"
+        + (needYear ? birthYearField("cmYear") : "")
+        + (S.credit > 0 && !S.anon ? "<div class='dt-rules' style='color:#00e3ae'>💳 Your " + money(S.credit) + " credit is used first.</div>" : "")
+        + "<div id='cmErr' class='dt-err'></div><button class='dt-btn big' id='cmBuy' style='background:linear-gradient(90deg,#7b2ff7,#e0457b)'>" + (S.anon ? "Sign up free to get it" : "Get it · " + money(c.price)) + "</button>"
+        + "<p class='dt-fine'>Paid packages aren't refundable. If the place or Whisper+Me cancels, you get all your money back. By buying you agree to the <a href='/terms.html' target='_blank' rel='noopener'>terms</a>.</p>");
+      $i("cmBuy").onclick = function () {
+        if (S.anon) { if (window.promptGuestUpgrade) window.promptGuestUpgrade("Connect Me"); return; }
+        var data = { dealId: c.id };
+        if (needYear) { data.birthYear = +($i("cmYear") || {}).value; if (!data.birthYear) { $i("cmErr").textContent = "Pick your birth year first."; return; } }
+        busy(this, fn("buyConnect", data)).then(function (r) { if (r.done) { closeModal(); toast(r.message); loadMine(); } else location.href = r.url; }, function (e) { $i("cmErr").textContent = e.message; });
+      };
+    },
+    openInvite: function (token) {
+      fn("connectInvite", { token: token }).then(function (v) {
+        var needYear = !S.anon && S.member === null;
+        openModal("<div style='margin:-18px -18px 0;border-radius:14px 14px 0 0;overflow:hidden'><div class='dt-poster' style='height:130px;background:" + grad(v.hue != null ? v.hue : hue(v.title)) + "'>" + (v.imageURL ? "<img src='" + esc(v.imageURL) + "' alt=''>" : "") + "<div class='k'><span>💌 You're invited</span></div><b style='font-size:22px'>" + esc(v.title) + "</b></div></div>"
+          + "<p style='margin:0;font-size:15px'><b>" + esc(v.from) + "</b> invited you out. It's already paid for.</p>"
+          + "<div><b>" + esc(when(v.startsAt)) + "</b><br><small style='color:#9a8fb5'>📍 " + esc(v.venueName) + (v.city ? ", " + esc(v.city) : "") + "</small></div>"
+          + ((v.items || []).length ? "<div style='font-size:14px;line-height:1.6'>" + v.items.map(function (i) { return "✓ " + esc(i); }).join("<br>") + "</div>" : "")
+          + (v.mine ? "<div class='dt-rules'>You already accepted. Your code and the address are under 💞 Connect Me.</div>"
+            : v.taken ? "<div class='dt-warn'>Someone already accepted this invite.</div>"
+            : v.forSomeoneElse ? "<div class='dt-warn'>This invite was sent to someone else.</div>"
+            : (needYear ? birthYearField("ivYear") : "") + "<div id='ivErr' class='dt-err'></div><button class='dt-btn big' id='ivGo' style='background:linear-gradient(90deg,#7b2ff7,#e0457b)'>" + (S.anon ? "Sign up free to accept" : "Accept 💞") + "</button><p class='dt-fine'>Free to accept. 21+ only. You'll get the address and your own code.</p>"));
+        var b = $i("ivGo");
+        if (b) b.onclick = function () {
+          if (S.anon) { try { sessionStorage.setItem("wpmConnect", token); } catch (e) {} if (window.promptGuestUpgrade) window.promptGuestUpgrade("Accepting a Connect Me invite"); return; }
+          var data = { token: token };
+          if (needYear) { data.birthYear = +($i("ivYear") || {}).value; if (!data.birthYear) { $i("ivErr").textContent = "Pick your birth year first."; return; } }
+          busy(b, fn("acceptConnect", data)).then(function (r) { closeModal(); toast(r.message); S.mode = "cm"; loadMine(); }, function (e) { $i("ivErr").textContent = e.message; });
+        };
+      }, function (e) { toast(e.message, "error"); });
+    },
+    shareSeat: function (orderId, i) {
+      var o = S.myCon.filter(function (x) { return x.id === orderId; })[0] || {}, st = (o.seats || [])[i] || {};
+      if (st.link) Dates.shareConnect(st.link, o.title);
+    },
+    shareConnect: function (link, title) {
+      var text = "I got us a spot: " + (title || "a night out") + ". Tap to accept (free).";
+      if (navigator.share) { navigator.share({ title: "You're invited · Whisper+Me", text: text, url: link }).catch(function () {}); return; }
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text + " " + link).then(function () { toast("Invite link copied. Send it to them anywhere."); }, function () { prompt("Copy this invite link:", link); });
+      else prompt("Copy this invite link:", link);
+    },
+    connectInviteMember: function (orderId, seat) {
+      var draw = function (q) {
+        var list = people().filter(function (p) { return !q || p.name.toLowerCase().indexOf(q.toLowerCase()) > -1; }).slice(0, 40);
+        openModal("<h3>👋 Invite a member</h3><p style='margin:0;color:#b3abcf;font-size:13px'>They get a notification and accept for free.</p>"
+          + "<input class='dt-in' id='cmInvQ' placeholder='Search members' value='" + esc(q || "") + "'>"
+          + "<div class='dt-picks'>" + (list.length ? list.map(function (p) { return "<button class='dt-pick' data-uid='" + esc(p.uid) + "'>" + avatar(p, 40) + "<span style='max-width:64px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>" + esc(p.name) + "</span></button>"; }).join("") : "<span style='color:#7d7699;font-size:13px'>No members match.</span>") + "</div>");
+        var sI = $i("cmInvQ"); sI.oninput = function () { var v = sI.value; draw(v); var n = $i("cmInvQ"); n.focus(); n.setSelectionRange(v.length, v.length); };
+        document.querySelectorAll(".dt-picks [data-uid]").forEach(function (b) {
+          b.onclick = function () { busy(b, fn("inviteToConnect", { orderId: orderId, seat: seat, uid: b.getAttribute("data-uid") })).then(function () { closeModal(); toast("Invite sent 💞"); loadMine(); }, function (e) { toast(e.message, "error"); }); };
+        });
+      };
+      draw("");
+    },
+    newConnectLink: function (orderId, seat, btn) {
+      if (!confirm("Give this spot a new link? The old link stops working.")) return;
+      busy(btn, fn("newConnectLink", { orderId: orderId, seat: seat })).then(function (r) { toast(r.message); loadMine(); }, function (e) { toast(e.message, "error"); });
+    },
+    imHere: function (orderId, btn) {
+      var send = function (pos) {
+        busy(btn, fn("connectHere", Object.assign({ orderId: orderId }, pos ? { lat: pos.coords.latitude, lng: pos.coords.longitude } : {}))).then(function (r) { toast(r.message); loadMine(); }, function (e) { toast(e.message, "error"); });
+      };
+      if (navigator.geolocation) navigator.geolocation.getCurrentPosition(send, function () { send(null); }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+      else send(null);
+    },
+    creditToCard: function (btn) {
+      if (!confirm("Send your " + money(S.credit) + " credit back to your card? It takes 5–10 days to show up.")) return;
+      busy(btn, fn("creditToCard")).then(function (r) { toast(r.message); loadMine(); }, function (e) { toast(e.message, "error"); });
+    },
     catScroll: function (el) {
       var bar = el && el.nextElementSibling; if (!bar || !bar.firstChild) return;
       var w = el.scrollWidth, c = el.clientWidth;
@@ -415,22 +576,27 @@
         + (have ? "<div class='dt-rules' style='text-align:center'>You're going! Your code: <span class='dt-code' style='font-size:18px'>" + esc(have.code) + "</span></div>"
           : mine ? "<div class='dt-rules'>This is your M&G. Share it so people can find it.</div>"
           : (needYear ? birthYearField("dtMgYear") : "")
+            + (S.anon || l < 2 ? "" : "<div class='dt-row' style='flex-wrap:nowrap'><div><div class='lbl' style='margin:0'>How many spots?</div><small style='color:#9a8fb5'>You + friends, one code for the group</small></div>"
+              + "<div class='dt-qty'><button class='dt-btn ghost' id='dtQm' aria-label='One less'>−</button><b id='dtQn'>1</b><button class='dt-btn ghost' id='dtQp' aria-label='One more'>+</button></div></div>")
+            + (S.credit > 0 ? "<div class='dt-rules' style='color:#00e3ae'>💳 Your " + money(S.credit) + " credit is used first.</div>" : "")
             + "<div id='dtMgErr' class='dt-err'></div>"
             + "<button class='dt-btn big' id='dtMgBuy'>" + (S.anon ? "Sign up free to get a spot" : "Get my spot · " + money(m.price)) + "</button>"
-            + "<p class='dt-fine'>Spots aren't refundable, except: if the host cancels or doesn't show up, you get every cent back automatically. By buying you agree to the <a href='/terms.html' target='_blank' rel='noopener'>M&G terms</a>.</p>")
+            + "<p class='dt-fine'>Spots aren't refundable, except: if the host cancels or doesn't show up, you get all your money back automatically. By buying you agree to the <a href='/terms.html' target='_blank' rel='noopener'>M&G terms</a>.</p>")
         + "<div class='dt-actions'><button class='dt-btn ghost' style='flex:1' onclick=\"Dates.shareMeetup('" + m.id + "')\">↗ Share</button>"
         + (S.anon ? "" : "<button class='dt-btn ghost' style='flex:1' onclick=\"Dates.inviteMember('" + m.id + "')\">👋 Invite a member</button>") + "</div>");
-      var b = $i("dtMgBuy");
+      var b = $i("dtMgBuy"), qty = 1, maxQ = Math.min(MAX_QTY, l);
+      var setQ = function (n) { qty = Math.max(1, Math.min(maxQ, n)); $i("dtQn").textContent = qty; b.textContent = qty > 1 ? "Get " + qty + " spots · " + money(m.price * qty) : "Get my spot · " + money(m.price); };
+      if ($i("dtQp")) { $i("dtQp").onclick = function () { setQ(qty + 1); }; $i("dtQm").onclick = function () { setQ(qty - 1); }; }
       if (b) b.onclick = function () {
         if (S.anon) { try { sessionStorage.setItem("wpmMeetup", m.id); } catch (e) {} if (window.promptGuestUpgrade) window.promptGuestUpgrade("Getting a spot at an M&G"); return; }
-        var data = { meetupId: m.id };
+        var data = { meetupId: m.id, qty: qty };
         if (needYear) { data.birthYear = +($i("dtMgYear") || {}).value; if (!data.birthYear) { $i("dtMgErr").textContent = "Pick your birth year first."; return; } }
-        busy(b, fn("buyMeetupSpot", data)).then(function (r) { location.href = r.url; }, function (e) { $i("dtMgErr").textContent = e.message; });
+        busy(b, fn("buyMeetupSpot", data)).then(function (r) { if (r.done) { closeModal(); toast(r.message); loadMine(); setTimeout(Dates.showTickets, 1500); } else location.href = r.url; }, function (e) { $i("dtMgErr").textContent = e.message; });
       };
     },
     showTickets: function () {
-      var t = myTickets();
-      openModal("<h3>🎟️ My tickets</h3>" + (t.length ? t.map(ticketBox).join("") : "<div class='dt-rules'>No tickets yet. Pick an M&G and get your spot: the address and your code show up here right away.</div>")
+      var t = myTickets(), c = myCons();
+      openModal("<h3>🎟️ My tickets</h3>" + creditBox() + (t.length || c.length ? t.map(ticketBox).join("") + c.map(conBox).join("") : "<div class='dt-rules'>No tickets yet. Pick an M&G or a Connect Me package: the address and your code show up here right away.</div>")
         + "<button class='dt-btn ghost' onclick='closeProfileModal()'>Close</button>");
       if (!S.loadedMine) loadMine();
     },
@@ -527,15 +693,16 @@
         + "<div class='dt-row' style='gap:6px;flex-wrap:nowrap'><input class='dt-in' id='mgEmail' type='email' placeholder='Email' value='" + esc(c.email || u.email || "") + "'><input class='dt-in' id='mgPhone' type='tel' placeholder='Your phone' value='" + esc(c.phone || "") + "'></div>"
         + "<p style='margin:-8px 0 0;font-size:12px;color:#9a8fb5'>Only Whisper+Me sees these, to confirm details or ask for changes.</p>"
         + (needYear ? birthYearField("mgYear") : "")
-        + (ed ? "" : "<label class='dt-check'><input type='checkbox' id='mgAgree'> <span>I'll be there and check my guests in. If I cancel within " + S.settings.lateCancelHours + " hours or don't show, buyers are refunded and my deposit is kept. <a href='/terms.html' target='_blank' rel='noopener'>M&G terms</a></span></label>")
+        + (ed ? "" : "<label class='dt-check'><input type='checkbox' id='mgAgree'> <span>I'll be there and check my guests in. If I cancel within " + S.settings.lateCancelHours + " hours or don't show, buyers get their money back and my deposit is kept. <a href='/terms.html' target='_blank' rel='noopener'>M&G terms</a></span></label>")
         + "<div id='mgErr' class='dt-err'></div>"
         + "<button class='dt-btn big gold' id='mgGo'>" + (ed ? "Save changes" : "Continue to deposit") + "</button>");
       var math = function () {
         var price = locked ? ed.price : Math.round((+($i("mgPrice") || {}).value || 0) * 100), n = Math.max(0, Math.round(+$i("mgSpots").value || 0)), cut = Math.round(price * (100 - fee) / 100);
-        var dep = n > 1 ? price : 500;
-        $i("mgMath").innerHTML = price < 500 ? "Set a price per person (at least $5)." : "You keep <b>" + money(cut) + "</b> a spot (" + (100 - fee) + "%). All " + n + " sold = <b>" + money(cut * n) + "</b>, paid " + payoutDays() + " days after your M&G."
-          + (ed ? "" : "<br>Deposit today: <b>" + money(dep) + "</b> " + (n > 1 ? "(one spot's price)" : "(1-spot M&G)") + ". It comes back with your pay.");
-        if (!ed) $i("mgGo").textContent = price >= 500 ? "Continue · pay " + money(dep) + " deposit" : "Continue to deposit";
+        var dep = n > 1 ? price : 500, due = Math.max(0, dep - S.depositOnFile);
+        $i("mgMath").innerHTML = price < 500 ? "Set a price per person (at least $5)." : "You keep <b>" + money(cut) + "</b> a spot (" + (100 - fee) + "%). All " + n + " sold = <b>" + money(cut * n) + "</b>, paid " + payoutDays() + " days after your M&G. Card fees are on us."
+          + (ed ? "" : "<br>Deposit: <b>" + money(dep) + "</b> " + (n > 1 ? "(one spot's price)" : "(1-spot M&G)") + ", paid once and kept on your account for all your M&Gs."
+            + (S.depositOnFile ? " You have " + money(S.depositOnFile) + " on file" + (due ? ", so you pay <b>" + money(due) + "</b> today." : ", so <b>nothing to pay</b>.") : ""));
+        if (!ed) $i("mgGo").textContent = price < 500 ? "Continue" : due ? "Continue · pay " + money(due) + " deposit" : "Send for review";
       };
       ["mgPrice", "mgSpots"].forEach(function (k) { if ($i(k)) $i(k).oninput = math; }); math();
       if (!locked) {
@@ -554,11 +721,11 @@
         var f = $i("mgImg").files[0];
         var up = f ? (f.size > 5 * 1024 * 1024 ? Promise.reject(new Error("The picture is over 5 MB.")) : firebase.storage().ref("nights/ticketImages/" + S.uid + "/" + Date.now()).put(f, { contentType: f.type }).then(function (r) { return r.ref.getDownloadURL(); })) : Promise.resolve(HF.img || "");
         busy(btn, up.then(function (url) { data.imageURL = url; return ed ? fn("editMeetup", { meetupId: ed.id, data: data }) : fn("createMeetup", data); }))
-          .then(function (r) { if (ed) { closeModal(); toast(r.message); loadMine(); } else location.href = r.url; }, function (e) { err.textContent = e.message; });
+          .then(function (r) { if (ed || !r.url) { closeModal(); toast(r.message || "Saved"); loadMine(); } else location.href = r.url; }, function (e) { err.textContent = e.message; });
       };
     },
     editMeetup: function (id) { Dates.hostMeetup(id); },
-    payHostDeposit: function (id, btn) { busy(btn, fn("payHostDeposit", { meetupId: id })).then(function (r) { location.href = r.url; }, function (e) { toast(e.message, "error"); }); },
+    payHostDeposit: function (id, btn) { busy(btn, fn("payHostDeposit", { meetupId: id })).then(function (r) { if (r.url) location.href = r.url; else { toast(r.message); loadMine(); } }, function (e) { toast(e.message, "error"); }); },
     pickVenue: function (i) {
       var r = HF.results[i]; if (!r) return;
       HF.venue = r;
@@ -619,11 +786,13 @@
 
   /* ---------- coming back from Stripe (or a shared /m/ link) ---------- */
   var params = new URLSearchParams(window.__initialSearch || location.search); // app.js cleans the URL before this file runs
-  var back = params.get("dates");
+  var back = params.get("dates") || (params.get("connect") ? "1" : "");
   var sharedMeetup = (params.get("meetup") || "").replace(/[^A-Za-z0-9_-]/g, "");
   if (sharedMeetup) { try { sessionStorage.setItem("wpmMeetup", sharedMeetup); } catch (e) {} }
+  var sharedConnect = (params.get("connect") || "").replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 20);
+  if (sharedConnect) { try { sessionStorage.setItem("wpmConnect", sharedConnect); } catch (e) {} if (!back) back = "1"; }
   if (back) {
-    var msgs = { meetup: "You're in! The address and your code are under 🎟️ My tickets.", hostdeposit: "Deposit received. We'll review your M&G (usually within a day) and let you know when it's live.", seat: "Payment received.", back: "Checkout wasn't finished. Nothing was charged." };
+    var msgs = { connect: "Booked! 💞 Now invite who you're bringing: a member, or send them a link.", meetup: "You're in! The address and your code are under 🎟️ My tickets.", hostdeposit: "Deposit received. We'll review your M&G (usually within a day) and let you know when it's live.", seat: "Payment received.", back: "Checkout wasn't finished. Nothing was charged." };
     history.replaceState(null, "", location.pathname);
     var tries = 0;
     var t = setInterval(function () {
@@ -635,6 +804,7 @@
         if (msgs[back]) toast(msgs[back], back === "back" ? "warn" : "success");
         if (back === "meetup") { setTimeout(loadMine, 2500); setTimeout(function () { loadMine(); if (upcomingTickets().length) Dates.showTickets(); }, 5000); }
         if (back === "hostdeposit") setTimeout(loadMine, 2500);
+        if (back === "connect") { S.mode = "cm"; refresh(); setTimeout(loadMine, 2500); setTimeout(loadMine, 5000); }
       } else if (tries > 60) clearInterval(t);
     }, 250);
   }

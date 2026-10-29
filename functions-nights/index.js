@@ -180,10 +180,10 @@ async function activateDeposit(uid, amount, pi) {
 }
 
 /* ---------- Stripe ---------- */
-async function checkoutFor({ kind, uid, email, amount, name, description, dateId = "", seatIndex = -1, hold = false, deposit = 0 }) {
-  const meta = { app: "dates", kind, uid, dateId, seatIndex: String(seatIndex), deposit: String(deposit || 0) };
+async function checkoutFor({ kind, uid, email, amount, name, description, dateId = "", seatIndex = -1, hold = false, deposit = 0, qty = 1 }) {
+  const meta = { app: "dates", kind, uid, dateId, seatIndex: String(seatIndex), deposit: String(deposit || 0), qty: String(qty) };
   const items = [];
-  if (amount > 0) items.push({ quantity: 1, price_data: { currency: "usd", unit_amount: amount, product_data: { name, description } } });
+  if (amount > 0) items.push({ quantity: qty, price_data: { currency: "usd", unit_amount: amount, product_data: { name, description } } });
   if (deposit > 0) items.push({ quantity: 1, price_data: { currency: "usd", unit_amount: deposit, product_data: { name: "M&G deposit (one time)", description: "Stays on your account for every future date. Only kept if you cancel late or don't show up." } } });
   const session = await stripe().checkout.sessions.create({
     mode: "payment",
@@ -716,6 +716,7 @@ async function handleStripeEvent(event) {
   if (o.metadata.kind === "seat") await onSeatPaymentSettled(o);
   if (o.metadata.kind === "meetup") await onMeetupPaid(o);
   if (o.metadata.kind === "hostdeposit") await onHostDepositPaid(o);
+  if (o.metadata.kind === "connect") await onConnectPaid(o);
 }
 
 /* ================= scheduled housekeeping ================= */
@@ -768,6 +769,7 @@ async function housekeeping() {
   const done = await db.collection("dates").where("status", "==", "confirmed").where("startsAt", "<", fromMs(now - SETTLE_AFTER_HOURS * 3600000)).limit(300).get();
   for (const doc of done.docs) await settleDate(doc.id, s);
   await meetupHousekeeping(s);
+  await connectHousekeeping(s);
 }
 exports.datesHousekeeping = onSchedule({ schedule: "every 10 minutes", ...withStripe }, housekeeping);
 
@@ -932,7 +934,7 @@ exports.nightsAdminAction = onCall(withStripe, async req => {
       await mtRef(id).update({ status: "rejected", rejectedReason: str(reason, 300) });
       await releaseHostDeposit(id, x, "Not approved");
       await push(x.hostUid, "Your M&G wasn't approved", str(reason, 140) || "Contact support for details.");
-      await log(req, action, id, reason); return { message: "Rejected. The host's deposit was returned." };
+      await log(req, action, id, reason); return { message: "Rejected. The host's deposit stays on their account." };
     }
     case "payMeetupHost": {
       const x = (await mtRef(id).get()).data();
@@ -945,8 +947,34 @@ exports.nightsAdminAction = onCall(withStripe, async req => {
       const n = await refundMeetup(id, reason || "Canceled by Whisper+Me.");
       if (x && data.keepDeposit) { await keepHostDeposit(id, x, "Host no-show (admin)"); await addStrike(x.hostUid, await getSettings(), "Missed their M&G"); }
       else if (x) await releaseHostDeposit(id, x, "Canceled by admin");
-      await log(req, action, id, reason); return { message: `Canceled. ${n || 0} buyer(s) refunded.${data.keepDeposit ? " Host deposit kept." : ""}` };
+      await log(req, action, id, reason); return { message: `Canceled. ${n || 0} buyer(s) got their money back as credit.${data.keepDeposit ? " Host deposit kept." : ""}` };
     }
+    case "postConnect": { const r = await postConnect(req, id || null, data); await log(req, action, r.id, str(data.title, 80)); return r; }
+    case "hideConnect":
+    case "showConnect": { await cnRef(id).update({ hidden: action === "hideConnect" }); await log(req, action, id); return { message: action === "hideConnect" ? "Paused" : "Back on sale" }; }
+    case "endConnect": { await cnRef(id).update({ status: "ended" }); await log(req, action, id); return { message: "Stopped selling. Packages already bought still happen." }; }
+    case "cancelConnect": { const n = await cancelConnectDeal(id, str(reason, 200) || "It was canceled."); await log(req, action, id, reason); return { message: `Canceled. ${n} buyer(s) got their money back as credit.` }; }
+    case "connectCheckIn": { const r = await connectCheckInCode(data.code || id); await log(req, action, r.title, r.guest); return { ...r, message: (r.already ? "Already checked in: " : "✅ Checked in: ") + r.guest }; }
+    case "connectOrders": {
+      const q = await db.collection("connectOrders").where("dealId", "==", id).limit(500).get();
+      return { orders: q.docs.map(d => d.data()).filter(o => ["paid", "completed", "canceled"].includes(o.status)).map(o => ({ buyerName: o.buyerName, status: o.status, amount: o.amount, seats: (o.seats || []).map(x => ({ name: x.name || "", status: x.status, code: x.code || "", here: !!x.checkedInAt, method: x.checkInMethod || "" })) })) };
+    }
+    case "refundHostDeposit": {
+      const ref = db.doc(`members/${str(id, 128)}`), m = (await ref.get()).data() || {};
+      const d = m.hostDeposit || {}; let sent = 0; const keep = [];
+      const open = await db.collection("meetups").where("hostUid", "==", id).where("status", "in", ["pending", "changes", "live", "review", "paying"]).limit(1).get();
+      if (!open.empty) fail("failed-precondition", "They have an M&G that isn't finished yet. Refund the deposit after it's done.");
+      for (const p of d.payments || []) {
+        if (!(p.left > 0)) continue;
+        try { await stripe().refunds.create({ payment_intent: p.pi, amount: p.left }); sent += p.left; } catch (e) { keep.push(p); }
+      }
+      await ref.set({ hostDeposit: { held: keep.reduce((a, p) => a + p.left, 0), payments: keep } }, { merge: true });
+      await log(req, action, id, fmtMoney(sent)); return { message: `Refunded ${fmtMoney(sent)} of their deposit.` };
+    }
+    case "payCreator": { const n = await payoutUser(str(id, 128)); await log(req, action, id, fmtMoney(n)); return { message: `Sent ${fmtMoney(n)} to their bank account` }; }
+    case "markCreatorPaid": { const n = await payoutUser(str(id, 128), { manual: true, amount: Math.round(Number(data.amount || 0) * 100) }); await log(req, action, id, fmtMoney(n)); return { message: `Recorded ${fmtMoney(n)} paid another way` }; }
+    case "payAllCreators": { const r = await payAllReady(); await log(req, action, "all", `${r.paid} paid ${fmtMoney(r.total)}`); return { message: `Paid ${r.paid} creator(s) ${fmtMoney(r.total)}.${r.skipped.length ? " Skipped: " + r.skipped.slice(0, 3).join("; ") : ""}`, ...r }; }
+    case "setAutoPayouts": { await db.doc("settings/platform").set({ autoPayouts: !!data.on }, { merge: true }); await log(req, action, "settings", String(!!data.on)); return { message: data.on ? "Automatic payouts are on (the 1st of every month)" : "Automatic payouts are off" }; }
     case "postMeetup": {
       const r = await postOfficialMeetup(req, id || null, data);
       await log(req, action, r.id, str(data.title, 80)); return r;
@@ -962,7 +990,7 @@ exports.nightsAdminAction = onCall(withStripe, async req => {
       if (!x) fail("not-found", "Not found.");
       const g = await mtRef(id).collection("spots").where("status", "in", ["paid", "refunded"]).limit(500).get();
       const reports = await db.collection("reports").where("meetupId", "==", id).limit(50).get();
-      return { guests: g.docs.map(z => ({ name: z.data().name || "Guest", code: z.data().code || "", status: z.data().status, here: !!z.data().checkedInAt, reported: !!z.data().reported })),
+      return { guests: g.docs.map(z => ({ name: z.data().name || "Guest", qty: z.data().qty || 1, code: z.data().code || "", status: z.data().status, here: !!z.data().checkedInAt, reported: !!z.data().reported })),
         reports: reports.docs.map(z => ({ reason: z.data().reason, detail: z.data().detail || "", by: z.data().by })) };
     }
     case "hideMeetup":
@@ -1104,6 +1132,49 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const hostDepositFor = (spots, price) => (spots > 1 ? price : SMALL_HOST_DEPOSIT);
 const OPEN_STATUSES = ["draft", "pending", "changes", "live"];
 
+/* ---------- the host deposit lives on the host's account ----------
+   Paid once (topped up only when a bigger M&G needs more) and never sent
+   back automatically, so there are no refund fees. It covers every M&G
+   they host. Part of it is kept only when they cancel late or don't show.
+   members/{uid}.hostDeposit = { held (cents), payments: [{ pi, amount, left, at }] } */
+async function depositOnFile(uid) { return Number(((await getMember(uid)) || {}).hostDeposit?.held || 0); }
+async function addToDeposit(uid, amount, pi) {
+  const ref = db.doc(`members/${uid}`);
+  await db.runTransaction(async tx => {
+    const m = (await tx.get(ref)).data() || {};
+    const d = m.hostDeposit || { held: 0, payments: [] };
+    if ((d.payments || []).some(x => x.pi === pi)) return; // repeat webhook
+    tx.set(ref, { hostDeposit: { held: (d.held || 0) + amount, payments: [...(d.payments || []), { pi, amount, left: amount, at: Date.now() }] } }, { merge: true });
+  });
+}
+
+/* ---------- Whisper+Me credit ----------
+   When an M&G or Connect Me is canceled, buyers get their money back as
+   credit right away (no card fee for anyone). Credit pays for spots with no
+   card fee at all. Anyone can tap "Send to my card" to get it refunded to
+   the card they paid with instead.
+   credits/{uid} = { balance (cents), sources: [{ pi, amount, left, at, note }] } */
+const creditRef = uid => db.doc(`credits/${uid}`);
+async function addCredit(uid, sources, note) {
+  sources = (sources || []).filter(x => x && x.amount > 0);
+  const total = sources.reduce((a, x) => a + x.amount, 0);
+  if (!total) return 0;
+  await db.runTransaction(async tx => {
+    const c = (await tx.get(creditRef(uid))).data() || { balance: 0, sources: [] };
+    tx.set(creditRef(uid), { balance: (c.balance || 0) + total, sources: [...(c.sources || []), ...sources.map(x => ({ pi: x.pi || null, amount: x.amount, left: x.amount, at: Date.now(), note: str(note, 80) }))] });
+  });
+  await db.collection("ledger").add({ kind: "creditIssued", uid, amount: total, note: str(note, 80), at: nowTs() });
+  return total;
+}
+/** Inside a transaction (call after the other reads, before writes): takes up to `want` cents, oldest first. */
+function takeCredit(c, want) {
+  const sources = (c?.sources || []).map(x => ({ ...x })), from = [];
+  let need = Math.min(want, c?.balance || 0);
+  for (const x of sources) { if (need <= 0) break; const t = Math.min(x.left || 0, need); if (t > 0) { x.left -= t; need -= t; from.push({ pi: x.pi, amount: t }); } }
+  const used = from.reduce((a, x) => a + x.amount, 0);
+  return { used, from, next: { balance: (c?.balance || 0) - used, sources: sources.filter(x => x.left > 0) } };
+}
+
 function cleanMeetup(d, { official = false } = {}) {
   const v = d.venue || {};
   const out = {
@@ -1157,16 +1228,22 @@ exports.createMeetup = onCall(withStripe, async req => {
   notSuspended(await memberFor(uid, req.data?.birthYear));
   const c = cleanMeetup(req.data || {});
   const host = await whisperProfile(uid);
-  const deposit = hostDepositFor(c.spots, c.price);
+  const need = hostDepositFor(c.spots, c.price), have = await depositOnFile(uid);
+  const covered = have >= need;
   const ref = db.collection("meetups").doc();
   await ref.set({ ...publicFields(c, host), hostUid: uid, hostName: host.name, hostPhoto: host.photo, sold: 0, held: 0, buyerUids: [],
-    hostFeePct: s.hostFee, status: "draft", hidden: false, checkedIn: 0, hostDeposit: { status: "unpaid", amount: deposit }, createdAt: nowTs() });
+    hostFeePct: s.hostFee, status: covered ? "pending" : "draft", hidden: false, checkedIn: 0, hostDeposit: { status: covered ? "held" : "unpaid", amount: need }, createdAt: nowTs() });
   await mtPrivate(ref.id).set({ venue: c.venue, contact: c.contact, hostUid: uid });
   await db.doc(`members/${uid}`).set({ hostContact: c.contact }, { merge: true }); // saved for next time
-  const url = await checkoutFor({ kind: "hostdeposit", uid, email: c.contact.email || req.auth.token.email, amount: deposit, dateId: ref.id,
-    name: `Host deposit · ${c.title}`, description: "You get it back with your pay after your M&G (or right away if it isn't approved). Kept only if you cancel late or don't show up." });
+  if (covered) { await sentForReview(ref.id, c.title, host.name, uid); return { id: ref.id, url: null, message: `Sent for review. Your ${fmtMoney(have)} deposit on file covers it.` }; }
+  const url = await checkoutFor({ kind: "hostdeposit", uid, email: c.contact.email || req.auth.token.email, amount: need - have, dateId: ref.id,
+    name: have ? `Host deposit top-up · ${c.title}` : `Host deposit · ${c.title}`, description: "Stays on your account and covers every M&G you host. Only kept if you cancel late or don't show up." });
   return { id: ref.id, url };
 });
+async function sentForReview(id, title, hostName, hostUid) {
+  for (const a of ADMIN_UIDS) await push(a, "New M&G to review", `${title} by ${hostName}`, `${APP_URL}/admin.html`);
+  await push(hostUid, "Sent for review", `${title} will go on sale once it's approved, usually within a day. We may call to confirm details.`);
+}
 
 /** Pay the host deposit again (e.g. checkout was closed). */
 exports.payHostDeposit = onCall(withStripe, async req => {
@@ -1175,9 +1252,14 @@ exports.payHostDeposit = onCall(withStripe, async req => {
   if (!x || x.hostUid !== uid) fail("permission-denied", "Not your M&G.");
   if (x.status !== "draft") fail("failed-precondition", "The deposit is already paid.");
   const p = (await mtPrivate(id).get()).data() || {};
-  const amount = hostDepositFor(x.spots, x.price);
-  if (x.hostDeposit?.amount !== amount) await mtRef(id).update({ "hostDeposit.amount": amount });
-  return { url: await checkoutFor({ kind: "hostdeposit", uid, email: (p.contact || {}).email || req.auth.token.email, amount, dateId: id, name: `Host deposit · ${x.title}`, description: "You get it back with your pay after your M&G." }) };
+  const need = hostDepositFor(x.spots, x.price), have = await depositOnFile(uid);
+  if (x.hostDeposit?.amount !== need) await mtRef(id).update({ "hostDeposit.amount": need });
+  if (have >= need) {
+    await mtRef(id).update({ status: "pending", "hostDeposit.status": "held" });
+    await sentForReview(id, x.title, x.hostName, uid);
+    return { url: null, message: "Sent for review. Your deposit on file covers it." };
+  }
+  return { url: await checkoutFor({ kind: "hostdeposit", uid, email: (p.contact || {}).email || req.auth.token.email, amount: need - have, dateId: id, name: `Host deposit · ${x.title}`, description: "Stays on your account and covers every M&G you host." }) };
 });
 
 /** Host edits their M&G. Before any sales everything can change; after, only the description, spots (up) and contact info. */
@@ -1190,8 +1272,9 @@ exports.editMeetup = onCall(async req => {
   const sold = (x.sold || 0) + (x.held || 0);
   const d = req.data.data || {};
   const c = cleanMeetup(sold ? { ...d, startsAt: Date.now() + 25 * 3600000, price: x.price / 100, spots: Math.max(x.spots, Number(d.spots) || 0) } : d);
-  if (x.hostDeposit?.status === "held" && x.spots <= 1 && c.spots > 1) {
-    fail("failed-precondition", `Your ${fmtMoney(x.hostDeposit.amount)} deposit covers a 1-spot M&G. To sell more spots, cancel this one (your deposit comes back) and post it again.`);
+  if (x.hostDeposit?.status === "held") {
+    const need = hostDepositFor(sold ? Math.max(x.spots, c.spots) : c.spots, sold ? x.price : c.price), have = await depositOnFile(uid);
+    if (need > have) fail("failed-precondition", `That needs a ${fmtMoney(need)} deposit and you have ${fmtMoney(have)} on file. Cancel this one (nothing is lost before anyone buys) and post it again to add the difference.`);
   }
   const host = await whisperProfile(uid);
   const pub = publicFields(c, host);
@@ -1235,54 +1318,111 @@ async function postOfficialMeetup(req, id, data) {
   return { id, message: `“${c.title}” updated` };
 }
 
+const MAX_SPOTS_PER_ORDER = 6;
+/** One checkout for you (and up to 5 friends). One code covers the whole group. */
 exports.buyMeetupSpot = onCall(withStripe, async req => {
   const uid = requireUser(req);
   notSuspended(await memberFor(uid, req.data?.birthYear));
   const id = str(req.data?.meetupId, 64);
+  const qty = Math.min(MAX_SPOTS_PER_ORDER, Math.max(1, Math.round(Number(req.data?.qty) || 1)));
   const ref = mtRef(id), spotRef = ref.collection("spots").doc(uid);
-  let x;
+  let x, total = 0, credit = 0, code = null;
   await db.runTransaction(async tx => {
     x = (await tx.get(ref)).data();
+    const spot = (await tx.get(spotRef)).data();
+    const c = (await tx.get(creditRef(uid))).data();
     if (!x || x.status !== "live" || x.hidden) fail("failed-precondition", "This M&G isn't available.");
     if (x.hostUid === uid && !x.official) fail("failed-precondition", "You're the host.");
     if (ms(x.startsAt) < Date.now() + 2 * 3600000) fail("failed-precondition", "Sales for this one have closed.");
-    const spot = (await tx.get(spotRef)).data();
-    if (spot && spot.status === "paid") fail("already-exists", "You already have a spot. Your code is under My tickets.");
+    if (spot && spot.status === "paid") fail("already-exists", "You already have your spot (code under My tickets). Friends can get their own: tap Share and send them the link.");
     const fresh = spot && spot.status === "pending" && ms(spot.createdAt) > Date.now() - MEETUP_PAY_MINUTES * 60000;
-    if (!fresh) {
-      if (x.sold + x.held >= x.spots) fail("resource-exhausted", "Sold out.");
-      tx.update(ref, { held: FieldValue.increment(1) });
-      tx.set(spotRef, { uid, role: "buyer", status: "pending", createdAt: nowTs() });
+    const holding = fresh ? (spot.qty || 1) : 0; // a checkout they started a few minutes ago
+    const left = x.spots - x.sold - x.held + holding;
+    if (left < qty) fail("resource-exhausted", left > 0 ? `Only ${left} spot${left === 1 ? "" : "s"} left.` : "Sold out.");
+    total = x.price * qty; credit = Math.min(total, c?.balance || 0);
+    if (credit >= total) {
+      // Their Whisper+Me credit covers it: no checkout, no card fee.
+      const t = takeCredit(c, total);
+      code = newCode();
+      tx.set(creditRef(uid), t.next);
+      tx.update(ref, { held: FieldValue.increment(-holding), sold: FieldValue.increment(qty), buyerUids: FieldValue.arrayUnion(uid) });
+      tx.set(spotRef, { uid, role: "buyer", status: "paid", qty, code, paid: total, cardPaid: 0, creditFrom: t.from, paymentIntent: null, paidAt: nowTs(), createdAt: nowTs() });
+      tx.set(db.doc(`meetupCodes/${code}`), { meetupId: id, uid, role: "buyer" });
+      return;
     }
+    tx.update(ref, { held: FieldValue.increment(qty - holding) });
+    tx.set(spotRef, { uid, role: "buyer", status: "pending", qty, creditToUse: credit, createdAt: nowTs() });
   });
   const me = await whisperProfile(uid);
   await spotRef.set({ name: me.name, photo: me.photo }, { merge: true });
-  const url = await checkoutFor({ kind: "meetup", uid, email: req.auth.token.email, amount: x.price, dateId: id,
-    name: `${x.title} · M&G${x.official ? "" : " with " + x.hostName}`, description: `${fmtWhen(x.startsAt)} · ${x.venueName}, ${x.city}. The exact address and your code show in the app right after you pay.` });
+  if (code) { await afterMeetupSale(id, x, uid, qty); return { done: true, code, message: `You're in! Paid with ${fmtMoney(total)} of your Whisper+Me credit.` }; }
+  const name = `${x.title} · M&G${x.official ? "" : " with " + x.hostName}`, description = `${fmtWhen(x.startsAt)} · ${x.venueName}, ${x.city}. The exact address and your code show in the app right after you pay.`;
+  const url = credit > 0
+    ? await checkoutFor({ kind: "meetup", uid, email: req.auth.token.email, amount: total - credit, dateId: id, name: `${qty > 1 ? qty + " spots · " : ""}${name} (after ${fmtMoney(credit)} credit)`, description })
+    : await checkoutFor({ kind: "meetup", uid, email: req.auth.token.email, amount: x.price, qty, dateId: id, name, description });
   return { url };
 });
+async function afterMeetupSale(id, x, uid, qty) {
+  const p = (await mtPrivate(id).get()).data() || {};
+  await push(uid, "You're in!", `${x.title} · ${fmtWhen(x.startsAt)} at ${p.venue?.name || x.venueName}, ${p.venue?.address || x.city}. Your code is under My tickets.`);
+  if (!x.official) await push(x.hostUid, qty > 1 ? `${qty} spots just sold` : "Someone bought a spot", `${x.title}: ${(x.sold || 0) + qty} of ${x.spots} sold.`);
+}
+
+/** Send leftover Whisper+Me credit back to the card(s) it came from. */
+exports.creditToCard = onCall(withStripe, async req => {
+  const uid = requireUser(req);
+  let sent = 0, kept = 0;
+  const c = (await creditRef(uid).get()).data() || { balance: 0, sources: [] };
+  const keep = [];
+  for (const x of c.sources || []) {
+    if (!(x.left > 0)) continue;
+    if (!x.pi || Date.now() - (x.at || 0) > 170 * 86400000) { keep.push(x); kept += x.left; continue; }
+    try { await stripe().refunds.create({ payment_intent: x.pi, amount: x.left }); sent += x.left; }
+    catch (e) { logger.error("credit refund", uid, e.message); keep.push(x); kept += x.left; }
+  }
+  await creditRef(uid).set({ balance: kept, sources: keep });
+  if (sent) await db.collection("ledger").add({ kind: "creditRefunded", uid, amount: sent, at: nowTs() });
+  if (!sent) fail("failed-precondition", kept ? "This credit can't go back to a card (it's too old or wasn't paid by card). You can still use it on any M&G." : "You don't have any credit.");
+  return { sent, kept, message: `${fmtMoney(sent)} is on its way back to your card (5–10 days).${kept ? ` ${fmtMoney(kept)} stays as credit.` : ""}` };
+});
+
+/** What Stripe actually charged us for a payment (falls back to the standard 2.9% + 30¢). */
+async function stripeFeeFor(pi, amount) {
+  try {
+    const p = await stripe().paymentIntents.retrieve(pi, { expand: ["latest_charge.balance_transaction"] });
+    const fee = p?.latest_charge?.balance_transaction?.fee;
+    if (Number.isFinite(fee)) return fee;
+  } catch (e) { /* estimate below */ }
+  return Math.round(amount * 0.029) + 30;
+}
 
 async function onMeetupPaid(sess) {
   const { dateId: id, uid } = sess.metadata || {};
   if (sess.payment_status !== "paid") return;
   const pi = typeof sess.payment_intent === "string" ? sess.payment_intent : sess.payment_intent?.id;
   const ref = mtRef(id), spotRef = ref.collection("spots").doc(uid);
-  let code = null, undo = false, x;
+  let code = null, undo = false, x, qty = 1;
   await db.runTransaction(async tx => {
     x = (await tx.get(ref)).data();
     const spot = (await tx.get(spotRef)).data();
+    const c = spot?.creditToUse ? (await tx.get(creditRef(uid))).data() : null;
     if (spot && spot.status === "paid") return; // repeat webhook
     if (!x || x.status !== "live" || !spot || spot.status !== "pending") { undo = true; return; }
+    qty = spot.qty || 1;
+    const t = c ? takeCredit(c, spot.creditToUse) : { used: 0, from: [] };
+    if (c) tx.set(creditRef(uid), t.next);
     code = newCode();
-    tx.update(spotRef, { status: "paid", code, paymentIntent: pi, paid: x.price, paidAt: nowTs() });
-    tx.update(ref, { held: FieldValue.increment(-1), sold: FieldValue.increment(1), buyerUids: FieldValue.arrayUnion(uid) });
+    tx.update(spotRef, { status: "paid", code, paymentIntent: pi, cardPaid: sess.amount_total, creditFrom: t.from, paid: sess.amount_total + t.used, paidAt: nowTs() });
+    tx.update(ref, { held: FieldValue.increment(-qty), sold: FieldValue.increment(qty), buyerUids: FieldValue.arrayUnion(uid) });
     tx.set(db.doc(`meetupCodes/${code}`), { meetupId: id, uid, role: "buyer" });
   });
-  if (undo) { await stripe().refunds.create({ payment_intent: pi }).catch(() => {}); return; }
+  if (undo) { await addCredit(uid, [{ pi, amount: sess.amount_total }], "Payment for an M&G that had closed"); return; }
   if (!code) return;
-  const p = (await mtPrivate(id).get()).data() || {};
-  await push(uid, "You're in!", `${x.title} · ${fmtWhen(x.startsAt)} at ${p.venue?.name || x.venueName}, ${p.venue?.address || x.city}. Your code is under My tickets.`);
-  if (!x.official) await push(x.hostUid, "Someone bought a spot", `${x.title}: ${x.sold + 1} of ${x.spots} sold.`);
+  // Card fees come out of the site's share; keep a record so the admin sees what we really made.
+  const fee = await stripeFeeFor(pi, sess.amount_total || x.price * qty);
+  await spotRef.update({ stripeFee: fee });
+  await ref.update({ stripeFees: FieldValue.increment(fee) });
+  await afterMeetupSale(id, x, uid, qty);
 }
 
 async function onHostDepositPaid(sess) {
@@ -1290,27 +1430,38 @@ async function onHostDepositPaid(sess) {
   if (sess.payment_status !== "paid") return;
   const pi = typeof sess.payment_intent === "string" ? sess.payment_intent : sess.payment_intent?.id;
   const ref = mtRef(id), x = (await ref.get()).data();
-  if (!x) { await stripe().refunds.create({ payment_intent: pi }).catch(() => {}); return; }
-  if (x.hostDeposit?.paymentIntent === pi) return;
-  await ref.update({ status: x.status === "draft" ? "pending" : x.status, hostDeposit: { status: "held", amount: sess.amount_total, paymentIntent: pi, paidAt: nowTs() } });
-  await db.collection("ledger").add({ kind: "hostDepositPaid", uid: x.hostUid, meetupId: id, amount: sess.amount_total, at: nowTs() });
-  for (const a of ADMIN_UIDS) await push(a, "New M&G to review", `${x.title} by ${x.hostName}`, `${APP_URL}/admin.html`);
-  await push(x.hostUid, "Sent for review", `${x.title} will go on sale once it's approved, usually within a day. We may call to confirm details.`);
+  const uid = sess.metadata?.uid || x?.hostUid;
+  await addToDeposit(uid, sess.amount_total, pi); // always lands on their account, even if the M&G is gone
+  if (!x || x.hostDeposit?.paymentIntent === pi) return;
+  await ref.update({ status: x.status === "draft" ? "pending" : x.status, hostDeposit: { status: "held", amount: x.hostDeposit?.amount || sess.amount_total, paymentIntent: pi, paidAt: nowTs() } });
+  await db.collection("ledger").add({ kind: "hostDepositPaid", uid, meetupId: id, amount: sess.amount_total, at: nowTs() });
+  if (x.status === "draft") await sentForReview(id, x.title, x.hostName, uid);
 }
 
+/** The M&G is over (or canceled early / not approved): its deposit simply stays on the host's account for next time. */
 async function releaseHostDeposit(id, x, why) {
   const dep = x.hostDeposit || {};
-  if (dep.status !== "held" || !dep.paymentIntent) return false;
-  try { await stripe().refunds.create({ payment_intent: dep.paymentIntent }); }
-  catch (e) { logger.error("host deposit refund", id, e.message); await mtRef(id).update({ "hostDeposit.error": e.message }); return false; }
-  await mtRef(id).update({ "hostDeposit.status": "refunded", "hostDeposit.refundedAt": nowTs(), "hostDeposit.why": why });
+  if (dep.status !== "held") return false;
+  await mtRef(id).update({ "hostDeposit.status": "onFile", "hostDeposit.why": why });
   return true;
 }
+/** Late cancel or no-show: this M&G's share of the deposit is kept (it pays for the refunds). */
 async function keepHostDeposit(id, x, why) {
   const dep = x.hostDeposit || {};
   if (dep.status !== "held") return false;
-  await mtRef(id).update({ "hostDeposit.status": "kept", "hostDeposit.keptAt": nowTs(), "hostDeposit.why": why });
-  await db.collection("ledger").add({ kind: "hostDepositKept", uid: x.hostUid, meetupId: id, amount: dep.amount, why, at: nowTs() });
+  const ref = db.doc(`members/${x.hostUid}`);
+  let kept = 0;
+  await db.runTransaction(async tx => {
+    const m = (await tx.get(ref)).data() || {};
+    const d = m.hostDeposit || { held: 0, payments: [] };
+    kept = Math.min(d.held || 0, dep.amount || 0);
+    let need = kept; const payments = (d.payments || []).map(p => ({ ...p }));
+    for (const p of payments) { const t = Math.min(p.left || 0, need); p.left -= t; need -= t; if (!need) break; }
+    tx.set(ref, { hostDeposit: { held: (d.held || 0) - kept, payments: payments.filter(p => p.left > 0) } }, { merge: true });
+  });
+  await mtRef(id).update({ "hostDeposit.status": "kept", "hostDeposit.kept": kept, "hostDeposit.keptAt": nowTs(), "hostDeposit.why": why });
+  if (kept) await rtdb.ref("siteRevenue").transaction(v => Math.round(((Number(v) || 0) + kept / 100) * 100) / 100);
+  await db.collection("ledger").add({ kind: "hostDepositKept", uid: x.hostUid, meetupId: id, amount: kept, why, at: nowTs() });
   return true;
 }
 
@@ -1326,9 +1477,9 @@ exports.checkInGuest = onCall(async req => {
   if (x.status !== "live") fail("failed-precondition", `This M&G isn't active (${x.status}).`);
   if (Math.abs(ms(x.startsAt) - Date.now()) > 12 * 3600000) fail("failed-precondition", "Guests can be checked in on the day of the M&G.");
   const spotRef = ref.collection("spots").doc(c.uid), spot = (await spotRef.get()).data() || {};
-  const already = !!spot.checkedInAt;
-  if (!already) { await spotRef.update({ checkedInAt: nowTs() }); await ref.update({ checkedIn: FieldValue.increment(1) }); }
-  return { guest: spot.name || "Guest", already, title: x.title };
+  const already = !!spot.checkedInAt, qty = spot.qty || 1;
+  if (!already) { await spotRef.update({ checkedInAt: nowTs() }); await ref.update({ checkedIn: FieldValue.increment(qty) }); }
+  return { guest: (spot.name || "Guest") + (qty > 1 ? ` +${qty - 1}` : ""), qty, already, title: x.title };
 });
 
 /** A buyer reports a problem (host didn't show, it didn't happen…). Holds the host's payout for the admin. */
@@ -1383,10 +1534,11 @@ async function refundMeetup(id, reason) {
   let refunded = 0;
   for (const d of spots.docs) {
     const sp = d.data();
-    if (sp.status === "paid" && sp.paymentIntent) {
-      try { await stripe().refunds.create({ payment_intent: sp.paymentIntent }); await d.ref.update({ status: "refunded" }); refunded++; }
-      catch (e) { logger.error("meetup refund", id, e.message); await d.ref.update({ moneyError: e.message }); }
-      await push(sp.uid, "M&G canceled", `${x.title}: ${reason} You've been refunded in full.`);
+    if (sp.status === "paid") {
+      // Back as Whisper+Me credit right away (no card fees); they can send it to their card from My tickets.
+      const back = await addCredit(sp.uid, [{ pi: sp.paymentIntent, amount: sp.cardPaid ?? sp.paid ?? x.price }, ...(sp.creditFrom || [])], `Refund: ${x.title}`);
+      await d.ref.update({ status: "refunded", refundedAs: "credit", refundAmount: back }); refunded++;
+      await push(sp.uid, "M&G canceled", `${x.title}: ${reason} ${fmtMoney(back)} is back in your Whisper+Me credit. Use it on any M&G, or send it to your card from My tickets.`);
     }
     if (sp.status === "pending") await d.ref.update({ status: "released" });
   }
@@ -1403,13 +1555,13 @@ exports.cancelMeetup = onCall(withStripe, async req => {
   const late = ms(x.startsAt) - Date.now() < s.lateCancelHours * 3600000;
   const keep = late && x.sold > 0 && !x.official;
   if (req.data?.preview) {
-    return { lines: [x.sold ? `Everyone who bought a spot (${x.sold}) gets a full refund.` : "Nobody has bought a spot yet.",
-      x.hostDeposit?.status === "held" ? (keep ? `It's within ${s.lateCancelHours} hours, so your ${fmtMoney(x.hostDeposit.amount)} host deposit is kept and it counts as a strike.` : `Your ${fmtMoney(x.hostDeposit.amount)} host deposit is returned.`) : ""].filter(Boolean) };
+    return { lines: [x.sold ? `Everyone who bought a spot (${x.sold}) gets their money back.` : "Nobody has bought a spot yet.",
+      x.hostDeposit?.status === "held" ? (keep ? `It's within ${s.lateCancelHours} hours, so ${fmtMoney(x.hostDeposit.amount)} of your deposit is kept and it counts as a strike.` : "Your deposit stays on your account for your next M&G.") : ""].filter(Boolean) };
   }
   await refundMeetup(id, "The host canceled.");
   if (keep) { await keepHostDeposit(id, x, "Canceled late"); await addStrike(uid, s, "Canceled an M&G late"); }
   else await releaseHostDeposit(id, x, "Canceled early");
-  return { message: keep ? "Canceled. Buyers were refunded; your deposit was kept." : "Canceled. Everyone was refunded, including your deposit." };
+  return { message: keep ? "Canceled. Buyers got their money back; part of your deposit was kept." : "Canceled. Buyers got their money back; your deposit stays on your account." };
 });
 
 /** Your tickets and the M&Gs you host. Buyers get the address and phone; hosts get everything plus the guest list. */
@@ -1434,7 +1586,7 @@ exports.myMeetups = onCall(async req => {
     let guests = null;
     if (host && ["live", "paying", "review", "completed"].includes(x.status) && x.sold) {
       const g = await d.ref.collection("spots").where("status", "==", "paid").limit(500).get();
-      guests = g.docs.map(z => ({ name: z.data().name || "Guest", here: !!z.data().checkedInAt }));
+      guests = g.docs.map(z => ({ name: (z.data().name || "Guest") + ((z.data().qty || 1) > 1 ? ` +${z.data().qty - 1}` : ""), here: !!z.data().checkedInAt }));
     }
     const settledAt = ms(x.startsAt) + (s.hostPayoutHours || 72) * 3600000;
     for (const asHost of views) {
@@ -1442,7 +1594,7 @@ exports.myMeetups = onCall(async req => {
       out.push({ id: d.id, host: asHost, official: !!x.official, title: x.title, about: x.about, category: x.category, items: x.items || [], venueName: x.venueName, city: x.city,
         startsAt: ms(x.startsAt), status: x.status, hidden: !!x.hidden, price: x.price, spots: x.spots, sold: x.sold, checkedIn: x.checkedIn || 0, hostName: x.hostName, hostPhoto: x.hostPhoto || "",
         imageURL: x.imageURL || "", hue: x.hue, changesNote: asHost ? (x.changesNote || "") : "",
-        code: !asHost && paid ? spot.code : "", spotStatus: spot.status || "", guestCheckedIn: !!spot.checkedInAt, reported: !!spot.reported,
+        code: !asHost && paid ? spot.code : "", qty: spot.qty || 1, spotStatus: spot.status || "", guestCheckedIn: !!spot.checkedInAt, reported: !!spot.reported,
         canReport: !asHost && paid && ["live", "paying", "review"].includes(x.status) && Date.now() > ms(x.startsAt) - 2 * 3600000,
         address: (asHost || paid) ? (p.venue?.address || "") : "", venuePhone: (asHost || paid) ? (p.venue?.phone || "") : "",
         venue: asHost ? (p.venue || null) : null, contact: asHost ? (p.contact || null) : null,
@@ -1452,7 +1604,9 @@ exports.myMeetups = onCall(async req => {
     }
   }
   out.sort((a, b) => b.startsAt - a.startsAt);
-  return { meetups: out, hostContact: mem?.hostContact || null, member: mem ? { birthYear: !!mem.birthYear, strikes: mem.strikes || 0, suspendedUntil: ms(mem.suspendedUntil) || 0 } : null };
+  const cr = (await creditRef(uid).get()).data() || {};
+  return { meetups: out, hostContact: mem?.hostContact || null, credit: cr.balance || 0, depositOnFile: mem?.hostDeposit?.held || 0,
+    member: mem ? { birthYear: !!mem.birthYear, strikes: mem.strikes || 0, suspendedUntil: ms(mem.suspendedUntil) || 0 } : null };
 });
 
 async function meetupHousekeeping(s) {
@@ -1468,7 +1622,7 @@ async function meetupHousekeeping(s) {
           const cur = (await tx.get(sp.ref)).data();
           if (cur.status !== "pending") return;
           tx.update(sp.ref, { status: "released" });
-          tx.update(d.ref, { held: FieldValue.increment(-1) });
+          tx.update(d.ref, { held: FieldValue.increment(-(cur.qty || 1)) });
         });
       }
     }
@@ -1491,12 +1645,13 @@ async function payHost(id, x, s) {
   const hostTotal = Math.round(gross * (100 - pct) / 100), siteTotal = gross - hostTotal;
   if (hostTotal) await rtdb.ref(`users/${x.hostUid}/earnings`).transaction(e => Math.round(((Number(e) || 0) + hostTotal / 100) * 100) / 100);
   if (siteTotal) await rtdb.ref("siteRevenue").transaction(v => Math.round(((Number(v) || 0) + siteTotal / 100) * 100) / 100);
-  await db.collection("ledger").add({ kind: "meetupSettled", meetupId: id, hostUid: x.hostUid, official: !!x.official, sold: x.sold, hostEarned: hostTotal, siteFee: siteTotal, at: nowTs() });
+  const cardFees = x.stripeFees || 0, siteNet = siteTotal - cardFees;
+  await db.collection("ledger").add({ kind: "meetupSettled", meetupId: id, hostUid: x.hostUid, official: !!x.official, sold: x.sold, hostEarned: hostTotal, siteFee: siteTotal, cardFees, siteNet, at: nowTs() });
   const day = dayKey(new Date());
-  await db.doc(`stats/day-${day}`).set({ day, fees: FieldValue.increment(siteTotal), meetups: FieldValue.increment(1) }, { merge: true });
-  await mtRef(id).update({ status: "completed", completedAt: nowTs(), hostEarned: hostTotal, siteFee: siteTotal });
+  await db.doc(`stats/day-${day}`).set({ day, fees: FieldValue.increment(siteTotal), cardFees: FieldValue.increment(cardFees), meetups: FieldValue.increment(1) }, { merge: true });
+  await mtRef(id).update({ status: "completed", completedAt: nowTs(), hostEarned: hostTotal, siteFee: siteTotal, siteNet });
   await releaseHostDeposit(id, x, "M&G happened");
-  if (hostTotal) await push(x.hostUid, "You got paid", `${fmtMoney(hostTotal)} from ${x.title} was added to your Whisper+Me earnings${x.hostDeposit?.status === "held" ? ", and your host deposit is on its way back" : ""}.`);
+  if (hostTotal) await push(x.hostUid, "You got paid", `${fmtMoney(hostTotal)} from ${x.title} was added to your Whisper+Me earnings.`);
   return hostTotal;
 }
 
@@ -1508,13 +1663,415 @@ async function settleMeetup(id, s) {
     const payoutAt = ms(x.startsAt) + (s.hostPayoutHours || 72) * 3600000;
     const hostTotal = Math.round(x.price * x.sold * (100 - (x.hostFeePct ?? s.hostFee)) / 100);
     await mtRef(id).update({ status: "paying", payoutAt: fromMs(payoutAt) });
-    await push(x.hostUid, "Thanks for hosting!", `${fmtMoney(hostTotal)} from ${x.title} will be added to your earnings on ${fmtWhen(payoutAt)}, with your deposit back.`);
+    await push(x.hostUid, "Thanks for hosting!", `${fmtMoney(hostTotal)} from ${x.title} will be added to your earnings on ${fmtWhen(payoutAt)}.`);
     return;
   }
   // People paid but nobody was checked in (or a buyer reported a problem): the admin checks with the host and venue.
   await mtRef(id).update({ status: "review", reviewSince: nowTs() });
   for (const a of ADMIN_UIDS) await push(a, "M&G needs a look", `${x.title}: ${x.sold} sold, ${x.reported ? "a buyer reported a problem" : "nobody checked in"}. Pay the host or refund buyers.`, `${APP_URL}/admin.html`);
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   CONNECT ME 💞  (Groupon-style night-out packages, not M&Gs)
+   You post a package for a set date and time, e.g. "Dinner for 2 at
+   Ember & Oak, Fri 7 PM, $80". A member buys it, then invites whoever
+   they want: a member on the site (they get a notification) or anyone
+   with a link (they sign up free to accept). Everyone on the package
+   gets their own code and the address.
+   Check-in ("both of you were really there"):
+     - each person taps "I'm here" at the venue: their phone's location
+       has to be within about a quarter mile of the place, or
+     - the venue reads you the codes and you check them in from the admin.
+   The ticket money is the site's (you pay the venue yourself). No
+   refunds once bought; if you cancel a package, buyers get credit.
+   Collections: connects/{id} (+ private/info for the address),
+   connectOrders/{id}, connectInvites/{token}, connectCodes/{code}.
+═══════════════════════════════════════════════════════════════ */
+const cnRef = id => db.doc(`connects/${id}`);
+const cnPrivate = id => db.doc(`connects/${id}/private/info`);
+const coRef = id => db.doc(`connectOrders/${id}`);
+const CONNECT_PAY_MINUTES = 40;
+const HERE_RADIUS_KM = 0.4;
+function connectCode() { return makeCode().replace("WN-", "CM-"); }
+function inviteToken() { return Array.from({ length: 10 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join("").toLowerCase(); }
+function kmBetween(a, b, c, d) {
+  const r = x => x * Math.PI / 180, R = 6371;
+  const h = Math.sin(r(c - a) / 2) ** 2 + Math.cos(r(a)) * Math.cos(r(c)) * Math.sin(r(d - b) / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+const connectLink = token => `${APP_URL}/?connect=${token}`;
+
+function cleanConnect(d) {
+  const c = cleanMeetup({ ...d, spots: 1, contact: {} }, { official: true });
+  const size = Number(d.size);
+  if (![2, 3, 4].includes(size)) fail("invalid-argument", "A package is for 2, 3 or 4 people.");
+  const quantity = Math.round(Number(d.quantity));
+  if (!(quantity >= 1 && quantity <= 500)) fail("invalid-argument", "How many packages can be sold? 1 to 500.");
+  return { ...c, size, quantity };
+}
+async function postConnect(req, id, data) {
+  const c = cleanConnect(data);
+  let hue = 0; c.title.split("").forEach(ch => { hue = (hue * 31 + ch.charCodeAt(0)) % 360; });
+  const pub = { title: c.title, about: c.about, category: c.category, items: c.items, imageURL: c.imageURL, hue, startsAt: fromMs(c.startsAt), price: c.price, size: c.size, quantity: c.quantity, venueName: c.venue.name, city: c.venue.city };
+  if (!id) {
+    const ref = db.collection("connects").doc();
+    await ref.set({ ...pub, sold: 0, held: 0, status: "live", hidden: false, stripeFees: 0, createdAt: nowTs() });
+    await cnPrivate(ref.id).set({ venue: c.venue });
+    return { id: ref.id, message: `“${c.title}” is live in Connect Me` };
+  }
+  const x = (await cnRef(id).get()).data();
+  if (!x) fail("not-found", "Not found.");
+  const cur = (await cnPrivate(id).get()).data() || {};
+  const booked = (x.sold || 0) + (x.held || 0);
+  if (booked && (c.price !== x.price || c.size !== x.size || c.startsAt !== ms(x.startsAt) || c.venue.address !== cur.venue?.address)) fail("failed-precondition", "People already bought this one, so the price, size, time and place are locked. Cancel it (buyers get credit) and post a new one.");
+  if (c.quantity < booked) fail("invalid-argument", `Already sold ${booked}.`);
+  await cnRef(id).update({ ...pub, editedAt: nowTs() });
+  await cnPrivate(id).set({ venue: c.venue });
+  return { id, message: `“${c.title}” updated` };
+}
+
+/** Buy a package. Credit is used first; if it covers everything there's no checkout (no card fee). */
+exports.buyConnect = onCall(withStripe, async req => {
+  const uid = requireUser(req);
+  notSuspended(await memberFor(uid, req.data?.birthYear));
+  const dealId = str(req.data?.dealId, 64);
+  const me = await whisperProfile(uid);
+  const oref = db.collection("connectOrders").doc();
+  let x, credit = 0, paidNow = false;
+  await db.runTransaction(async tx => {
+    x = (await tx.get(cnRef(dealId))).data();
+    const c = (await tx.get(creditRef(uid))).data();
+    if (!x || x.status !== "live" || x.hidden) fail("failed-precondition", "This package isn't available.");
+    if (ms(x.startsAt) < Date.now() + 2 * 3600000) fail("failed-precondition", "Sales for this one have closed.");
+    if (x.quantity - x.sold - x.held < 1) fail("resource-exhausted", "Sold out.");
+    credit = Math.min(x.price, c?.balance || 0);
+    const base = { dealId, buyerUid: uid, buyerName: me.name, title: x.title, venueName: x.venueName, city: x.city, startsAt: x.startsAt, size: x.size, amount: x.price, memberUids: [uid], createdAt: nowTs() };
+    if (credit >= x.price) {
+      const t = takeCredit(c, x.price);
+      tx.set(creditRef(uid), t.next);
+      tx.set(oref, { ...base, status: "paid", cardPaid: 0, creditFrom: t.from, paymentIntent: null, paidAt: nowTs(), seats: [] });
+      tx.update(cnRef(dealId), { sold: FieldValue.increment(1) });
+      paidNow = true;
+      return;
+    }
+    tx.set(oref, { ...base, status: "pending", creditToUse: credit, seats: [] });
+    tx.update(cnRef(dealId), { held: FieldValue.increment(1) });
+  });
+  if (paidNow) { await issueConnectSeats(oref.id, me); return { done: true, orderId: oref.id, message: `Paid with ${fmtMoney(x.price)} of your Whisper+Me credit. Now invite your date!` }; }
+  const url = await checkoutFor({ kind: "connect", uid, email: req.auth.token.email, amount: x.price - credit, dateId: oref.id,
+    name: `Connect Me · ${x.title}${credit ? ` (after ${fmtMoney(credit)} credit)` : ""}`, description: `${fmtWhen(x.startsAt)} · ${x.venueName}, ${x.city}. For ${x.size}. After you pay, invite who you're bringing.` });
+  return { url, orderId: oref.id };
+});
+
+/** Paid: the buyer gets a code; every other seat gets an invite link. */
+async function issueConnectSeats(orderId, me) {
+  const ref = coRef(orderId);
+  const o = (await ref.get()).data();
+  if (!o || (o.seats || []).length) return;
+  const seats = [{ uid: o.buyerUid, name: me?.name || o.buyerName, photo: me?.photo || "", role: "buyer", status: "accepted", code: connectCode() }];
+  for (let i = 1; i < o.size; i++) seats.push({ uid: null, name: "", role: "guest", status: "open", token: inviteToken() });
+  const batch = db.batch();
+  batch.update(ref, { seats });
+  seats.forEach((st, i) => {
+    if (st.code) batch.set(db.doc(`connectCodes/${st.code}`), { orderId, seat: i });
+    if (st.token) batch.set(db.doc(`connectInvites/${st.token}`), { orderId, seat: i });
+  });
+  await batch.commit();
+  await push(o.buyerUid, "Your Connect Me is booked 💞", `${o.title} · ${fmtWhen(o.startsAt)}. Now invite who you're bringing.`);
+}
+async function onConnectPaid(sess) {
+  const { dateId: orderId, uid } = sess.metadata || {};
+  if (sess.payment_status !== "paid") return;
+  const pi = typeof sess.payment_intent === "string" ? sess.payment_intent : sess.payment_intent?.id;
+  const ref = coRef(orderId);
+  let ok = false, undo = false, o;
+  await db.runTransaction(async tx => {
+    o = (await tx.get(ref)).data();
+    const c = o?.creditToUse ? (await tx.get(creditRef(uid))).data() : null;
+    if (o && o.status === "paid") return; // repeat webhook
+    if (!o || o.status !== "pending") { undo = true; return; }
+    const t = c ? takeCredit(c, o.creditToUse) : { used: 0, from: [] };
+    if (c) tx.set(creditRef(uid), t.next);
+    tx.update(ref, { status: "paid", paymentIntent: pi, cardPaid: sess.amount_total, creditFrom: t.from, paidAt: nowTs() });
+    tx.update(cnRef(o.dealId), { held: FieldValue.increment(-1), sold: FieldValue.increment(1) });
+    ok = true;
+  });
+  if (undo) { await addCredit(uid, [{ pi, amount: sess.amount_total }], "Payment for a Connect Me that had closed"); return; }
+  if (!ok) return;
+  const fee = await stripeFeeFor(pi, sess.amount_total);
+  await ref.update({ stripeFee: fee });
+  await cnRef(o.dealId).update({ stripeFees: FieldValue.increment(fee) });
+  await issueConnectSeats(orderId, await whisperProfile(uid));
+}
+
+/** Who's coming: invite a member on the site (they get a notification). */
+exports.inviteToConnect = onCall(async req => {
+  const uid = requireUser(req);
+  const orderId = str(req.data?.orderId, 64), seat = Math.round(Number(req.data?.seat)), to = str(req.data?.uid, 128);
+  const ref = coRef(orderId), o = (await ref.get()).data();
+  if (!o || o.buyerUid !== uid) fail("permission-denied", "Not your package.");
+  if (o.status !== "paid") fail("failed-precondition", "This package isn't active.");
+  if (!to || to === uid || (o.memberUids || []).includes(to)) fail("invalid-argument", "Pick someone else.");
+  const st = (o.seats || [])[seat];
+  if (!st || st.role !== "guest" || st.status === "accepted") fail("failed-precondition", "That spot is already taken.");
+  o.seats[seat] = { ...st, status: "invited", invitedUid: to };
+  await ref.update({ seats: o.seats, invitedUids: FieldValue.arrayUnion(to) });
+  const me = await whisperProfile(uid);
+  await push(to, `${me.name} invited you out 💞`, `${o.title} · ${fmtWhen(o.startsAt)} at ${o.venueName}. It's already paid for. Tap to accept.`, connectLink(st.token));
+  return { message: "Invite sent", link: connectLink(st.token) };
+});
+
+/** Give a spot a fresh link (e.g. the person can't make it). The old link stops working. */
+exports.newConnectLink = onCall(async req => {
+  const uid = requireUser(req);
+  const orderId = str(req.data?.orderId, 64), seat = Math.round(Number(req.data?.seat));
+  const ref = coRef(orderId), o = (await ref.get()).data();
+  if (!o || o.buyerUid !== uid) fail("permission-denied", "Not your package.");
+  if (o.status !== "paid" || ms(o.startsAt) < Date.now()) fail("failed-precondition", "This package isn't active.");
+  const st = (o.seats || [])[seat];
+  if (!st || st.role !== "guest") fail("invalid-argument", "Pick a guest spot.");
+  if (st.checkedInAt) fail("failed-precondition", "They already checked in.");
+  const token = inviteToken();
+  if (st.token) await db.doc(`connectInvites/${st.token}`).delete();
+  if (st.code) await db.doc(`connectCodes/${st.code}`).delete();
+  o.seats[seat] = { uid: null, name: "", role: "guest", status: "open", token };
+  o.memberUids = (o.memberUids || []).filter(u => u !== st.uid);
+  await ref.update({ seats: o.seats, memberUids: o.memberUids });
+  await db.doc(`connectInvites/${token}`).set({ orderId, seat });
+  if (st.uid) await push(st.uid, "Plans changed", `${o.buyerName} gave your spot for ${o.title} to someone else.`);
+  return { link: connectLink(token), message: "New link ready. The old one no longer works." };
+});
+
+/** What an invite link shows (works before signing in, so the landing page can show it). */
+exports.connectInvite = onCall(async req => {
+  const token = str(req.data?.token, 20).toLowerCase();
+  const inv = (await db.doc(`connectInvites/${token}`).get()).data();
+  if (!inv) fail("not-found", "This invite link isn't valid anymore. Ask for a new one.");
+  const o = (await coRef(inv.orderId).get()).data();
+  const deal = o ? (await cnRef(o.dealId).get()).data() : null;
+  if (!o || !deal || o.status !== "paid") fail("not-found", "This invite isn't active anymore.");
+  const st = o.seats[inv.seat] || {};
+  const me = req.auth?.uid;
+  return { title: o.title, from: o.buyerName, venueName: o.venueName, city: o.city, startsAt: ms(o.startsAt), size: o.size, items: deal.items || [], about: deal.about || "",
+    imageURL: deal.imageURL || "", hue: deal.hue, taken: st.status === "accepted" && st.uid !== me, forSomeoneElse: !!(st.invitedUid && me && st.invitedUid !== me), mine: st.uid === me && st.status === "accepted" };
+}
+);
+
+/** Accept an invite: needs a free account (21+). The guest gets their own code and the address. */
+exports.acceptConnect = onCall(async req => {
+  const uid = requireUser(req);
+  notSuspended(await memberFor(uid, req.data?.birthYear));
+  const token = str(req.data?.token, 20).toLowerCase();
+  const inv = (await db.doc(`connectInvites/${token}`).get()).data();
+  if (!inv) fail("not-found", "This invite link isn't valid anymore. Ask for a new one.");
+  const ref = coRef(inv.orderId);
+  const me = await whisperProfile(uid);
+  let o, code;
+  await db.runTransaction(async tx => {
+    o = (await tx.get(ref)).data();
+    if (!o || o.status !== "paid") fail("failed-precondition", "This invite isn't active anymore.");
+    if (o.buyerUid === uid) fail("failed-precondition", "That's your own package. Send the link to who you're bringing.");
+    if ((o.memberUids || []).includes(uid)) fail("already-exists", "You're already going. Your code is under Connect Me.");
+    const st = o.seats[inv.seat];
+    if (st.status === "accepted") fail("already-exists", "Someone already accepted this invite.");
+    if (st.invitedUid && st.invitedUid !== uid) fail("permission-denied", "This invite was sent to someone else.");
+    code = connectCode();
+    o.seats[inv.seat] = { ...st, uid, name: me.name, photo: me.photo, status: "accepted", code, acceptedAt: Date.now() };
+    tx.update(ref, { seats: o.seats, memberUids: FieldValue.arrayUnion(uid), invitedUids: FieldValue.arrayRemove(uid) });
+    tx.set(db.doc(`connectCodes/${code}`), { orderId: inv.orderId, seat: inv.seat });
+  });
+  await push(o.buyerUid, `${me.name} is in! 💞`, `${me.name} accepted your invite to ${o.title}.`);
+  return { orderId: inv.orderId, code, message: "You're going! The address and your code are under Connect Me." };
+});
+
+/** "I'm here": the phone's location has to be at the venue (within about a quarter mile). */
+exports.connectHere = onCall(async req => {
+  const uid = requireUser(req);
+  const orderId = str(req.data?.orderId, 64);
+  const ref = coRef(orderId), o = (await ref.get()).data();
+  if (!o || o.status !== "paid") fail("failed-precondition", "This package isn't active.");
+  const i = (o.seats || []).findIndex(x => x.uid === uid && x.status === "accepted");
+  if (i < 0) fail("permission-denied", "You're not on this package.");
+  const start = ms(o.startsAt);
+  if (Date.now() < start - 60 * 60000) fail("failed-precondition", `Check-in opens an hour before (${fmtWhen(start - 3600000)}).`);
+  if (Date.now() > start + 3 * 3600000) fail("failed-precondition", "Check-in for this one has closed.");
+  const v = ((await cnPrivate(o.dealId).get()).data() || {}).venue || {};
+  const lat = Number(req.data?.lat), lng = Number(req.data?.lng);
+  let method = "self";
+  if (v.lat && v.lon) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) fail("failed-precondition", "Turn on location so we can see you're at the place.");
+    const km = kmBetween(lat, lng, v.lat, v.lon);
+    if (km > HERE_RADIUS_KM) fail("failed-precondition", `You don't seem to be at ${v.name || o.venueName} yet (${(km * 0.621).toFixed(1)} miles away). Try again when you get there, or show your code to the staff.`);
+    method = "gps";
+  }
+  if (!o.seats[i].checkedInAt) {
+    o.seats[i] = { ...o.seats[i], checkedInAt: Date.now(), checkInMethod: method };
+    await ref.update({ seats: o.seats });
+  }
+  const people = o.seats.filter(x => x.uid);
+  const allHere = people.length === o.size && people.every(x => x.checkedInAt);
+  if (allHere) for (const p of people) await push(p.uid, "Everyone's here 💞", `You're all checked in for ${o.title}. Have fun!`);
+  else for (const p of people) if (p.uid !== uid) await push(p.uid, `${o.seats[i].name} is here`, `${o.seats[i].name} just checked in at ${o.venueName}.`);
+  return { allHere, message: allHere ? "Everyone's here. Have fun!" : "You're checked in. We'll let the others know." };
+});
+
+/** Your packages: the ones you bought (with invite links) and the ones you were invited to. */
+exports.myConnects = onCall(async req => {
+  const uid = requireUser(req);
+  const [q, inv] = await Promise.all([
+    db.collection("connectOrders").where("memberUids", "array-contains", uid).limit(40).get(),
+    db.collection("connectOrders").where("invitedUids", "array-contains", uid).limit(20).get()
+  ]);
+  const out = [];
+  for (const d of inv.docs) {
+    const o = d.data(); if (o.status !== "paid" || ms(o.startsAt) < Date.now()) continue;
+    const st = (o.seats || []).find(x => x.invitedUid === uid && x.status === "invited");
+    if (st) out.push({ id: d.id, invite: true, token: st.token, title: o.title, venueName: o.venueName, city: o.city, startsAt: ms(o.startsAt), size: o.size, status: "invited", buyerName: o.buyerName, seats: [] });
+  }
+  for (const d of q.docs) {
+    const o = d.data();
+    if (!["paid", "completed", "canceled"].includes(o.status)) continue;
+    const buyer = o.buyerUid === uid;
+    const v = o.status === "paid" ? (((await cnPrivate(o.dealId).get()).data() || {}).venue || {}) : {};
+    const mine = (o.seats || []).find(x => x.uid === uid) || {};
+    out.push({ id: d.id, buyer, title: o.title, venueName: o.venueName, city: o.city, startsAt: ms(o.startsAt), size: o.size, status: o.status, amount: buyer ? o.amount : 0,
+      address: v.address || "", venuePhone: v.phone || "", code: mine.code || "", here: !!mine.checkedInAt, buyerName: o.buyerName,
+      seats: (o.seats || []).map((x, i) => ({ i, name: x.name || "", role: x.role, status: x.status, here: !!x.checkedInAt, link: buyer && x.token && x.status !== "accepted" ? connectLink(x.token) : "" })) });
+  }
+  out.sort((a, b) => b.startsAt - a.startsAt);
+  return { connects: out };
+});
+
+async function cancelConnectDeal(id, reason) {
+  const x = (await cnRef(id).get()).data();
+  if (!x) fail("not-found", "Not found.");
+  await cnRef(id).update({ status: "canceled", canceledReason: reason, canceledAt: nowTs() });
+  const q = await db.collection("connectOrders").where("dealId", "==", id).get();
+  let n = 0;
+  for (const d of q.docs) {
+    const o = d.data();
+    if (o.status === "pending") { await d.ref.update({ status: "released" }); continue; }
+    if (o.status !== "paid") continue;
+    const back = await addCredit(o.buyerUid, [{ pi: o.paymentIntent, amount: o.cardPaid ?? o.amount }, ...(o.creditFrom || [])], `Refund: ${o.title}`);
+    await d.ref.update({ status: "canceled", refundedAs: "credit", refundAmount: back });
+    for (const s of o.seats || []) if (s.uid) await push(s.uid, "Plans canceled", `${o.title}: ${reason}${s.uid === o.buyerUid ? ` ${fmtMoney(back)} is back in your Whisper+Me credit (or send it to your card from your Wallet).` : ""}`);
+    n++;
+  }
+  return n;
+}
+/** Admin check-in by code: the venue reads you the codes, or you check them at the door. */
+async function connectCheckInCode(code) {
+  code = str(code, 20).toUpperCase(); if (!/^CM-/.test(code)) code = "CM-" + code.replace(/^.*-/, "");
+  const c = (await db.doc(`connectCodes/${code}`).get()).data();
+  if (!c) fail("not-found", `No Connect Me code matches ${code}.`);
+  const ref = coRef(c.orderId), o = (await ref.get()).data();
+  if (!o || o.status !== "paid") fail("failed-precondition", "That package isn't active.");
+  const st = o.seats[c.seat];
+  const already = !!st.checkedInAt;
+  if (!already) { o.seats[c.seat] = { ...st, checkedInAt: Date.now(), checkInMethod: "code" }; await ref.update({ seats: o.seats }); }
+  const people = o.seats.filter(x => x.uid);
+  return { guest: st.name, title: o.title, already, party: o.seats.map(x => ({ name: x.name || "(not accepted yet)", here: !!x.checkedInAt })), allHere: people.length === o.size && people.every(x => x.checkedInAt) };
+}
+
+async function connectHousekeeping(s) {
+  const now = Date.now();
+  const pend = await db.collection("connectOrders").where("status", "==", "pending").limit(300).get();
+  for (const d of pend.docs) {
+    const o = d.data();
+    if (ms(o.createdAt) > now - CONNECT_PAY_MINUTES * 60000) continue;
+    await db.runTransaction(async tx => {
+      const cur = (await tx.get(d.ref)).data();
+      if (cur.status !== "pending") return;
+      tx.update(d.ref, { status: "released" });
+      tx.update(cnRef(cur.dealId), { held: FieldValue.increment(-1) });
+    });
+  }
+  const live = await db.collection("connects").where("status", "==", "live").limit(300).get();
+  for (const d of live.docs) {
+    const x = d.data();
+    if (ms(x.startsAt) > now - SETTLE_AFTER_HOURS * 3600000) continue;
+    // It's over: count it, mark no-shows, and say sorry (with coins) to anyone who showed up and got stood up.
+    const orders = await db.collection("connectOrders").where("dealId", "==", d.id).where("status", "==", "paid").get();
+    let gross = 0, stoodUp = 0;
+    for (const od of orders.docs) {
+      const o = od.data();
+      gross += o.amount || 0;
+      const people = (o.seats || []).filter(z => z.uid);
+      const here = people.filter(z => z.checkedInAt), gone = people.filter(z => !z.checkedInAt);
+      if (here.length && (gone.length || people.length < o.size)) {
+        stoodUp++;
+        for (const z of here) { await creditCoins(z.uid, s.stoodUpRewardCoins, "Stood up (Connect Me)", od.id); await push(z.uid, "Sorry they didn't make it", `We added ${s.stoodUpRewardCoins} Whisper coin${s.stoodUpRewardCoins === 1 ? "" : "s"} to your account.`); }
+      }
+      await od.ref.update({ status: "completed", noShows: gone.map(z => z.uid), completedAt: nowTs() });
+    }
+    const fees = x.stripeFees || 0;
+    if (gross) await rtdb.ref("siteRevenue").transaction(v => Math.round(((Number(v) || 0) + gross / 100) * 100) / 100);
+    await db.collection("ledger").add({ kind: "connectSettled", dealId: d.id, sold: x.sold, gross, cardFees: fees, siteNet: gross - fees, stoodUp, at: nowTs() });
+    await db.doc(`stats/day-${dayKey(new Date())}`).set({ connectSales: FieldValue.increment(gross), cardFees: FieldValue.increment(fees) }, { merge: true });
+    await d.ref.update({ status: "completed", completedAt: nowTs(), gross, siteNet: gross - fees });
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PAYOUTS: creators' and hosts' earnings → their bank
+   Everything people earn (calls, member rooms, M&Gs) adds up in
+   users/{uid}/earnings (dollars). Paying out sends a Stripe transfer to
+   their connected Stripe account (Profile → Wallet → Set up payouts) and
+   moves the amount from earnings to paidOut, so nobody is paid twice.
+   Card fees were already taken out of the site's share when people paid,
+   so earners always get their full amount.
+═══════════════════════════════════════════════════════════════ */
+const PAYOUT_MIN = 50;
+async function payoutUser(uid, { manual = false, amount = 0 } = {}) {
+  const u = (await rtdb.ref(`users/${uid}`).once("value")).val() || {};
+  const all = Math.floor(Number(u.earnings || 0) * 100);
+  const cents = amount > 0 ? Math.min(all, Math.round(amount)) : all;
+  if (cents <= 0) fail("failed-precondition", "Nothing to pay.");
+  if (!manual) {
+    if (!u.stripeAccountId) fail("failed-precondition", `${u.name || "They"} hasn't set up payouts yet (Profile → Wallet → Set up payouts).`);
+    const acct = await stripe().accounts.retrieve(u.stripeAccountId);
+    if (!acct.payouts_enabled) fail("failed-precondition", `${u.name || "Their"} Stripe setup isn't finished yet.`);
+  }
+  // Take it out of earnings first, so a double click can never pay twice.
+  let took = 0;
+  await rtdb.ref(`users/${uid}/earnings`).transaction(e => { const cur = Math.round((Number(e) || 0) * 100); took = Math.min(cur, cents); return (cur - took) / 100; });
+  if (!took) fail("failed-precondition", "Nothing to pay.");
+  let transferId = null;
+  if (!manual) {
+    try {
+      transferId = (await stripe().transfers.create({ amount: took, currency: "usd", destination: u.stripeAccountId, description: "Whisper+Me earnings", metadata: { uid } }, { idempotencyKey: `payout-${uid}-${took}-${Math.floor(Date.now() / 60000)}` })).id;
+    } catch (e) {
+      await rtdb.ref(`users/${uid}/earnings`).transaction(v => Math.round(((Number(v) || 0) * 100 + took)) / 100); // put it back
+      fail("failed-precondition", /insufficient/i.test(e.message) ? "Your Stripe balance doesn't have enough available yet (new payments take about 2 days). Try again later." : e.message);
+    }
+  }
+  await rtdb.ref(`users/${uid}/paidOut`).transaction(v => Math.round(((Number(v) || 0) * 100 + took)) / 100);
+  await rtdb.ref(`users/${uid}`).update({ lastPaidOut: Date.now(), lastPaidAmount: took / 100 });
+  await db.collection("ledger").add({ kind: "payout", uid, amount: took, transferId, method: manual ? "manual" : "stripe", at: nowTs() });
+  await push(uid, "You got paid 💸", `${fmtMoney(took)} is on its way to your bank.`);
+  return took;
+}
+/** Every earner at the minimum with Stripe set up. Skips anyone who can't be paid yet. */
+async function payAllReady() {
+  const all = (await rtdb.ref("users").orderByChild("earnings").startAt(PAYOUT_MIN).once("value")).val() || {};
+  const out = { paid: 0, total: 0, skipped: [] };
+  for (const [uid, u] of Object.entries(all)) {
+    if (!u || !u.stripeAccountId || Number(u.earnings) < PAYOUT_MIN) continue;
+    // Paid by hand with the old "Mark paid" button, which didn't take it out of their earnings: check them one by one first.
+    if (u.lastPaidOut && u.paidOut == null) { out.skipped.push(`${u.name || uid}: was marked paid before, check their balance first`); continue; }
+    try { out.total += await payoutUser(uid); out.paid++; }
+    catch (e) { out.skipped.push(`${u.name || uid}: ${e.message}`); if (/balance/i.test(e.message)) break; }
+  }
+  return out;
+}
+/** Automatic payouts (Admin → 💰 Money → turn on): once a month, on the 1st. Monthly keeps Stripe's
+    per-payout and monthly-active-account fees as low as possible. */
+exports.autoPayouts = onSchedule({ schedule: "1 of month 10:00", timeZone: "America/Chicago", ...withStripe }, async () => {
+  const s = await getSettings();
+  if (!s.autoPayouts) return;
+  const r = await payAllReady();
+  if (r.paid || r.skipped.length) for (const a of ADMIN_UIDS) await push(a, "Monthly payouts", `Paid ${r.paid} creator(s) ${fmtMoney(r.total)}.${r.skipped.length ? ` ${r.skipped.length} skipped.` : ""}`, `${APP_URL}/admin.html`);
+});
 
 /* ═══════════════════════════════════════════════════════════════
    SHARE LINKS: whisperplusme.com/m/{meetupId} (and old /d/{ticketId})
@@ -1625,5 +2182,5 @@ exports.chatPrune = onSchedule({ schedule: "every 30 minutes", memory: "512MiB" 
 
 // Test hooks (only when running the local test script; never part of a deploy).
 if (process.env.DATES_TEST) {
-  module.exports.__test = { setStripe: s => { _stripe = s; }, handleStripeEvent, housekeeping, settleDate, getSettings, CATEGORIES, landingStats, chatPrune, dateOGPage, meetupOGPage };
+  module.exports.__test = { setStripe: s => { _stripe = s; }, handleStripeEvent, housekeeping, settleDate, getSettings, CATEGORIES, landingStats, chatPrune, dateOGPage, meetupOGPage, payAllReady, connectInviteToken: async orderId => ((await coRef(orderId).get()).data()?.seats || []).map(x => x.token) };
 }

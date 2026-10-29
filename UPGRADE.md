@@ -12,6 +12,46 @@ Branch `social-upgrade`. This rebuild turns the front door, the profile, and the
 | **Admin** (`/admin.html`) | One long page of tables, browser pop-ups | MergeChat-style layout: top emoji tabs (🏁 Start here · 📡 Live now · 👥 People · 💰 Money · 🎬 Landing page · 📢 Announce · 💬 Rooms · 🛡️ Safety · ⭐ M&G · 🧾 Activity), "What do you want to do?" tiles, a "Needs your attention" list, "At a glance" numbers, and a "How the site fits together" map. Simple/Full layout switch. Every confirmation is an in-page dialog. The activity log is saved, so it survives a refresh. |
 | **Landing page manager** (new, Admin → 🎬) | none | Upload videos or pictures (or paste links), reorder, remove, shuffle, seconds per picture, darkness slider, sound-button switch, headline and subline, phone/computer preview, then **🚀 Publish**. |
 
+## 💞 Connect Me, held deposits, credit instead of refunds (latest)
+
+**Host deposits are never sent back automatically.** A host pays it once (one spot's price, or $5 for a 1-spot M&G). It stays on their account and covers all their future M&Gs; a bigger M&G only charges the difference. Part of it is kept only on a late cancel or no-show. If someone stops hosting, Admin can refund what's left on request (that's the only time a refund fee happens).
+
+**Credit instead of refunds.** When an M&G or Connect Me is canceled (by the host or by you), buyers get their money back as **Whisper+Me credit** instantly. No Stripe refund, no fee. Credit is used first on their next purchase, and if it covers the whole thing there's no checkout at all (no card fee either). Anyone can tap **Send it to my card instead** if they want the cash back; only then does Stripe process a refund.
+
+**Payouts monthly.** Automatic payouts now run on the 1st of each month (fewer per-payout and monthly Stripe Connect fees than weekly).
+
+**💞 Connect Me** (new, separate from M&G): night-out packages for a set day and time ("Dinner for 2 at Ember & Oak, Fri 7 PM, $80").
+1. You post packages in Admin → 💞 Connect Me (search the place so check-in can use its location; price is for the whole group; 2, 3 or 4 people; how many to sell).
+2. A member buys one on the M&G screen → **💞 Connect Me** tab.
+3. They invite who's coming: **👋 Member** (sends a notification) or **↗ Send link** (text it, DM it, post it). The person signs up free (21+) and taps **Accept**; people who aren't signed in see a "Paris invited you out" card above the sign-up box.
+4. Everyone gets the address and their own code (CM-XXXXX).
+5. At the venue, each person taps **📍 I'm here**. It only works within about a quarter mile of the place, so you know both really showed up. If the staff reads you a code instead, enter it in Admin → 💞 Connect Me → **Check someone in**.
+6. Three hours after the start it closes on its own: the money is yours (you pay the venue). If one person checked in and the other didn't, the one who showed gets 1 coin as a sorry.
+- **Who's going** on each package shows every order, who accepted, and who checked in (and how).
+- Packages aren't refundable once bought. If you cancel one, buyers get credit.
+
+## 💸 Purchase to payout (latest)
+
+**M&G stands for Meet & Greet**, and the M&G screen, "How M&G works" box and host pitch now say so.
+
+**Card fees are on you, never on users or hosts.** A $50 spot: the buyer pays $50, the host gets $45 (90%), and Stripe's fee (about $1.75) comes out of your $5. Each M&G records the real Stripe fee, and Admin → ⭐ M&G → Details shows what you kept after fees.
+
+**Buy for friends:** buyers pick 1 to 6 spots in one checkout; one code checks in the whole group.
+
+**Real payouts (new):** everything creators and hosts earn (calls, rooms, M&Gs) adds up in their earnings. Admin → 💰 Money → Creator payouts:
+- **💸 Pay now** sends their full balance to their bank through Stripe (they need $50+ and payouts set up in Profile → Wallet). It's taken off their balance first, so nobody can be paid twice.
+- **Paid another way** records money you sent outside Stripe (Cash App, cash) and takes it off their balance.
+- **Pay everyone who's ready**, or tick **Pay everyone automatically every Monday**.
+- Creators you marked paid with the old button still show their full balance (the old button never took it off). They're flagged with ⚠ and skipped by "Pay everyone": check Stripe and use **Paid another way** for what you already sent.
+- New payments take about 2 days to become available in your Stripe balance; if there isn't enough yet, nothing is taken and you can try again later.
+
+**The whole path, start to finish:**
+1. Buyer taps **Get my spot** (or picks 2–6 spots) → Stripe checkout → address + code under 🎟️ My tickets.
+2. Host checks the code at the door (or you do, in Details).
+3. 3 hours after the start: guests checked in → "Paying soon". Nobody checked in, or a buyer reported a problem → "Needs you".
+4. 3 days after the start: the host's 90% goes to their earnings and their deposit is refunded.
+5. At $50+, **Pay now** (or the Monday auto-payout) sends it to their bank.
+
 ## ⭐ M&G: one simple flow (latest)
 
 Everything on the M&G screen is now an **M&G sold per person**. The old "for 2 / group of 4" venue tickets, split payments, card holds, invites, the $5 account deposit, strikes for buyers and reschedules are gone from the screen (bookings already made with them still work and show under "Earlier bookings").

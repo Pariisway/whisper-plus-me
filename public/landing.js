@@ -263,11 +263,28 @@ body.lp2-on{background:#0b0b16}\
   /* ---------- someone opened a shared M&G link: show it above sign-up ---------- */
   var invite = null, inviteLoading = false;
   function sharedMeetupId() {
-    var id = (new URLSearchParams(location.search).get("meetup") || "").replace(/[^A-Za-z0-9_-]/g, "");
+    var id = (new URLSearchParams(window.__initialSearch || location.search).get("meetup") || "").replace(/[^A-Za-z0-9_-]/g, "");
     if (!id) { try { id = sessionStorage.getItem("wpmMeetup") || ""; } catch (e) {} }
     return id.slice(0, 64);
   }
+  function sharedConnect() {
+    var t = (new URLSearchParams(window.__initialSearch || location.search).get("connect") || "").replace(/[^a-z0-9]/gi, "").toLowerCase();
+    if (!t) { try { t = sessionStorage.getItem("wpmConnect") || ""; } catch (e) {} }
+    return t.slice(0, 20);
+  }
   function loadInvite() {
+    var tok = sharedConnect();
+    if (tok && !invite && !inviteLoading && window.fetch) {
+      inviteLoading = true;
+      // Connect Me invite: ask the server (works before signing in).
+      fetch("https://us-central1-whisperplusme-46d9c.cloudfunctions.net/connectInvite", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: { token: tok } }) })
+        .then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+          var v = j && j.result; if (!v || v.taken) return;
+          invite = { connect: true, title: v.title, host: v.from, photo: v.imageURL || "", venue: v.venueName, city: v.city, at: v.startsAt, size: v.size };
+          var el = document.getElementById("lp2-invite"); if (el) el.innerHTML = inviteHTML();
+        }).catch(function () {});
+      return;
+    }
     var id = sharedMeetupId();
     if (!id || invite || inviteLoading || !window.fetch) return;
     inviteLoading = true;
@@ -286,6 +303,10 @@ body.lp2-on{background:#0b0b16}\
     if (!invite) { loadInvite(); return ""; }
     var d = new Date(invite.at), when = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) + " · " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
     var money = "$" + ((invite.price || 0) / 100).toFixed(invite.price % 100 ? 2 : 0);
+    if (invite.connect) return "<div class='lp2-inv' style='border-color:rgba(224,69,123,.7)'>" + (invite.photo ? "<img src='" + esc(invite.photo) + "' alt=''>" : "<span class='lp2-inv-ph' style='background:linear-gradient(135deg,#7b2ff7,#e0457b)'>💞</span>")
+      + "<div><small style='color:#ff8fb3'>" + esc(invite.host) + " invited you out</small><b>" + esc(invite.title) + "</b><span>" + esc(when) + "<br>📍 " + esc(invite.venue) + (invite.city ? ", " + esc(invite.city) : "") + "</span>"
+      + "<em style='color:#ff8fb3'>Already paid for · free to accept</em></div></div>"
+      + "<p class='lp2-inv-go'>Sign up free below to accept 👇</p>";
     return "<div class='lp2-inv'>" + (invite.photo ? "<img src='" + esc(invite.photo) + "' alt=''>" : "<span class='lp2-inv-ph'>⭐</span>")
       + "<div><small>You're invited · M&amp;G</small><b>" + esc(invite.title) + "</b><span>with " + esc(invite.host) + " · " + esc(when) + "<br>📍 " + esc(invite.venue) + (invite.city ? ", " + esc(invite.city) : "") + "</span>"
       + "<em>" + money + " per person" + (invite.left && invite.left <= 10 ? " · only " + invite.left + " left" : "") + "</em></div></div>"

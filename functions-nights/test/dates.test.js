@@ -24,7 +24,8 @@ T.setStripe({
     cancel: async id => { S.intents[id].status = "canceled"; S.canceled.push(id); return S.intents[id]; }
   },
   refunds: { create: async o => { S.refunds.push(o.payment_intent); return { id: "re_" + (++S.n) }; } },
-  transfers: { create: async () => ({ id: "tr_1" }) }
+  transfers: { create: async o => { if (S.failTransfer) throw new Error("Insufficient funds in Stripe account"); S.transfers = (S.transfers || []).concat([o]); return { id: "tr_" + (++S.n) }; } },
+  accounts: { retrieve: async id => ({ id, payouts_enabled: id !== "acct_unfinished" }) }
 });
 // Simulate the customer finishing the most recent checkout session.
 async function completeLastCheckout(uid) {
@@ -34,7 +35,7 @@ async function completeLastCheckout(uid) {
   S.intents[pi] = { id: pi, status: hold ? "requires_capture" : "succeeded" };
   await T.handleStripeEvent({ type: "checkout.session.completed", data: { object: {
     id: sess.id, metadata: sess.metadata, payment_intent: pi, payment_status: hold ? "unpaid" : "paid",
-    amount_total: sess.line_items.reduce((a, l) => a + l.price_data.unit_amount, 0) } } });
+    amount_total: sess.line_items.reduce((a, l) => a + l.price_data.unit_amount * (l.quantity || 1), 0) } } });
   return pi;
 }
 
@@ -452,8 +453,9 @@ async function test(name, fn) {
     assert.strictEqual(doc("meetups/" + id).status, "completed");
     assert.strictEqual(doc("meetups/" + id + "/spots/fan3").status, "released");
     assert.strictEqual(Number(rtdb.users.star.earnings) - earn0, 180, "2 spots × $100 × 90%");
-    assert.strictEqual(doc("meetups/" + id).hostDeposit.status, "refunded");
-    assert.strictEqual(S.refunds.length - r0, 1, "only the host deposit is refunded");
+    assert.strictEqual(doc("meetups/" + id).hostDeposit.status, "onFile");
+    assert.strictEqual(S.refunds.length - r0, 0, "nothing refunded: no refund fees");
+    assert.strictEqual(doc("members/star").hostDeposit.held, 10000, "deposit stays on the host's account");
   });
 
   await test("M&G: nobody checked in → admin decides; refund buyers + keep deposit", async () => {
@@ -465,8 +467,9 @@ async function test(name, fn) {
     assert.strictEqual(doc("meetups/" + id).status, "review");
     const r0 = S.refunds.length;
     await admin({ action: "cancelMeetup", id, reason: "Host didn't show.", data: { keepDeposit: true } });
-    assert.strictEqual(S.refunds.length - r0, 1, "buyer refunded; deposit kept");
-    assert.deepStrictEqual([doc("meetups/" + id).status, doc("meetups/" + id).hostDeposit.status], ["canceled", "kept"]);
+    assert.strictEqual(S.refunds.length - r0, 0, "no card refunds");
+    assert.strictEqual(doc("credits/f4").balance, 6000, "buyer gets it back as credit");
+    assert.deepStrictEqual([doc("meetups/" + id).status, doc("meetups/" + id).hostDeposit.status, doc("meetups/" + id).hostDeposit.kept, doc("members/idol").hostDeposit.held], ["canceled", "kept", 6000, 0]);
     assert.strictEqual(doc("members/idol").strikes, 1);
   });
 
@@ -474,17 +477,31 @@ async function test(name, fn) {
     seedPeople("celeb", "f5"); await call("datesJoin", "celeb", { birthYear: 1990 }); await call("datesJoin", "f5", { birthYear: 1990 });
     const a = await call("createMeetup", "celeb", mgData({ title: "Nope" })); await completeLastCheckout("celeb");
     await admin({ action: "rejectMeetup", id: a.id, reason: "Not a public place" });
-    assert.deepStrictEqual([doc("meetups/" + a.id).status, doc("meetups/" + a.id).hostDeposit.status], ["rejected", "refunded"]);
-    const { id } = await call("createMeetup", "celeb", mgData({ title: "Coffee & Q&A", price: 75, spots: 4, startsAt: Date.now() + 200 * H }));
-    await completeLastCheckout("celeb"); await admin({ action: "approveMeetup", id });
+    assert.deepStrictEqual([doc("meetups/" + a.id).status, doc("meetups/" + a.id).hostDeposit.status, doc("members/celeb").hostDeposit.held], ["rejected", "onFile", 10000]);
+    const n0 = S.sessions.length;
+    const mk2 = await call("createMeetup", "celeb", mgData({ title: "Coffee & Q&A", price: 75, spots: 4, startsAt: Date.now() + 200 * H }));
+    const id = mk2.id;
+    assert.deepStrictEqual([mk2.url, S.sessions.length - n0, doc("meetups/" + id).status], [null, 0, "pending"], "deposit on file covers the next M&G: no new charge");
+    await admin({ action: "approveMeetup", id });
     const html = await T.meetupOGPage(id);
     assert.ok(html.includes('og:title" content="Coffee &amp; Q&amp;A · with CELEB"'));
     assert.ok(/\$75 a spot, 4 left/.test(html) && !html.includes("123 Main St"));
     await call("buyMeetupSpot", "f5", { meetupId: id }); await completeLastCheckout("f5");
     const pv = await call("cancelMeetup", "celeb", { meetupId: id, preview: true });
-    assert.ok(/returned/.test(pv.lines.join(" ")));
+    assert.ok(/stays on your account/.test(pv.lines.join(" ")));
     await call("cancelMeetup", "celeb", { meetupId: id });
-    assert.deepStrictEqual([doc("meetups/" + id).status, doc("meetups/" + id).hostDeposit.status], ["canceled", "refunded"]);
+    assert.deepStrictEqual([doc("meetups/" + id).status, doc("meetups/" + id).hostDeposit.status, doc("members/celeb").hostDeposit.held], ["canceled", "onFile", 10000]);
+    assert.strictEqual(doc("credits/f5").balance, 7500, "buyer credited");
+    // credit pays for the next spot with no checkout at all
+    const other = await call("createMeetup", "celeb", mgData({ title: "Brunch", price: 50, spots: 3, startsAt: Date.now() + 200 * H }));
+    await admin({ action: "approveMeetup", id: other.id });
+    const n1 = S.sessions.length;
+    const b = await call("buyMeetupSpot", "f5", { meetupId: other.id });
+    assert.deepStrictEqual([b.done, S.sessions.length - n1, doc("credits/f5").balance, doc("meetups/" + other.id).sold], [true, 0, 2500, 1]);
+    // the rest goes back to the card on request
+    const r0 = S.refunds.length;
+    const back = await call("creditToCard", "f5");
+    assert.deepStrictEqual([back.sent, S.refunds.length - r0, doc("credits/f5").balance], [2500, 1, 0]);
     assert.ok(!doc("members/celeb").strikes);
   });
 
@@ -496,9 +513,9 @@ async function test(name, fn) {
     const dep = [...S.sessions].reverse().find(x => x.metadata.uid === "solo");
     assert.strictEqual(dep.line_items[0].price_data.unit_amount, 500, "1 spot → $5 deposit");
     await completeLastCheckout("solo");
-    await assert.rejects(call("editMeetup", "solo", { meetupId: id, data: mgData({ spots: 4, price: 250 }) }), /1-spot M&G/);
+    await assert.rejects(call("editMeetup", "solo", { meetupId: id, data: mgData({ spots: 4, price: 250 }) }), /needs a \$250 deposit and you have \$5 on file/);
     const two = await call("createMeetup", "solo", mgData({ spots: 2, price: 40, title: "Two" }));
-    assert.strictEqual([...S.sessions].reverse().find(x => x.metadata.uid === "solo").line_items[0].price_data.unit_amount, 4000, "2+ spots → one spot's price");
+    assert.strictEqual([...S.sessions].reverse().find(x => x.metadata.uid === "solo").line_items[0].price_data.unit_amount, 3500, "2+ spots → one spot's price ($40), minus the $5 already on file");
     await admin({ action: "approveMeetup", id });
     await assert.rejects(call("buyMeetupSpot", "kid", { meetupId: id, birthYear: new Date().getFullYear() - 19 }), /21 and older/);
     await call("buyMeetupSpot", "newfan", { meetupId: id, birthYear: 1995 }); await completeLastCheckout("newfan");
@@ -538,6 +555,116 @@ async function test(name, fn) {
     advanceHours(14); await T.housekeeping();
     assert.strictEqual(doc("meetups/" + r.id).status, "completed", "official: no check-in or payout wait needed");
     assert.strictEqual(Math.round((Number(rtdb.siteRevenue) - rev0) * 100), 3000, "site keeps the whole $30");
+  });
+
+  await test("M&G: buy for you + friends in one checkout; one code checks in the group; card fees come out of the site's share", async () => {
+    seedPeople("crew", "host9");
+    const r = await admin({ action: "postMeetup", data: mgData({ title: "Group night", price: 20, spots: 4, contact: {}, startsAt: Date.now() + 30 * H }) });
+    await assert.rejects(call("buyMeetupSpot", "crew", { meetupId: r.id, qty: 5, birthYear: 1990 }), /Only 4 spots left/);
+    await call("buyMeetupSpot", "crew", { meetupId: r.id, qty: 3, birthYear: 1990 });
+    const sess = [...S.sessions].reverse().find(x => x.metadata.uid === "crew");
+    assert.deepStrictEqual([sess.line_items[0].quantity, sess.line_items[0].price_data.unit_amount], [3, 2000]);
+    assert.strictEqual(doc("meetups/" + r.id).held, 3);
+    await call("buyMeetupSpot", "crew", { meetupId: r.id, qty: 2 }); // changed their mind before paying
+    assert.strictEqual(doc("meetups/" + r.id).held, 2, "the earlier hold is replaced, not added");
+    await completeLastCheckout("crew");
+    const m = doc("meetups/" + r.id);
+    assert.deepStrictEqual([m.sold, m.held, m.stripeFees], [2, 0, Math.round(4000 * 0.029) + 30]);
+    const t = (await call("myMeetups", "crew")).meetups.find(x => x.id === r.id && !x.host);
+    assert.strictEqual(t.qty, 2);
+    advanceHours(30); const ci = await call("checkInGuest", "v6aIXY12MDY9ci1wWJmCiLOAKoG2", { code: t.code });
+    assert.deepStrictEqual([ci.guest, doc("meetups/" + r.id).checkedIn], ["CREW +1", 2]);
+    advanceHours(4); await T.housekeeping();
+    const done = doc("meetups/" + r.id);
+    assert.deepStrictEqual([done.status, done.siteFee, done.siteNet], ["completed", 4000, 4000 - 146]);
+  });
+
+  await test("Payouts: Stripe transfer to the earner, taken out of earnings, never twice; legacy and unfinished accounts are skipped", async () => {
+    rtdb.users = rtdb.users || {};
+    rtdb.users.payA = { name: "A", earnings: 72.5, stripeAccountId: "acct_A" };
+    rtdb.users.payB = { name: "B", earnings: 60, stripeAccountId: "acct_unfinished" };
+    rtdb.users.payC = { name: "C", earnings: 90, stripeAccountId: "acct_C", lastPaidOut: 1, lastPaidAmount: 40 };
+    rtdb.users.payD = { name: "D", earnings: 20, stripeAccountId: "acct_D" };
+    const r = await admin({ action: "payCreator", id: "payA" });
+    assert.ok(/\$72\.50/.test(r.message));
+    assert.deepStrictEqual([rtdb.users.payA.earnings, rtdb.users.payA.paidOut, S.transfers.at(-1).amount, S.transfers.at(-1).destination], [0, 72.5, 7250, "acct_A"]);
+    await assert.rejects(admin({ action: "payCreator", id: "payA" }), /Nothing to pay/);
+    await assert.rejects(admin({ action: "payCreator", id: "payB" }), /isn't finished/);
+    S.failTransfer = true;
+    await assert.rejects(admin({ action: "payCreator", id: "payD" }), /about 2 days/);
+    assert.strictEqual(rtdb.users.payD.earnings, 20, "money put back when the transfer fails");
+    S.failTransfer = false;
+    rtdb.users.payA.earnings = 55;
+    const all = await admin({ action: "payAllCreators" });
+    assert.strictEqual(all.paid, 1, "only A: B unfinished, C legacy, D under $50");
+    assert.ok(all.skipped.some(x => /marked paid before/.test(x)) && all.skipped.some(x => /isn't finished/.test(x)));
+    await admin({ action: "markCreatorPaid", id: "payC", data: { amount: 40 } });
+    assert.deepStrictEqual([rtdb.users.payC.earnings, rtdb.users.payC.paidOut], [50, 40]);
+    await admin({ action: "setAutoPayouts", data: { on: true } });
+    assert.strictEqual(doc("settings/platform").autoPayouts, true);
+  });
+
+  await test("Connect Me: buy a package, invite by link, both check in at the venue, site keeps it; stood up → coin; canceled → credit", async () => {
+    seedPeople("romeo", "juliet", "kid2", "nosy", "solo2");
+    const venue = { name: "Ember & Oak", address: "200 E Main St", city: "Belleville, IL", phone: "618-555-0100", source: "osm", lat: 38.5134, lon: -89.9840 };
+    const deal = await admin({ action: "postConnect", data: { title: "Dinner for 2", about: "3 courses", category: "Dinner", items: ["Dinner", "Dessert"], venue, startsAt: Date.now() + 48 * H, price: 80, size: 2, quantity: 3 } });
+    assert.strictEqual(doc("connects/" + deal.id).status, "live");
+    assert.ok(!JSON.stringify(doc("connects/" + deal.id)).includes("200 E Main"), "address not public");
+    const b = await call("buyConnect", "romeo", { dealId: deal.id, birthYear: 1990 });
+    assert.ok(b.url && !b.done);
+    await completeLastCheckout("romeo");
+    const o = doc("connectOrders/" + b.orderId);
+    assert.deepStrictEqual([o.status, o.seats.length, o.seats[0].status, /^CM-/.test(o.seats[0].code), o.seats[1].status, doc("connects/" + deal.id).sold], ["paid", 2, "accepted", true, "open", 1]);
+    const mine = (await call("myConnects", "romeo")).connects[0];
+    assert.ok(mine.buyer && mine.address === "200 E Main St" && /\?connect=/.test(mine.seats[1].link));
+    const token = mine.seats[1].link.split("connect=")[1];
+    const info = await F.connectInvite.run({ data: { token }, auth: null, rawRequest: {} });
+    assert.deepStrictEqual([info.title, info.from, info.taken], ["Dinner for 2", "ROMEO", false]);
+    await assert.rejects(call("acceptConnect", "romeo", { token }), /your own package/);
+    await assert.rejects(call("acceptConnect", "kid2", { token, birthYear: new Date().getFullYear() - 19 }), /21 and older/);
+    const acc = await call("acceptConnect", "juliet", { token, birthYear: 1993 });
+    assert.ok(/^CM-/.test(acc.code));
+    await assert.rejects(call("acceptConnect", "nosy", { token, birthYear: 1990 }), /already accepted/);
+    const jv = (await call("myConnects", "juliet")).connects[0];
+    assert.deepStrictEqual([jv.buyer, jv.address, jv.code], [false, "200 E Main St", acc.code]);
+    // check-in
+    await assert.rejects(call("connectHere", "romeo", { orderId: b.orderId, lat: 38.5134, lng: -89.984 }), /opens an hour before/);
+    advanceHours(48);
+    await assert.rejects(call("connectHere", "romeo", { orderId: b.orderId, lat: 38.627, lng: -90.199 }), /don't seem to be at Ember & Oak/);
+    const h1 = await call("connectHere", "romeo", { orderId: b.orderId, lat: 38.5136, lng: -89.9843 });
+    assert.strictEqual(h1.allHere, false);
+    const ci = await admin({ action: "connectCheckIn", data: { code: acc.code } });
+    assert.deepStrictEqual([ci.guest, ci.allHere], ["JULIET", true], "venue gave the code, admin checked her in");
+    const rev0 = Number(rtdb.siteRevenue || 0), coins0 = rtdb.users.romeo.coins || 0;
+    advanceHours(4); await T.housekeeping();
+    assert.deepStrictEqual([doc("connects/" + deal.id).status, doc("connectOrders/" + b.orderId).status], ["completed", "completed"]);
+    assert.strictEqual(Math.round((Number(rtdb.siteRevenue) - rev0) * 100), 8000, "the site keeps the package price");
+    assert.strictEqual(rtdb.users.romeo.coins || 0, coins0, "nobody stood up");
+    // stood up: only the buyer showed
+    const d2 = await admin({ action: "postConnect", data: { title: "Bowling for 2", category: "Activities", items: ["2 games"], venue, startsAt: Date.now() + 30 * H, price: 40, size: 2, quantity: 2 } });
+    const b2 = await call("buyConnect", "solo2", { dealId: d2.id, birthYear: 1990 }); await completeLastCheckout("solo2");
+    const t2 = (await call("myConnects", "solo2")).connects.find(x => x.id === b2.orderId).seats[1].link.split("connect=")[1];
+    await call("acceptConnect", "nosy", { token: t2 });
+    advanceHours(30); await call("connectHere", "solo2", { orderId: b2.orderId, lat: 38.5134, lng: -89.984 });
+    advanceHours(4); await T.housekeeping();
+    assert.strictEqual(rtdb.users.solo2.coins, 1, "stood up → 1 coin");
+    assert.deepStrictEqual(doc("connectOrders/" + b2.orderId).noShows, ["nosy"]);
+    // canceled by admin → buyer credit, no card refund; a fresh link for a guest who can't make it
+    const d3 = await admin({ action: "postConnect", data: { title: "Movie for 2", category: "Movies", items: ["2 tickets"], venue, startsAt: Date.now() + 60 * H, price: 30, size: 2, quantity: 2 } });
+    const b3 = await call("buyConnect", "romeo", { dealId: d3.id }); await completeLastCheckout("romeo");
+    const inv = await call("inviteToConnect", "romeo", { orderId: b3.orderId, seat: 1, uid: "juliet" });
+    assert.ok((await call("myConnects", "juliet")).connects.some(x => x.invite && x.id === b3.orderId), "on-site invite shows for her");
+    await assert.rejects(call("acceptConnect", "nosy", { token: inv.link.split("connect=")[1], birthYear: 1990 }), /sent to someone else/);
+    const nl = await call("newConnectLink", "romeo", { orderId: b3.orderId, seat: 1 });
+    assert.ok(nl.link !== inv.link);
+    const r0 = S.refunds.length;
+    await admin({ action: "cancelConnect", id: d3.id, reason: "Theater closed." });
+    assert.deepStrictEqual([doc("connectOrders/" + b3.orderId).status, S.refunds.length - r0, doc("credits/romeo").balance], ["canceled", 0, 3000]);
+    // and credit buys the next package outright
+    const d4 = await admin({ action: "postConnect", data: { title: "Coffee for 2", category: "Other", items: ["2 coffees"], venue, startsAt: Date.now() + 60 * H, price: 20, size: 2, quantity: 2 } });
+    const n0 = S.sessions.length;
+    const b4 = await call("buyConnect", "romeo", { dealId: d4.id });
+    assert.deepStrictEqual([b4.done, S.sessions.length - n0, doc("credits/romeo").balance, doc("connectOrders/" + b4.orderId).seats.length], [true, 0, 1000, 2]);
   });
 
   await test("Landing counter and chat cleanup keep the site fast", async () => {

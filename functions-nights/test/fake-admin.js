@@ -12,12 +12,13 @@ class Timestamp {
   toMillis() { return this._m; }
   toDate() { return new Date(this._m); }
 }
-const INC = Symbol("inc"), DEL = Symbol("del"), STS = Symbol("sts"), AU = Symbol("au");
+const INC = Symbol("inc"), DEL = Symbol("del"), STS = Symbol("sts"), AU = Symbol("au"), AR = Symbol("ar");
 const FieldValue = {
   increment: n => ({ [INC]: n }),
   delete: () => ({ [DEL]: true }),
   serverTimestamp: () => ({ [STS]: true }),
-  arrayUnion: (...v) => ({ [AU]: v })
+  arrayUnion: (...v) => ({ [AU]: v }),
+  arrayRemove: (...v) => ({ [AR]: v })
 };
 const clone = v => (v instanceof Timestamp ? v : Array.isArray(v) ? v.map(clone) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, clone(x)])) : v);
 
@@ -25,6 +26,7 @@ function applyValue(cur, val) {
   if (val && typeof val === "object" && INC in val) return (Number(cur) || 0) + val[INC];
   if (val && typeof val === "object" && STS in val) return Timestamp.now();
   if (val && typeof val === "object" && AU in val) return [...new Set([...(Array.isArray(cur) ? cur : []), ...val[AU]])];
+  if (val && typeof val === "object" && AR in val) return (Array.isArray(cur) ? cur : []).filter(x => !val[AR].includes(x));
   return clone(val);
 }
 function setPath(obj, path, val) {
@@ -111,6 +113,7 @@ function rtGet(path) { return path.split("/").filter(Boolean).reduce((o, k) => (
 function rtSet(path, v) { const parts = path.split("/").filter(Boolean); let o = rtdbStore; parts.slice(0, -1).forEach(k => { o[k] = o[k] || {}; o = o[k]; }); o[parts.at(-1)] = v; }
 const database = {
   ref: path => ({
+    orderByChild: k => ({ startAt: min => ({ once: async () => { const all = rtGet(path) || {}; const out = {}; Object.keys(all).forEach(id => { if (all[id] && Number(all[id][k]) >= min) out[id] = clone(all[id]); }); return { val: () => out, exists: () => Object.keys(out).length > 0 }; } }) }),
     once: async () => ({ val: () => clone(rtGet(path)), exists: () => rtGet(path) !== undefined }),
     set: async v => rtSet(path, v),
     transaction: async fn => { const nv = fn(clone(rtGet(path))); if (nv !== undefined) rtSet(path, nv); return { committed: nv !== undefined }; },

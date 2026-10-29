@@ -225,6 +225,7 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
       <button data-tab="rooms">💬 Rooms</button>
       <button data-tab="safety">🛡️ Safety</button>
       <button data-tab="dates">⭐ M&amp;G<span class="n" id="nav-n-mg" hidden></span></button>
+      <button data-tab="connect">💞 Connect Me</button>
       <button data-tab="log">🧾 Activity</button>
     </nav>
   </div>
@@ -349,7 +350,9 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
   <section class="card" id="sec-payouts">
     <h2>💸 Creator payouts
       <span class="right"><select class="in" id="earn-sort" style="width:auto;padding:7px 10px" onchange="renderPayouts()"><option value="earnings">Most earned</option><option value="ready">Ready to pay first</option><option value="calls">Most calls</option><option value="coins">Most coins</option></select></span></h2>
-    <p class="help">Creators can cash out at $50 with Stripe connected. After you send a payout in Stripe, tap <b>Mark paid</b> so it's recorded here.</p>
+    <p class="help">Everything creators and hosts earn (calls, rooms, M&amp;Gs) adds up here. Card fees already came out of your share, so they get the full amount. <b>💸 Pay now</b> sends it straight to their bank through Stripe (they need $50+ and payouts set up in Profile → Wallet). Payments people make take about 2 days to become available in your Stripe balance.</p>
+    <div class="row" style="margin-bottom:10px"><button class="btn main" onclick="payAllCreators()">💸 Pay everyone who's ready</button>
+      <label class="row" style="gap:8px;cursor:pointer"><input type="checkbox" id="auto-pay" onchange="setAutoPayouts(this.checked)"> <span>Pay everyone automatically on the 1st of each month (fewest Stripe fees)</span></label></div>
     <input class="in" id="earn-q" placeholder="🔎 Find a creator" oninput="renderPayouts()" style="margin-bottom:10px">
     <div id="payouts" class="list"><div class="empty">Loading…</div></div>
   </section>
@@ -623,6 +626,56 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
   </section>
 </div>
 
+<!-- ══════════ CONNECT ME ══════════ -->
+<div class="page" id="p-connect">
+  <h1 class="page-title">💞 Connect Me</h1>
+  <p class="page-sub">Night-out packages for a set day and time (dinner for 2, bowling for 4…). A member buys it and invites who they want, here or with a link. You keep the money and pay the venue yourself.</p>
+
+  <section class="card" id="sec-cmcheckin">
+    <h2>✅ Check someone in</h2>
+    <p class="help">Most people tap “I'm here” at the venue (their phone has to be there). If the staff reads you a code instead, type it here.</p>
+    <div class="row"><input class="in grow" id="cm-code" placeholder="CM-XXXXX" style="text-transform:uppercase" onkeydown="if(event.key==='Enter')cmCheckIn()"><button class="btn main" onclick="cmCheckIn()">Check in</button></div>
+    <p class="help" id="cm-code-out" style="margin:8px 0 0"></p>
+  </section>
+
+  <section class="card">
+    <h2>🎟️ Packages <span class="right"><div class="seg" id="cm-f"><button data-f="live" class="on" onclick="cmFilter('live')">On sale</button><button data-f="all" onclick="cmFilter('all')">All</button></div></span></h2>
+    <div id="cm-list" class="list"><div class="empty">Loading…</div></div>
+  </section>
+
+  <div class="lm">
+    <section class="card" id="sec-cmpost">
+      <h2 id="cm-form-title">➕ Post a package</h2>
+      <label class="field"><span>Name</span><input class="in" id="cm-title" maxlength="80" placeholder="Dinner for 2 at Ember &amp; Oak" oninput="cmPreview()"></label>
+      <label class="field"><span>What happens <em>(optional)</em></span><textarea class="in" id="cm-about" maxlength="800" rows="2" placeholder="3 courses, a bottle of wine, reserved booth." oninput="cmPreview()"></textarea></label>
+      <div class="field"><span>Category</span><div class="seg" id="cm-cat"></div></div>
+      <div class="field"><span>Place</span>
+        <input class="in" id="cm-vq" placeholder="Search: restaurant, lounge, theater…" autocomplete="off" oninput="cmVenueSearch(this.value)">
+        <div class="list" id="cm-vres" style="margin-top:6px"></div>
+        <div class="row" style="margin-top:6px"><input class="in grow" id="cm-vname" placeholder="Place name" oninput="cmPreview()"><input class="in grow" id="cm-vphone" type="tel" placeholder="Place phone"></div>
+        <div class="row" style="margin-top:6px"><input class="in grow" id="cm-vaddr" placeholder="Street address"><input class="in grow" id="cm-vcity" placeholder="City, state" oninput="cmPreview()"></div>
+        <p class="help" style="margin:4px 0 0">Pick the place from the search so “I'm here” can check people's location. Search by © OpenStreetMap contributors.</p>
+      </div>
+      <div class="row">
+        <div class="field"><span>For</span><div class="seg" id="cm-size"><button data-v="2" class="on" onclick="cmSize(2)">2 people</button><button data-v="3" onclick="cmSize(3)">3</button><button data-v="4" onclick="cmSize(4)">4</button></div></div>
+        <label class="field" style="width:150px"><span>Price for the group ($)</span><input class="in" id="cm-price" type="number" min="5" step="1" placeholder="80" oninput="cmPreview()"></label>
+        <label class="field" style="width:120px"><span>How many</span><input class="in" id="cm-qty" type="number" min="1" max="500" value="5" oninput="cmPreview()"></label>
+      </div>
+      <label class="field"><span>Date &amp; time</span><input class="in" id="cm-when" type="datetime-local" oninput="cmPreview()"></label>
+      <div class="field"><span>What's included</span>
+        <div class="row"><input class="in grow" id="cm-item" maxlength="60" placeholder="3-course dinner" onkeydown="if(event.key==='Enter'){event.preventDefault();cmAddItem()}"><button class="btn" onclick="cmAddItem()">Add</button></div>
+        <div class="list" id="cm-items" style="margin-top:8px"></div>
+      </div>
+      <div class="field"><span>Cover picture <em>(optional)</em></span>
+        <div class="row"><label class="btn" style="cursor:pointer">🖼️ Choose picture<input type="file" accept="image/*" hidden onchange="cmPic(this)"></label><button class="btn sm red" id="cm-pic-x" onclick="cmPicClear()" hidden>Remove</button></div></div>
+      <button class="btn main block" id="cm-post" onclick="cmPost()">🚀 Post it</button>
+      <button class="btn block" id="cm-cancel-edit" onclick="cmReset()" style="margin-top:8px" hidden>Cancel editing</button>
+      <p class="help" id="cm-status" style="margin:10px 0 0"></p>
+    </section>
+    <section class="card"><h2>Preview</h2><div id="cm-card"></div></section>
+  </div>
+</div>
+
 <!-- ══════════ ACTIVITY ══════════ -->
 <div class="page" id="p-log">
   <h1 class="page-title">🧾 Activity</h1>
@@ -735,13 +788,14 @@ function start() {
 
 /* ───────── navigation ───────── */
 const LOADERS = {
-  money: () => { loadMoney(); loadCoinPurchases(); loadCallLedger(); loadRoomLedger(); loadStripeAccounts(); },
+  money: () => { loadMoney(); loadCoinPurchases(); loadCallLedger(); loadRoomLedger(); loadStripeAccounts(); loadAutoPay(); },
   landing: () => ldLoad(false),
   announce: () => loadBanners(),
   rooms: () => loadPresets(),
   safety: () => { loadSafety(); loadMicLog(); loadOrg(); },
   log: () => listenLog(),
-  dates: () => dtLoad()
+  dates: () => dtLoad(),
+  connect: () => cmLoad()
 };
 const loaded = {};
 function go(tab, focusId) {
@@ -949,14 +1003,35 @@ function renderPayouts() {
   $("payouts").innerHTML = rows.length ? rows.slice(0, 80).map(([uid, u]) => {
     const pct = Math.min(100, Math.round((u.earnings || 0) / 50 * 100));
     const status = !u.stripeAccountId ? `<span class="pill">No Stripe yet</span>` : u.earnings >= 50 ? `<span class="pill on">Ready to pay</span>` : `<span class="pill warn">${money(50 - u.earnings)} to go</span>`;
-    return `<div class="item">${ava(u)}<div class="who"><b>${h(u.name || "(no name)")} · ${money(u.earnings)}</b><span>${Number(u.calls || 0)} calls · last paid ${u.lastPaidOut ? when(u.lastPaidOut) : "never"}</span><div class="bar"><i style="width:${pct}%"></i></div></div>${status}
-      <div class="acts">${u.stripeAccountId ? `<a class="btn sm" href="https://dashboard.stripe.com/connect/accounts/${encodeURIComponent(u.stripeAccountId)}" target="_blank" rel="noopener">Stripe ↗</a>` : ""}<button class="btn sm teal" onclick="markPaid(${j(uid)})" ${u.stripeAccountId ? "" : "disabled"}>Mark paid</button></div></div>`;
+    return `<div class="item">${ava(u)}<div class="who"><b>${h(u.name || "(no name)")} · ${money(u.earnings)}</b><span>${Number(u.calls || 0)} calls · paid out ${money(u.paidOut || 0)} · last paid ${u.lastPaidOut ? when(u.lastPaidOut) : "never"}${u.lastPaidOut && u.paidOut == null ? ` · <b style="color:var(--gold)">⚠ marked paid before, check their balance</b>` : ""}</span><div class="bar"><i style="width:${pct}%"></i></div></div>${status}
+      <div class="acts">${u.stripeAccountId ? `<a class="btn sm" href="https://dashboard.stripe.com/connect/accounts/${encodeURIComponent(u.stripeAccountId)}" target="_blank" rel="noopener">Stripe ↗</a>` : ""}<button class="btn sm teal" onclick="payCreator(${j(uid)})" ${u.stripeAccountId && u.earnings >= 50 ? "" : "disabled"}>💸 Pay now</button><button class="btn sm" onclick="markPaid(${j(uid)})">Paid another way</button></div></div>`;
   }).join("") : `<div class="empty">No creator earnings yet.</div>`;
 }
-async function markPaid(uid) {
+async function payCreator(uid) {
   const u = S.users[uid] || {}; const amt = Number(u.earnings || 0).toFixed(2);
-  if (!await dialog({ title: "Record a $" + amt + " payout to " + nm(uid) + "?", html: "Only do this <b>after</b> the transfer shows in Stripe. It records the payout on their account.", ok: "Record payout" })) return;
-  await safely(() => api("adminMarkPayout", { uid, amount: amt }), `Recorded $${amt} payout to ${nm(uid)}`, "Couldn't record payout");
+  const legacy = u.lastPaidOut && u.paidOut == null;
+  if (!await dialog({ title: "Send $" + amt + " to " + nm(uid) + "?", html: (legacy ? "<b style='color:var(--gold)'>⚠ You marked them paid before with the old button, which didn't take it off their balance. Check Stripe and use <i>Paid another way</i> for anything already sent.</b><br><br>" : "") + "Stripe sends it to their bank. It's taken off their balance right away, so it can't be paid twice.", ok: "Send $" + amt })) return;
+  try { await dtSdk(); } catch (e) { toast(e.message, true); return; }
+  await safely(() => dtCall("payCreator", { id: uid }), null, "Couldn't pay").then(r => { if (r) { toast(r.message); logAct(`Paid ${nm(uid)} $${amt}`); } });
+}
+async function markPaid(uid) {
+  const u = S.users[uid] || {};
+  const v = await dialog({ title: "Record money you sent " + nm(uid) + " another way", body: "Cash App, cash, or a transfer you already made in Stripe. This takes it off their balance here (they have $" + Number(u.earnings || 0).toFixed(2) + ").", input: { type: "number", value: Number(u.earnings || 0).toFixed(2) }, ok: "Record payout" });
+  if (v === null || v === undefined || !(Number(v) > 0)) return;
+  try { await dtSdk(); } catch (e) { toast(e.message, true); return; }
+  await safely(() => dtCall("markCreatorPaid", { id: uid, data: { amount: Number(v) } }), null, "Couldn't record payout").then(r => { if (r) { toast(r.message); logAct(`Recorded $${v} paid to ${nm(uid)}`); } });
+}
+async function payAllCreators() {
+  if (!await dialog({ title: "Pay everyone who's ready?", body: "Everyone with $50+ and payouts set up gets their full balance sent to their bank. Anyone who can't be paid yet is skipped.", ok: "Pay everyone" })) return;
+  try { await dtSdk(); } catch (e) { toast(e.message, true); return; }
+  await safely(() => dtCall("payAllCreators"), null, "Couldn't pay").then(r => { if (r) { toast(r.message); logAct(r.message); } });
+}
+async function setAutoPayouts(on) {
+  try { await dtSdk(); } catch (e) { toast(e.message, true); return; }
+  await safely(() => dtCall("setAutoPayouts", { data: { on } }), null, "Couldn't save").then(r => { if (r) toast(r.message); else $("auto-pay").checked = !on; });
+}
+async function loadAutoPay() {
+  try { await dtSdk(); const d = await firebase.firestore().doc("settings/platform").get(); $("auto-pay").checked = !!(d.exists && d.data().autoPayouts); } catch (e) {}
 }
 function table(head, rows, foot) { return rows.length ? `<table><thead><tr>${head.map(x => `<th>${x}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table>${foot || ""}` : `<div class="empty">Nothing yet.</div>`; }
 async function loadCoinPurchases() {
@@ -1683,6 +1758,7 @@ async function mgDetails(id) {
       ${m.official ? "" : `<tr><td style="color:var(--muted)">Host contact</td><td>✉️ ${c.email ? `<a href="mailto:${h(c.email)}">${h(c.email)}</a>` : "–"}<br>📞 ${tel(c.phone)}</td></tr>
       <tr><td style="color:var(--muted)">Host deposit</td><td>${h((m.hostDeposit || {}).status || "–")} · ${usd((m.hostDeposit || {}).amount)}</td></tr>`}
       ${m.status === "paying" ? `<tr><td style="color:var(--muted)">Payout</td><td>${h(dtWhenText(dtMs(m.payoutAt)))}</td></tr>` : ""}
+      ${m.sold ? (() => { const gross = m.price * m.sold, pct = m.official ? 100 : (m.hostFeePct ?? 10), mine = Math.round(gross * pct / 100), fees = m.stripeFees || 0; return `<tr><td style="color:var(--muted)">Your share</td><td>${usd(gross)} sold · ${m.official ? "all yours (pay the venue yourself)" : `host gets ${usd(gross - mine)}`} · you get ${usd(mine)} − ${usd(fees)} card fees = <b>${usd(mine - fees)}</b></td></tr>`; })() : ""}
     </table>${p.error ? `<p class="help">${h(p.error)}</p>` : ""}
     ${(g.reports || []).length ? `<h4 style="margin:14px 0 6px;color:var(--red)">Reports</h4>${g.reports.map(r => `<p class="help" style="margin:0 0 6px"><b>${h(r.reason)}</b>${r.detail ? ": " + h(r.detail) : ""}</p>`).join("")}` : ""}
     ${(g.guests || []).length ? `<h4 style="margin:14px 0 6px">Guest list (${g.guests.length})</h4><div class="list">${g.guests.map(x => `<div class="item" style="padding:6px 10px"><div class="who"><b>${x.here ? "✅ " : ""}${h(x.name)}</b><span>${h(x.code)}${x.status === "refunded" ? " · refunded" : ""}${x.reported ? " · reported a problem" : ""}</span></div></div>`).join("")}</div>` : ""}
@@ -1701,14 +1777,14 @@ async function mgAct(action, id) {
   let extra = {};
   if (action === "approveMeetup") { if (!await dialog({ title: "Approve “" + (m.title || "") + "”?", body: "It goes on sale for everyone right away and the host is notified.", ok: "Approve" })) return; }
   else if (action === "requestMeetupChanges" || action === "rejectMeetup") {
-    const note = await dialog({ title: action === "rejectMeetup" ? "Reject “" + (m.title || "") + "”?" : "What should the host change?", body: action === "rejectMeetup" ? "Tell the host why. Their deposit is returned, and anyone who bought is refunded." : "The host sees this note and can edit their M&G. It's hidden from buyers until you approve it again.", input: { placeholder: action === "rejectMeetup" ? "Reason" : "e.g. Add the venue's real phone number" }, ok: action === "rejectMeetup" ? "Reject" : "Send to host", danger: action === "rejectMeetup" });
+    const note = await dialog({ title: action === "rejectMeetup" ? "Reject “" + (m.title || "") + "”?" : "What should the host change?", body: action === "rejectMeetup" ? "Tell the host why. Their deposit stays on their account, and anyone who bought gets their money back as credit." : "The host sees this note and can edit their M&G. It's hidden from buyers until you approve it again.", input: { placeholder: action === "rejectMeetup" ? "Reason" : "e.g. Add the venue's real phone number" }, ok: action === "rejectMeetup" ? "Reject" : "Send to host", danger: action === "rejectMeetup" });
     if (note === null || note === undefined) return;
     if (action === "requestMeetupChanges" && !String(note).trim()) { toast("Write what needs to change", true); return; }
     extra.reason = String(note).trim();
   }
-  else if (action === "cancelMeetup") { if (!await dialog({ title: "Cancel “" + (m.title || "") + "”?", body: "Every buyer (" + (m.sold || 0) + ") is refunded in full" + (m.official ? "." : " and the host's deposit is returned."), ok: "Cancel & refund", danger: true })) return; extra.reason = "Canceled by Whisper+Me."; }
-  else if (action === "noShow") { if (!await dialog({ title: "Refund the buyers?", body: "Every buyer (" + (m.sold || 0) + ") is refunded. Because the M&G didn't happen as promised, the host's deposit is kept and they get a strike.", ok: "Refund buyers", danger: true })) return; action = "cancelMeetup"; extra = { reason: "It didn't happen as promised.", data: { keepDeposit: true } }; }
-  else if (action === "payMeetupHost") { if (!await dialog({ title: m.status === "paying" ? "Pay the host now?" : "Pay the host?", body: (m.status === "paying" ? "Skips the rest of the waiting time. " : "Only if you confirmed the M&G happened. ") + "The host gets their share of " + (m.sold || 0) + " spot(s) and their deposit back.", ok: "Pay host" })) return; }
+  else if (action === "cancelMeetup") { if (!await dialog({ title: "Cancel “" + (m.title || "") + "”?", body: "Every buyer (" + (m.sold || 0) + ") gets their money back as Whisper+Me credit (no card fees)" + (m.official ? "." : ". The host's deposit stays on their account."), ok: "Cancel & give credit", danger: true })) return; extra.reason = "Canceled by Whisper+Me."; }
+  else if (action === "noShow") { if (!await dialog({ title: "Refund the buyers?", body: "Every buyer (" + (m.sold || 0) + ") gets their money back as credit. Because the M&G didn't happen as promised, the host's deposit is kept and they get a strike.", ok: "Refund buyers", danger: true })) return; action = "cancelMeetup"; extra = { reason: "It didn't happen as promised.", data: { keepDeposit: true } }; }
+  else if (action === "payMeetupHost") { if (!await dialog({ title: m.status === "paying" ? "Pay the host now?" : "Pay the host?", body: (m.status === "paying" ? "Skips the rest of the waiting time. " : "Only if you confirmed the M&G happened. ") + "The host gets their share of " + (m.sold || 0) + " spot(s).", ok: "Pay host" })) return; }
   else if (action === "holdMeetupPayout") {
     const note = await dialog({ title: "Hold the host's payout?", body: "It moves to Needs you, where you can pay the host or refund the buyers.", input: { placeholder: "Why? (for your notes)" }, ok: "Hold" });
     if (note === null || note === undefined) return; extra.reason = String(note).trim();
@@ -1727,6 +1803,117 @@ async function dtSaveReward() {
   const DEF = { hostFee: 10, fee: 10, depositCents: 500, splitWindowHours: 24, minAge: 21, stoodUpRewardCoins: 1, strikesForSuspension: 2, suspensionDays: 3, lateCancelHours: 48, rescheduleCutoffHours: 48, requireIdVerify: false, openRequests: true, autoApproveVenues: false };
   const data = Object.assign({}, DEF, DT.settings, { hostFee: hf, hostPayoutHours: days * 24 });
   await safely(() => dtCall("saveSettings", { data }), `Saved: ${hf}% site fee, hosts paid ${days} day${days === 1 ? "" : "s"} after`, "Couldn't save");
+}
+
+/* ───────── Connect Me: packages, orders, check-in ───────── */
+const CM = { list: [], f: "live", cat: "Dinner", size: 2, items: [], venue: { source: "other" }, vres: [], editing: null, pic: null, picUrl: "", keepImage: "", unsub: null };
+async function cmLoad() {
+  $("cm-cat").innerHTML = DT_CATS.map(c => `<button data-v="${c[0]}" onclick="cmCat('${c[0]}')">${c[1]} ${c[0]}</button>`).join("");
+  cmCat(CM.cat); cmItems();
+  if (!$("cm-when").value) { const d = new Date(Date.now() + 3 * 86400000); d.setHours(19, 0, 0, 0); $("cm-when").value = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); }
+  try { await dtSdk(); } catch (e) { $("cm-list").innerHTML = `<div class="empty">${h(e.message)}</div>`; return; }
+  if (CM.unsub) CM.unsub();
+  CM.unsub = firebase.firestore().collection("connects").orderBy("startsAt", "desc").limit(150).onSnapshot(s => { CM.list = s.docs.map(d => Object.assign({ id: d.id }, d.data())); cmRender(); }, e => { $("cm-list").innerHTML = `<div class="empty">Couldn't load: ${h(e.message)}</div>`; });
+  cmPreview();
+}
+function cmCat(c) { CM.cat = c; document.querySelectorAll("#cm-cat button").forEach(b => b.classList.toggle("on", b.dataset.v === c)); cmPreview(); }
+function cmSize(n) { CM.size = n; document.querySelectorAll("#cm-size button").forEach(b => b.classList.toggle("on", Number(b.dataset.v) === n)); cmPreview(); }
+function cmAddItem(t) { const v = String(t || $("cm-item").value || "").trim().slice(0, 60); if (!v) return; if (!CM.items.includes(v) && CM.items.length < 10) CM.items.push(v); $("cm-item").value = ""; cmItems(); }
+function cmItems() { $("cm-items").innerHTML = CM.items.map((x, i) => `<div class="item" style="padding:6px 10px"><div class="who"><b>✓ ${h(x)}</b></div><button class="icon-btn" onclick="CM.items.splice(${i},1);cmItems()" aria-label="Remove">✕</button></div>`).join(""); cmPreview(); }
+function cmPic(input) { const f = input.files && input.files[0]; if (!f) return; if (!/^image\//.test(f.type) || f.size > 5 * 1048576) { toast("Pick a picture under 5 MB", true); return; } CM.pic = f; CM.picUrl = URL.createObjectURL(f); $("cm-pic-x").hidden = false; cmPreview(); }
+function cmPicClear() { CM.pic = null; CM.picUrl = ""; CM.keepImage = ""; $("cm-pic-x").hidden = true; cmPreview(); }
+function cmPreview() {
+  if (!$("cm-card")) return;
+  const title = $("cm-title").value.trim() || "Your package name", price = Number($("cm-price").value) || 0, ms = $("cm-when").value ? new Date($("cm-when").value).getTime() : 0, hue = dtHue(title);
+  $("cm-card").innerHTML = `<div style="border-radius:16px;overflow:hidden;background:#12122a;border:1px solid rgba(224,69,123,.45)">
+    <div style="position:relative;height:110px;padding:10px 12px;display:flex;flex-direction:column;justify-content:space-between;background:linear-gradient(135deg,hsl(${hue} 60% 32%),hsl(${(hue + 40) % 360} 65% 16%) 70%,#0b0b16)">${CM.picUrl ? `<img src="${h(CM.picUrl)}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.55">` : ""}
+      <span style="position:relative;font-size:10px;letter-spacing:.12em;text-transform:uppercase;display:flex;justify-content:space-between"><span>💞 ${h(CM.cat)}</span><span>For ${CM.size}</span></span><b style="position:relative;font-size:18px">${h(title)}</b></div>
+    <div style="padding:10px 12px;display:flex;justify-content:space-between;gap:10px"><div class="help" style="margin:0">📍 ${h($("cm-vname").value || "Place")}<br>${h(dtWhenText(ms))}<br>${h(CM.items.slice(0, 2).join(" · "))}</div>
+      <div style="text-align:right"><b style="font-size:18px">${price ? "$" + price : "$–"}</b><div class="help" style="margin:0">for ${CM.size}</div></div></div></div>
+    ${price ? `<p class="help" style="margin:10px 0 0">$${(price / CM.size).toFixed(2).replace(/\.00$/, "")} a person. All ${Number($("cm-qty").value) || 0} sold = <b>${usd(price * 100 * (Number($("cm-qty").value) || 0))}</b> before what you pay the venue.</p>` : ""}`;
+}
+let cmVTimer = null;
+function cmVenueSearch(q) {
+  clearTimeout(cmVTimer); q = String(q || "").trim(); $("cm-vname").value = q; CM.venue = { source: "other" }; cmPreview();
+  if (q.length < 3) { $("cm-vres").innerHTML = ""; return; }
+  cmVTimer = setTimeout(() => {
+    fetch("https://photon.komoot.io/api/?q=" + encodeURIComponent(q) + "&limit=6&lang=en&lat=38.6&lon=-90.2").then(r => r.json()).then(js => {
+      CM.vres = (js.features || []).map(f => { const p = f.properties || {}, c = (f.geometry || {}).coordinates || []; return { name: p.name || "", address: [p.housenumber, p.street].filter(Boolean).join(" "), city: [p.city || p.town || p.village || p.county, p.state].filter(Boolean).join(", "), osmType: p.osm_type, osmNum: p.osm_id, osmId: (p.osm_type || "") + (p.osm_id || ""), lat: c[1], lon: c[0], kind: p.osm_value || "" }; }).filter(r => r.name && r.city);
+      $("cm-vres").innerHTML = CM.vres.length ? CM.vres.map((r, i) => `<div class="item" style="padding:6px 10px;cursor:pointer" onclick="cmPickVenue(${i})"><div class="who"><b>${h(r.name)} <span class="pill">${h(r.kind.replace(/_/g, " "))}</span></b><span>${h([r.address, r.city].filter(Boolean).join(", "))}</span></div></div>`).join("") : `<div class="help">No places found. Type the details in below.</div>`;
+    }, () => { $("cm-vres").innerHTML = `<div class="help">Search isn't working right now. Type the details in below.</div>`; });
+  }, 350);
+}
+function cmPickVenue(i) {
+  const r = CM.vres[i]; if (!r) return;
+  CM.venue = Object.assign({ source: "osm" }, r);
+  $("cm-vq").value = r.name; $("cm-vname").value = r.name; $("cm-vaddr").value = r.address; $("cm-vcity").value = r.city; $("cm-vres").innerHTML = ""; cmPreview();
+  if (r.osmType && r.osmNum) { const t = { N: "node", W: "way", R: "relation" }[r.osmType] || "node"; fetch("https://overpass-api.de/api/interpreter?data=" + encodeURIComponent("[out:json][timeout:5];" + t + "(" + r.osmNum + ");out tags;")).then(x => x.json()).then(js => { const tg = ((js.elements || [])[0] || {}).tags || {}; const ph = tg.phone || tg["contact:phone"] || ""; if (ph && !$("cm-vphone").value) $("cm-vphone").value = ph; }).catch(() => {}); }
+}
+function cmReset() {
+  CM.editing = null; CM.items = []; CM.venue = { source: "other" }; cmPicClear();
+  ["cm-title", "cm-about", "cm-price", "cm-vq", "cm-vname", "cm-vaddr", "cm-vcity", "cm-vphone"].forEach(k => { $(k).value = ""; }); $("cm-qty").value = 5; cmSize(2); cmItems();
+  $("cm-form-title").textContent = "➕ Post a package"; $("cm-post").textContent = "🚀 Post it"; $("cm-cancel-edit").hidden = true; $("cm-status").textContent = "";
+}
+async function cmPost() {
+  const d = { title: $("cm-title").value.trim(), about: $("cm-about").value.trim(), category: CM.cat, items: CM.items.slice(), size: CM.size, price: Number($("cm-price").value), quantity: Number($("cm-qty").value),
+    startsAt: $("cm-when").value ? new Date($("cm-when").value).getTime() : 0, venue: Object.assign({}, CM.venue, { name: $("cm-vname").value.trim(), address: $("cm-vaddr").value.trim(), city: $("cm-vcity").value.trim(), phone: $("cm-vphone").value.trim() }) };
+  const miss = !d.title ? "Give it a name" : !d.venue.name || !d.venue.address || !d.venue.city ? "Add the place's name, street address and city" : !d.venue.phone ? "Add the place's phone number" : !(d.price >= 5) ? "Price must be at least $5" : !d.startsAt ? "Pick a date and time" : !(d.quantity >= 1) ? "How many can be sold?" : "";
+  if (miss) { toast(miss, true); return; }
+  const btn = $("cm-post"), label = btn.textContent; btn.disabled = true; btn.textContent = "Saving…";
+  const r = await safely(async () => { d.imageURL = CM.keepImage || ""; if (CM.pic) { const ref = storage.ref(`nights/ticketImages/${ADMIN_UID}/${Date.now()}`); await ref.put(CM.pic, { contentType: CM.pic.type }); d.imageURL = await ref.getDownloadURL(); } return dtCall("postConnect", { id: CM.editing || null, data: d }); }, null, "Couldn't save");
+  btn.disabled = false; btn.textContent = label;
+  if (r && r.id) { toast(r.message); logAct((CM.editing ? "Edited" : "Posted") + ` Connect Me "${d.title}"`); cmReset(); $("cm-status").textContent = "✅ " + r.message; }
+}
+function cmEdit(id) {
+  const c = CM.list.find(x => x.id === id); if (!c) return;
+  firebase.firestore().doc(`connects/${id}/private/info`).get().then(p => {
+    const v = (p.exists && p.data().venue) || {};
+    cmReset(); CM.editing = id; CM.venue = Object.assign({ source: "other" }, v);
+    $("cm-title").value = c.title || ""; $("cm-about").value = c.about || ""; cmCat(c.category || "Other"); cmSize(c.size || 2);
+    $("cm-vq").value = $("cm-vname").value = v.name || c.venueName || ""; $("cm-vaddr").value = v.address || ""; $("cm-vcity").value = v.city || c.city || ""; $("cm-vphone").value = v.phone || "";
+    $("cm-price").value = c.price / 100; $("cm-qty").value = c.quantity;
+    const dd = new Date(dtMs(c.startsAt)); $("cm-when").value = new Date(dd.getTime() - dd.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    CM.items = (c.items || []).slice(); CM.picUrl = c.imageURL || ""; CM.keepImage = c.imageURL || ""; $("cm-pic-x").hidden = !CM.picUrl; cmItems();
+    $("cm-form-title").textContent = "✏️ Edit package"; $("cm-post").textContent = "💾 Save changes"; $("cm-cancel-edit").hidden = false;
+    $("cm-status").textContent = c.sold ? `✏️ ${c.sold} sold, so the price, size, time and place are locked.` : "";
+    go("connect", "sec-cmpost");
+  });
+}
+function cmFilter(f) { CM.f = f; document.querySelectorAll("#cm-f button").forEach(b => b.classList.toggle("on", b.dataset.f === f)); cmRender(); }
+function cmRender() {
+  let list = CM.list.slice();
+  if (CM.f === "live") list = list.filter(c => c.status === "live").sort((a, b) => dtMs(a.startsAt) - dtMs(b.startsAt));
+  $("cm-list").innerHTML = list.length ? list.map(c => {
+    const st = c.status === "live" ? (c.hidden ? `<span class="pill warn">Paused</span>` : `<span class="pill on">On sale</span>`) : `<span class="pill">${h({ ended: "Not selling", completed: "Done", canceled: "Canceled" }[c.status] || c.status)}</span>`;
+    const acts = c.status === "live" ? [
+      c.hidden ? `<button class="btn sm teal" onclick="cmAct('showConnect',${j(c.id)})">▶ Resume</button>` : `<button class="btn sm gold" onclick="cmAct('hideConnect',${j(c.id)})">⏸ Pause</button>`,
+      `<button class="btn sm" onclick="cmEdit(${j(c.id)})">✏️ Edit</button>`, `<button class="btn sm red" onclick="cmAct('endConnect',${j(c.id)})">Stop selling</button>`, `<button class="btn sm red" onclick="cmAct('cancelConnect',${j(c.id)})">Cancel</button>`] : [];
+    return `<div class="item" style="flex-wrap:wrap"><div class="who"><b>${h(c.title)} ${st}</b><span>${h(c.venueName)}, ${h(c.city || "")} · ${h(dtWhenText(dtMs(c.startsAt)))} · ${usd(c.price)} for ${c.size} · ${Number(c.sold || 0)} of ${c.quantity} sold${c.siteNet != null ? " · you kept " + usd(c.siteNet) + " after card fees" : ""}</span></div>
+      <div class="acts"><button class="btn sm" onclick="cmOrders(${j(c.id)})">Who's going</button>${acts.join("")}</div></div>`;
+  }).join("") : `<div class="empty">${CM.f === "live" ? "Nothing on sale. Post a package below." : "No packages yet."}</div>`;
+}
+async function cmOrders(id) {
+  const c = CM.list.find(x => x.id === id) || {};
+  const r = await safely(() => dtCall("connectOrders", { id }), null, "Couldn't load");
+  if (!r) return;
+  openModal(`<h3>${h(c.title)}</h3><p class="help" style="margin:0 0 10px">${h(dtWhenText(dtMs(c.startsAt)))} · ${r.orders.length} bought</p>
+    <div class="list">${r.orders.length ? r.orders.map(o => `<div class="item" style="flex-direction:column;align-items:flex-start"><b>${h(o.buyerName)}'s package <span class="pill ${o.status === "paid" ? "on" : ""}">${h(o.status)}</span></b>
+      ${o.seats.map(x => `<span class="help" style="margin:2px 0">${x.here ? "✅" : "⬜"} ${h(x.name || (x.status === "invited" ? "Invited, not accepted yet" : "Open spot"))} ${x.code ? "· " + h(x.code) : ""} ${x.method ? "· checked in by " + h({ gps: "location", code: "code", self: "app" }[x.method] || x.method) : ""}</span>`).join("")}</div>`).join("") : `<div class="empty">Nobody yet.</div>`}</div>
+    <div class="acts"><button class="btn" onclick="closeModal()">Close</button></div>`);
+}
+async function cmCheckIn() {
+  const code = ($("cm-code").value || "").trim(); if (!code) return;
+  try { await dtSdk(); const r = await dtCall("connectCheckIn", { data: { code } }); $("cm-code-out").innerHTML = h(r.message) + " · " + h(r.title) + "<br>" + r.party.map(x => (x.here ? "✅ " : "⬜ ") + h(x.name)).join(" &nbsp; ") + (r.allHere ? "<br><b>Everyone's here.</b>" : ""); $("cm-code").value = ""; logAct("Connect Me check-in " + r.guest); }
+  catch (e) { $("cm-code-out").textContent = e.message; }
+}
+async function cmAct(action, id) {
+  const c = CM.list.find(x => x.id === id) || {};
+  let extra = {};
+  if (action === "cancelConnect") {
+    const why = await dialog({ title: "Cancel “" + (c.title || "") + "”?", body: "Everyone who bought it (" + (c.sold || 0) + ") gets their money back as Whisper+Me credit (no card fees). They can send it to their card if they want.", input: { placeholder: "Reason (they'll see it)" }, ok: "Cancel it", danger: true });
+    if (why === null || why === undefined) return; extra.reason = String(why).trim();
+  } else if (action === "endConnect") { if (!await dialog({ title: "Stop selling “" + (c.title || "") + "”?", body: "Packages already bought still happen.", ok: "Stop selling" })) return; }
+  await safely(() => dtCall(action, Object.assign({ id }, extra)), null, "Couldn't update").then(r => { if (r) { toast(r.message); logAct(`${action} · ${c.title || id}`); } });
 }
 
 /* ───────── activity log ───────── */

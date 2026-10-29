@@ -91,6 +91,17 @@ service cloud.firestore {
     }
     match /meetupCodes/{code} { allow read, write: if false; }
 
+    // Connect Me packages: anyone can see ones on sale; the address is only given out by the server after someone pays or accepts.
+    match /connects/{id} {
+      allow read: if (resource.data.status == 'live' && resource.data.hidden == false) || isAdmin();
+      allow write: if false;
+      match /private/{doc} { allow read: if isAdmin(); allow write: if false; }
+    }
+    match /connectOrders/{id} { allow read: if isAdmin(); allow write: if false; }
+    match /connectInvites/{t} { allow read, write: if false; }
+    match /connectCodes/{c} { allow read, write: if false; }
+    match /credits/{uid} { allow read: if isAdmin() || (signedIn() && me() == uid); allow write: if false; }
+
     match /reports/{rid} {
       allow create: if signedIn()
         && request.resource.data.by == me()

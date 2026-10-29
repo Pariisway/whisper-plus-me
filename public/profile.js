@@ -186,8 +186,9 @@
       + "<div class='pf-card'><div class='pf-label' style='margin-top:0'>Your earnings</div>"
       + "<div class='pf-big'>" + money(earned) + "</div>"
       + "<div class='pf-progress'><i style='width:" + pct + "%'></i></div>"
-      + "<div class='pf-muted'>" + (earned >= 50 ? "You've reached the $50 payout minimum." : money(50 - earned) + " to go until your first $50 payout.")
-      + " You get <b style='color:#fff'>$2 for every coin</b> people spend calling you or joining your rooms.</div>"
+      + "<div class='pf-muted'>" + (earned >= 50 ? (m.stripeAccountId ? "You've reached $50. It's sent to your bank on the next payout." : "You've reached $50. Set up payouts below to get it.") : money(50 - earned) + " to go until your first $50 payout.")
+      + " You get <b style='color:#fff'>$2 for every coin</b> people spend calling you or joining your rooms, and <b style='color:#fff'>90% of every M&amp;G spot</b> you sell. Card fees are on us.</div>"
+      + (Number(m.paidOut || 0) > 0 ? "<div class='pf-muted' style='margin-top:6px'>Paid to your bank so far: <b style='color:#fff'>" + money(m.paidOut) + "</b></div>" : "")
       + (m.stripeAccountId
           ? "<div class='pf-row'><button class='pf-btn' onclick='openStripeDashboard()'>✅ Payouts on · View Stripe</button></div>"
           : "<div class='pf-row'><button class='pf-primary' onclick='connectStripe()'>Set up payouts</button></div>"

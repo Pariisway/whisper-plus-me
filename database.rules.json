@@ -4,7 +4,8 @@
       ".read": "auth != null",
       ".indexOn": [
         "online",
-        "lastSeen"
+        "lastSeen",
+        "earnings"
       ],
       "$uid": {
         "name": {
