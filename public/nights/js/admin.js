@@ -12,7 +12,7 @@ import {
 
 applyBrand("Admin");
 
-const DEFAULTS = { fee: 10, depositCents: 500, splitWindowHours: 24, minAge: 21, requireIdVerify: false, stoodUpRewardCoins: 5, strikesForSuspension: 2, suspensionDays: 3, lateCancelHours: 48, rescheduleCutoffHours: 48, openRequests: true, autoApproveVenues: false };
+const DEFAULTS = { fee: 10, depositCents: 500, splitWindowHours: 24, minAge: 21, requireIdVerify: false, stoodUpRewardCoins: 1, strikesForSuspension: 2, suspensionDays: 3, lateCancelHours: 48, rescheduleCutoffHours: 48, openRequests: true, autoApproveVenues: false };
 const S = {
   tab: "overview", vtab: "pending", dtab: "all", mtab: "all", userQ: "", rtab: "open",
   settings: { ...DEFAULTS }, venues: [], tickets: [], members: [], dates: [], reports: [], payouts: [], ledger: [], log: [], days: [], totals: {}

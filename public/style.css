@@ -2264,30 +2264,6 @@ img { image-rendering: auto; }
   opacity: 0.92;
 }
 
-/* ── Organization Access Button ── */
-.lp-cta-btns {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-.lp-cta-org-btn {
-  background: transparent;
-  border: 2px solid #00e3ae;
-  color: #00e3ae;
-  font-size: 16px;
-  font-weight: 700;
-  padding: 14px 28px;
-  border-radius: 50px;
-  cursor: pointer;
-  transition: background 0.2s, color 0.2s;
-  letter-spacing: 0.3px;
-}
-.lp-cta-org-btn:hover {
-  background: #00e3ae;
-  color: #000;
-}
-
 /* ═══════════════════════════════════════════════════════════════
    3D SCREEN CAROUSEL
    Chat stays centered and interactive; Phone/Map/Dashboard peek in
@@ -2343,3 +2319,9 @@ img { image-rendering: auto; }
 /* Mobile-specific offsets are computed directly in JS (carouselShellStyle
    in app.js checks window.innerWidth) and applied inline, so no separate
    media-query overrides are needed here. */
+
+/* ── 5-tab menu (Phone · Chat · Map · Profile · Dates): share the width
+      evenly so no tab gets cut off on phones ── */
+.menu { width: min(460px, 100%) !important; padding-left: 6px !important; padding-right: 6px !important; box-sizing: border-box; }
+.menu div.menu-item { flex: 1 1 0 !important; width: auto !important; max-width: none !important; min-width: 0 !important; padding: 10px 2px !important; }
+.menu .menu-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }

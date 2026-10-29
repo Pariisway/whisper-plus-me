@@ -34,7 +34,7 @@ async function completeLastCheckout(uid) {
   S.intents[pi] = { id: pi, status: hold ? "requires_capture" : "succeeded" };
   await T.handleStripeEvent({ type: "checkout.session.completed", data: { object: {
     id: sess.id, metadata: sess.metadata, payment_intent: pi, payment_status: hold ? "unpaid" : "paid",
-    amount_total: sess.line_items[0].price_data.unit_amount } } });
+    amount_total: sess.line_items.reduce((a, l) => a + l.price_data.unit_amount, 0) } } });
   return pi;
 }
 
@@ -81,9 +81,46 @@ async function test(name, fn) {
   seedPeople("ann", "ben", "cal", "dee", "eve", "fay", "gus", "hal");
   for (const u of ["ann", "ben", "cal", "dee", "eve", "fay", "gus"]) await member(u);
 
-  await test("Can't create a date without a deposit", async () => {
+  await test("No deposit yet: it's added to the first checkout and counts once paid", async () => {
     await call("datesJoin", "hal", { birthYear: 1990 });
-    await assert.rejects(call("createDate", "hal", { ticketId: seedTicket(), mode: "split", inviteUids: ["ann"] }), /deposit/);
+    const r = await call("createDate", "hal", { ticketId: seedTicket({ price: 6000 }), mode: "full", inviteUids: ["ann"] });
+    const sess = [...S.sessions].reverse().find(x => x.metadata.uid === "hal");
+    assert.deepStrictEqual(sess.line_items.map(l => l.price_data.unit_amount), [6000, 500]);
+    assert.ok(/deposit/i.test(sess.line_items[1].price_data.product_data.name));
+    await completeLastCheckout("hal");
+    assert.strictEqual(doc("members/hal").deposit.status, "active");
+    assert.strictEqual(doc("members/hal").deposit.amount, 500);
+    assert.strictEqual(date(r.dateId).status, "confirmed");
+    // second date: no deposit line any more
+    await call("createDate", "hal", { ticketId: seedTicket({ price: 6000 }), mode: "full", inviteUids: ["ann"] });
+    const s2 = [...S.sessions].reverse().find(x => x.metadata.uid === "hal");
+    assert.strictEqual(s2.line_items.length, 1);
+  });
+
+  await test("Guest with no deposit on a paid-in-full date pays just the deposit", async () => {
+    seedPeople("ivy"); await call("datesJoin", "ivy", { birthYear: 1991 });
+    const r = await call("createDate", "ann", { ticketId: seedTicket({ price: 7000 }), mode: "full", inviteUids: ["ivy"] });
+    await completeLastCheckout("ann");
+    const a = await call("answerInvite", "ivy", { dateId: r.dateId, accept: true });
+    assert.ok(a.url, "deposit checkout");
+    const sess = [...S.sessions].reverse().find(x => x.metadata.uid === "ivy");
+    assert.deepStrictEqual(sess.line_items.map(l => l.price_data.unit_amount), [500]);
+    await completeLastCheckout("ivy");
+    const d = date(r.dateId);
+    assert.strictEqual(d.seats[1].status, "joined");
+    assert.strictEqual(doc("members/ivy").deposit.status, "active");
+    assert.strictEqual(new Set(d.codes).size, 2);
+  });
+
+  await test("Split with deposit inside the hold: deposit only counts once captured", async () => {
+    seedPeople("jo"); await call("datesJoin", "jo", { birthYear: 1990 });
+    const t = seedTicket({ price: 8000 });
+    const r = await call("createDate", "jo", { ticketId: t, mode: "split", inviteUids: ["ann"] });
+    await completeLastCheckout("jo");
+    assert.notStrictEqual((doc("members/jo").deposit || {}).status, "active", "held, not yet captured");
+    await call("answerInvite", "ann", { dateId: r.dateId, accept: true }); await completeLastCheckout("ann");
+    assert.strictEqual(date(r.dateId).status, "confirmed");
+    assert.strictEqual(doc("members/jo").deposit.status, "active");
   });
 
   await test("Under-21 can't join Dates", async () => {
@@ -92,12 +129,13 @@ async function test(name, fn) {
   });
 
   await test("Split: holds only, then everyone charged at once with one code each", async () => {
+    const cap0 = S.captured.length;
     const { id, t } = await splitDate("ann", ["ben"]);
     const d = date(id);
     assert.strictEqual(d.status, "confirmed");
     assert.strictEqual(d.seats.every(s => s.status === "paid"), true);
     assert.strictEqual(new Set(d.codes).size, 2);
-    assert.strictEqual(S.captured.length, 2);
+    assert.strictEqual(S.captured.length - cap0, 2);
     assert.deepStrictEqual([doc("tickets/" + t).held, doc("tickets/" + t).sold], [0, 1]);
     assert.strictEqual(d.seats[0].amount + d.seats[1].amount, 10000);
   });
@@ -141,7 +179,7 @@ async function test(name, fn) {
   });
 
   let noShowDate;
-  await test("No-show: deposit kept, strike, stood-up person gets 5 coins, venue paid after", async () => {
+  await test("No-show: deposit kept, strike, stood-up person gets 1 coin, venue paid after", async () => {
     const { id } = await splitDate("gus", ["dee"]);
     noShowDate = id;
     const gusCode = date(id).seats[0].code;
@@ -154,7 +192,7 @@ async function test(name, fn) {
     assert.deepStrictEqual(d.noShowUids, ["dee"]);
     assert.strictEqual(doc("members/dee").deposit.status, "forfeited");
     assert.strictEqual(doc("members/dee").strikes, 1);
-    assert.strictEqual(rtdb.users.gus.coins, 5);
+    assert.strictEqual(rtdb.users.gus.coins, 1);
     assert.strictEqual(doc("members/gus").deposit.status, "active");
     const p = doc("payouts/" + id);
     assert.deepStrictEqual([p.status, p.amount, p.fee], ["due", 9000, 1000]);
@@ -169,9 +207,12 @@ async function test(name, fn) {
     assert.strictEqual(doc("members/ann").strikes || 0, before);
   });
 
-  await test("Forfeited deposit blocks the next booking until a new one is paid", async () => {
-    await assert.rejects(call("createDate", "dee", { ticketId: seedTicket(), mode: "split", inviteUids: ["gus"] }), /new \$5 deposit/);
-    await call("payDeposit", "dee"); await completeLastCheckout("dee");
+  await test("Forfeited deposit: a new one is added to the next booking's checkout", async () => {
+    assert.strictEqual(doc("members/dee").deposit.status, "forfeited");
+    await call("createDate", "dee", { ticketId: seedTicket(), mode: "full", inviteUids: ["gus"] });
+    const sess = [...S.sessions].reverse().find(x => x.metadata.uid === "dee");
+    assert.strictEqual(sess.line_items.length, 2);
+    await completeLastCheckout("dee");
     assert.strictEqual(doc("members/dee").deposit.status, "active");
   });
 
@@ -185,7 +226,7 @@ async function test(name, fn) {
     const days = (m.suspendedUntil.toMillis() - Date.now()) / 86400000;
     assert.ok(days > 2.9 && days <= 3, "suspended ~3 days, got " + days);
     await call("payDeposit", "dee"); await completeLastCheckout("dee");
-    await assert.rejects(call("createDate", "dee", { ticketId: seedTicket(), mode: "split", inviteUids: ["gus"] }), /break from Dates/);
+    await assert.rejects(call("createDate", "dee", { ticketId: seedTicket(), mode: "split", inviteUids: ["gus"] }), /break from M&G/);
     advanceHours(73);
     await call("createDate", "dee", { ticketId: seedTicket(), mode: "split", inviteUids: ["gus"] });
   });
@@ -196,7 +237,7 @@ async function test(name, fn) {
     assert.ok(preview.loseDeposit && preview.strike && preview.loseTicket === 5000);
     assert.ok(preview.lines.some(l => /lose your \$5 deposit/.test(l)));
     assert.ok(preview.lines.some(l => /not refunded/.test(l)));
-    assert.ok(preview.lines.some(l => /5 Whisper coins/.test(l)));
+    assert.ok(preview.lines.some(l => /1 Whisper coin\b/.test(l)));
     assert.strictEqual(doc("members/ben").deposit.status, "active", "preview changes nothing");
     await call("leaveDate", "ben", { dateId: id });
     const d = date(id);
@@ -306,6 +347,153 @@ async function test(name, fn) {
     const before = store.size;
     await T.handleStripeEvent({ type: "checkout.session.completed", data: { object: { metadata: { uid: "ann", qty: "3" }, payment_status: "paid" } } });
     assert.strictEqual(store.size, before);
+  });
+
+  await test("Admin posts a venue + ticket from the main admin; it's live for everyone", async () => {
+    const A = { uid: "v6aIXY12MDY9ci1wWJmCiLOAKoG2", token: { email: "a@x.com" } };
+    const run = d => F.nightsAdminAction.run({ data: d, auth: A });
+    await assert.rejects(F.nightsAdminAction.run({ data: { action: "createVenue", data: { name: "X", city: "Y" } }, auth: { uid: "ann", token: {} } }), /Admins only/);
+    const v = await run({ action: "createVenue", data: { name: "Ember & Oak", city: "Belleville, IL", type: "Restaurant" } });
+    assert.strictEqual(doc("venues/" + v.id).status, "approved");
+    const when = Date.now() + 5 * 86400000;
+    await assert.rejects(run({ action: "createTicket", data: { venueId: v.id, title: "Too soon", category: "Dinner", items: ["x"], size: 2, price: 50, quantity: 3, startsAt: Date.now() + 3600000 } }), /3 hours/);
+    await assert.rejects(run({ action: "createTicket", data: { venueId: v.id, title: "No items", category: "Dinner", items: [], size: 2, price: 50, quantity: 3, startsAt: when } }), /included/);
+    const t = await run({ action: "createTicket", data: { venueId: v.id, title: "Dinner & a Movie", category: "Dinner", items: ["3-course dinner", "2 movie tickets"], size: 2, price: 80, quantity: 4, startsAt: when, note: "Dress up" } });
+    const tk = doc("tickets/" + t.id);
+    assert.deepStrictEqual([tk.status, tk.adminHidden, tk.price, tk.sold, tk.held, tk.venueName], ["live", false, 8000, 0, 0, "Ember & Oak"]);
+    // a member can book it like any venue ticket
+    seedPeople("pia", "quin"); await member("pia");
+    const r = await call("createDate", "pia", { ticketId: t.id, mode: "full", inviteUids: ["quin"] });
+    assert.ok(r.dateId);
+    await assert.rejects(run({ action: "updateTicket", id: t.id, data: { quantity: 0 } }), /already sold or held/);
+    await run({ action: "removeVenue", id: v.id });
+    assert.deepStrictEqual([doc("venues/" + v.id).status, doc("tickets/" + t.id).adminHidden], ["removed", true]);
+    await run({ action: "resumeVenue", id: v.id });
+    assert.deepStrictEqual([doc("venues/" + v.id).status, doc("tickets/" + t.id).adminHidden], ["approved", false]);
+    await run({ action: "updateTicket", id: t.id, data: { status: "ended" } });
+    assert.strictEqual(doc("tickets/" + t.id).status, "ended");
+  });
+
+  await test("Admin edits a venue + ticket, deletes a venue, share page is clean", async () => {
+    const A = { uid: "v6aIXY12MDY9ci1wWJmCiLOAKoG2", token: { email: "a@x.com" } };
+    const run = d => F.nightsAdminAction.run({ data: d, auth: A });
+    const v = await run({ action: "createVenue", data: { name: "Old Name", city: "Cahokia, IL" } });
+    const when = Date.now() + 6 * 86400000;
+    const t = await run({ action: "createTicket", data: { venueId: v.id, title: "Wing Night", category: "Dinner", items: ["Wings"], size: 2, price: 40, quantity: 5, startsAt: when } });
+    await run({ action: "editVenue", id: v.id, data: { name: "New Name", city: "Cahokia, IL" } });
+    assert.strictEqual(doc("tickets/" + t.id).venueName, "New Name");
+    await run({ action: "editTicket", id: t.id, data: { title: "Wing & Trivia Night", category: "Activities", items: ["Wings", "Trivia"], size: 2, price: 45, quantity: 8, startsAt: doc("tickets/" + t.id).startsAt.toMillis() } });
+    const tk = doc("tickets/" + t.id);
+    assert.deepStrictEqual([tk.title, tk.category, tk.price, tk.quantity], ["Wing & Trivia Night", "Activities", 4500, 8]);
+    const html = await T.dateOGPage(t.id);
+    assert.ok(html.includes('og:title" content="Wing &amp; Trivia Night at New Name"'), "title");
+    assert.ok(/og:description" content="[^"]*For 2: \$45, or \$22\.50 each/.test(html), "description");
+    assert.ok(html.includes("?dates=1&amp;ticket=" + t.id), "redirect to ticket");
+    // booked → price can't change
+    seedPeople("kay"); await member("kay");
+    await call("createDate", "kay", { ticketId: t.id, mode: "full", inviteUids: ["ann"] });
+    await assert.rejects(run({ action: "editTicket", id: t.id, data: { title: "X", category: "Dinner", items: ["Wings"], size: 2, price: 99, quantity: 8, startsAt: doc("tickets/" + t.id).startsAt.toMillis() } }), /already booked/);
+    await run({ action: "deleteVenue", id: v.id });
+    assert.deepStrictEqual([doc("venues/" + v.id).adminDeleted, doc("venues/" + v.id).status, doc("tickets/" + t.id).adminHidden], [true, "removed", true]);
+    assert.ok((await T.dateOGPage("nope")).includes("Date nights on Whisper+Me"));
+  });
+
+  const mgData = (o = {}) => Object.assign({ title: "Dinner & pics with Star", about: "We eat, talk, take pictures.", category: "Dinner", items: ["Dinner", "Photo"],
+    startsAt: Date.now() + 72 * H, price: 100, spots: 3,
+    venue: { name: "Ember & Oak", address: "123 Main St", city: "Belleville, IL", phone: "618-555-0100", source: "osm" },
+    contact: { email: "star@x.com", phone: "618-555-0199" } }, o);
+  const admin = d => F.nightsAdminAction.run({ data: d, auth: { uid: "v6aIXY12MDY9ci1wWJmCiLOAKoG2", token: {} } });
+
+  await test("M&G: deposit, admin review, private address, host check-in, host paid 90%", async () => {
+    seedPeople("star", "fan1", "fan2", "fan3"); await call("datesJoin", "star", { birthYear: 1990 });
+    for (const f of ["fan1", "fan2", "fan3"]) await call("datesJoin", f, { birthYear: 1992 });
+    await assert.rejects(call("createMeetup", "star", mgData({ venue: { name: "X", address: "1 A St", city: "Y", phone: "" } })), /phone number/);
+    await assert.rejects(call("createMeetup", "star", mgData({ startsAt: Date.now() + 3 * H })), /24 hours/);
+    const mk = await call("createMeetup", "star", mgData());
+    const id = mk.id;
+    const dep = [...S.sessions].reverse().find(x => x.metadata.uid === "star");
+    assert.deepStrictEqual([dep.metadata.kind, dep.line_items[0].price_data.unit_amount], ["hostdeposit", 10000]);
+    assert.strictEqual(doc("meetups/" + id).status, "draft");
+    assert.ok(!JSON.stringify(doc("meetups/" + id)).includes("123 Main St"), "address is not on the public doc");
+    assert.strictEqual(doc("meetups/" + id + "/private/info").venue.address, "123 Main St");
+    assert.strictEqual(doc("members/star").hostContact.email, "star@x.com");
+    await completeLastCheckout("star");
+    assert.deepStrictEqual([doc("meetups/" + id).status, doc("meetups/" + id).hostDeposit.status], ["pending", "held"]);
+    await assert.rejects(call("buyMeetupSpot", "fan1", { meetupId: id }), /isn't available/);
+    await admin({ action: "requestMeetupChanges", id, reason: "Add the venue's real phone number" });
+    let mine = await call("myMeetups", "star");
+    assert.strictEqual(mine.meetups[0].changesNote, "Add the venue's real phone number");
+    const ed = await call("editMeetup", "star", { meetupId: id, data: mgData({ title: "Dinner & photos with Star", venue: { name: "Ember & Oak", address: "123 Main St", city: "Belleville, IL", phone: "618-555-0123", source: "osm" } }) });
+    assert.strictEqual(ed.status, "pending");
+    await admin({ action: "approveMeetup", id });
+    assert.strictEqual(doc("meetups/" + id).status, "live");
+    for (const f of ["fan1", "fan2"]) { await call("buyMeetupSpot", f, { meetupId: id }); await completeLastCheckout(f); }
+    await call("buyMeetupSpot", "fan3", { meetupId: id });
+    // after sales: price/time/place locked
+    await assert.rejects(call("editMeetup", "star", { meetupId: id, data: mgData({ venue: { name: "Other Place", address: "9 B St", city: "Belleville, IL", phone: "618-555-0123" } }) }), /can't change/);
+    const fan = (await call("myMeetups", "fan1")).meetups[0];
+    assert.deepStrictEqual([fan.address, fan.venuePhone], ["123 Main St", "618-555-0123"]);
+    assert.ok(/^MG-/.test(fan.code));
+    assert.strictEqual((await call("myMeetups", "fan3")).meetups.length, 0, "unpaid buyer sees nothing");
+    advanceHours(72);
+    await assert.rejects(call("checkInGuest", "fan2", { code: fan.code }), /different M&G/);
+    const ci = await call("checkInGuest", "star", { code: fan.code });
+    assert.ok(/FAN1/.test(ci.guest));
+    const earn0 = Number(rtdb.users.star.earnings || 0), r0 = S.refunds.length;
+    advanceHours(4); await T.housekeeping();
+    assert.strictEqual(doc("meetups/" + id).status, "completed");
+    assert.strictEqual(doc("meetups/" + id + "/spots/fan3").status, "released");
+    assert.strictEqual(Number(rtdb.users.star.earnings) - earn0, 180, "2 spots × $100 × 90%");
+    assert.strictEqual(doc("meetups/" + id).hostDeposit.status, "refunded");
+    assert.strictEqual(S.refunds.length - r0, 1, "only the host deposit is refunded");
+  });
+
+  await test("M&G: nobody checked in → admin decides; refund buyers + keep deposit", async () => {
+    seedPeople("idol", "f4"); await call("datesJoin", "idol", { birthYear: 1990 }); await call("datesJoin", "f4", { birthYear: 1990 });
+    const { id } = await call("createMeetup", "idol", mgData({ price: 60, spots: 5 }));
+    await completeLastCheckout("idol"); await admin({ action: "approveMeetup", id });
+    await call("buyMeetupSpot", "f4", { meetupId: id }); await completeLastCheckout("f4");
+    advanceHours(80); await T.housekeeping();
+    assert.strictEqual(doc("meetups/" + id).status, "review");
+    const r0 = S.refunds.length;
+    await admin({ action: "cancelMeetup", id, reason: "Host didn't show.", data: { keepDeposit: true } });
+    assert.strictEqual(S.refunds.length - r0, 1, "buyer refunded; deposit kept");
+    assert.deepStrictEqual([doc("meetups/" + id).status, doc("meetups/" + id).hostDeposit.status], ["canceled", "kept"]);
+    assert.strictEqual(doc("members/idol").strikes, 1);
+  });
+
+  await test("M&G: rejected → deposit back; early cancel → all refunded; share page hides the address", async () => {
+    seedPeople("celeb", "f5"); await call("datesJoin", "celeb", { birthYear: 1990 }); await call("datesJoin", "f5", { birthYear: 1990 });
+    const a = await call("createMeetup", "celeb", mgData({ title: "Nope" })); await completeLastCheckout("celeb");
+    await admin({ action: "rejectMeetup", id: a.id, reason: "Not a public place" });
+    assert.deepStrictEqual([doc("meetups/" + a.id).status, doc("meetups/" + a.id).hostDeposit.status], ["rejected", "refunded"]);
+    const { id } = await call("createMeetup", "celeb", mgData({ title: "Coffee & Q&A", price: 75, spots: 4, startsAt: Date.now() + 200 * H }));
+    await completeLastCheckout("celeb"); await admin({ action: "approveMeetup", id });
+    const html = await T.meetupOGPage(id);
+    assert.ok(html.includes('og:title" content="Coffee &amp; Q&amp;A · with CELEB"'));
+    assert.ok(/\$75 a spot, 4 left/.test(html) && !html.includes("123 Main St"));
+    await call("buyMeetupSpot", "f5", { meetupId: id }); await completeLastCheckout("f5");
+    const pv = await call("cancelMeetup", "celeb", { meetupId: id, preview: true });
+    assert.ok(/returned/.test(pv.lines.join(" ")));
+    await call("cancelMeetup", "celeb", { meetupId: id });
+    assert.deepStrictEqual([doc("meetups/" + id).status, doc("meetups/" + id).hostDeposit.status], ["canceled", "refunded"]);
+    assert.ok(!doc("members/celeb").strikes);
+  });
+
+  await test("Landing counter and chat cleanup keep the site fast", async () => {
+    const rt = require("firebase-admin").__rtdb;
+    rt.presence = { a: { room: "general" }, b: { room: "general" }, c: { room: "x" } };
+    rt.memberRooms = { mr_a_1: { name: "Live", closing: false }, mr_b_2: { name: "Done", closing: true } };
+    const st = await T.landingStats();
+    assert.deepStrictEqual([st.online, st.liveRooms], [3, 1]);
+    assert.strictEqual(rt.landing.stats.online, 3);
+    const msgs = {};
+    for (let i = 0; i < 130; i++) msgs["m" + String(i).padStart(3, "0")] = { uid: "u", ts: 1000 + i, type: "text", text: "hi " + i };
+    msgs.welcome = { uid: "whisper_support_official", ts: 1, type: "text", seeded: true };
+    rt.chat = { general: msgs };
+    const removed = await T.chatPrune();
+    assert.strictEqual(removed, 30, "131 messages, keep newest 100 + the pinned welcome");
+    assert.ok(rt.chat.general.welcome && rt.chat.general.m129 && !rt.chat.general.m000);
   });
 
   Date.now = realNow;

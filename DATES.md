@@ -6,7 +6,7 @@ A 🎟️ **Dates** screen inside Whisper+me. Members pick a date ticket (dinner
 |---|---|
 | Members | The new **Dates** tab in the app (5th screen), or `whisperplusme.com/?dates=1` |
 | Venues | `whisperplusme.com/nights/venue` |
-| You (admin) | `whisperplusme.com/nights/admin`, or the **Dates admin →** button in your main admin |
+| You (admin) | Main admin → **🎟️ Dates**: post tickets, add and approve venues, set the stood-up reward. The full Dates admin (`/nights/admin`) has members, reports and venue payouts. |
 
 ## The rules (all changeable in Admin → Settings)
 
@@ -21,14 +21,14 @@ A 🎟️ **Dates** screen inside Whisper+me. Members pick a date ticket (dinner
 | Reschedule once, everyone agrees | up to 48 h before |
 | Cancelling inside 48 h or not showing up = a missed date (strike) | — |
 | Missed dates before a break / length of the break | 2 / 3 days |
-| Stood up and checked in at the venue → Whisper coins | 5 coins |
+| Stood up and checked in at the venue → Whisper coins | 1 coin |
 | Venues are paid **after** the date happens | — |
 
 Before anyone cancels, the app shows exactly what they'll lose (deposit, ticket share, strike, the other person's coins), worked out by the server, and they have to tick "I understand."
 
 No-show penalties only apply when **someone on the date checked in** at the venue. If nobody was scanned (the venue forgot), nobody is penalized.
 
-**Reward cost:** each reward coin can become a $2 creator payout when spent on calls, so 5 coins can cost up to $10 against a $5 deposit kept. Admin → Deposits & coins shows this running total. Coins only go to people who actually checked in at the venue, which makes the reward hard to game.
+**Reward cost:** each reward coin can become a $2 creator payout when spent on calls, so the 1-coin reward costs at most $2 against the $5 deposit kept. Admin → Deposits & coins shows this running total. Coins only go to people who actually checked in at the venue, which makes the reward hard to game.
 
 ## What changed in the code
 
@@ -36,7 +36,7 @@ No-show penalties only apply when **someone on the date checked in** at the venu
 |---|---|
 | `public/dates.js` | The Dates screen (phone frame + My Dates panel) |
 | `public/app.js` | 5 small hooks: adds "dates" as the 5th screen, menu icon, and panel |
-| `public/index.html` | Loads Firestore + `dates.js`; promo card and footer links now open Dates |
+| `public/index.html` | Loads `dates.js`; Firestore loads on demand the first time someone opens Dates |
 | `public/admin.html` | "Dates admin →" button |
 | `public/nights/` | Venue and admin pages (`/nights` itself now redirects into the app) |
 | `functions-nights/` | All Dates server logic, deployed as its own `nights` codebase. Your existing `functions/` is untouched. |
@@ -69,7 +69,7 @@ Your coin webhook ignores Dates payments (it only credits coins when a checkout 
 1. Apply as a venue at `/nights/venue` in a private window; approve it in `/nights/admin` → Venues; create a $5 ticket for 2.
 2. With two accounts: open Dates → set up → add the $5 deposit.
 3. Account A books the ticket, invites B, picks **Split**. B accepts in My Dates and pays. Both cards are charged only now, and each gets a `WN-` code.
-4. Venue → Door check-in → enter A's code only. About 3 hours after the start time, B is marked a no-show: deposit kept, 1 strike; A gets 5 coins.
+4. Venue → Door check-in → enter A's code only. About 3 hours after the start time, B is marked a no-show: deposit kept, 1 strike; A gets 1 coin.
 5. Refund the test money from Stripe, or use Admin → Dates → Cancel & refund before the date.
 
 ## Before launch

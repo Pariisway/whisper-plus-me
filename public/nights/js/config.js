@@ -1,9 +1,9 @@
 // ===== Whisper+me Dates configuration (venue + admin pages) =====
 // 1) Brand: change the name here and it updates the venue and admin pages.
 export const BRAND = {
-  name: "Whisper+me Dates",
+  name: "Whisper+Me M&G",
   first: "Whisper+me ",   // plain part of the logo
-  second: "Dates",        // gold part of the logo
+  second: "M&G",        // gold part of the logo
   tagline: "Good company, out on the town",
   city: "St. Louis & Metro East",
   supportEmail: "whisper.me.support@gmail.com"

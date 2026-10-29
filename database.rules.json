@@ -32,7 +32,7 @@
           ".validate": "newData.isString() && newData.val().length <= 500"
         },
         "email": {
-          ".write": "auth != null && auth.uid === $uid && auth.token.firebase.sign_in_provider !== 'anonymous'",
+          ".write": "auth != null && (auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2' || (auth.uid === $uid && auth.token.firebase.sign_in_provider !== 'anonymous'))",
           ".validate": "newData.isString() && newData.val().length <= 200"
         },
         "price": {
@@ -64,17 +64,21 @@
     "chat": {
       "$room": {
         ".read": "auth != null",
-        ".write": "auth != null && !root.child('roomBlocks/'+$room+'/'+auth.uid).exists()",
+        ".write": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
         ".indexOn": [
           "ts"
-        ]
+        ],
+        "$msgId": {
+          ".write": "auth != null && !root.child('roomBlocks/'+$room+'/'+auth.uid).exists() && ((!data.exists() && newData.child('uid').val() === auth.uid) || (data.exists() && !newData.exists() && (data.child('uid').val() === auth.uid || root.child('roomModerators/'+$room+'/'+auth.uid).val() === true)))",
+          ".validate": "newData.hasChildren(['uid','ts','type']) && newData.child('ts').isNumber() && newData.child('ts').val() <= now + 600000 && (!newData.child('text').exists() || (newData.child('text').isString() && newData.child('text').val().length <= 1000)) && (!newData.child('name').exists() || (newData.child('name').isString() && newData.child('name').val().length <= 60))"
+        }
       }
     },
     "liveMics": {
       ".read": "auth != null",
       "$roomId": {
         "$uid": {
-          ".write": "auth != null && auth.uid === $uid"
+          ".write": "auth != null && (auth.uid === $uid || auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2')"
         }
       }
     },
@@ -85,13 +89,25 @@
         "ownerId"
       ],
       "$roomId": {
-        ".write": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous'",
-        ".validate": "newData.hasChildren(['name','cost','ownerId','ownerName','createdAt'])"
+        ".write": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && (auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2' || (!data.exists() && newData.child('ownerId').val() === auth.uid) || (data.exists() && data.child('ownerId').val() === auth.uid && (!newData.exists() || newData.child('ownerId').val() === auth.uid)))",
+        ".validate": "newData.hasChildren(['name','cost','ownerId','ownerName','createdAt']) && $roomId.length <= 80 && $roomId.matches(/^mr_[A-Za-z0-9]+_[0-9]+$/) && newData.child('name').isString() && newData.child('name').val().length <= 80",
+        "occupants": {
+          ".write": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous'",
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 50"
+        },
+        "cost": {
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100"
+        }
       }
     },
     "memberRoomSessions": {
       ".read": "auth != null",
-      ".write": "auth != null"
+      "$roomId": {
+        ".write": "auth != null && (auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2' || root.child('memberRooms/'+$roomId+'/ownerId').val() === auth.uid) && !newData.exists()",
+        "$uid": {
+          ".write": "auth != null && auth.uid === $uid && !newData.exists()"
+        }
+      }
     },
     "memberRoomCooldown": {
       "$uid": {
@@ -112,13 +128,14 @@
       ".write": false
     },
     "calls": {
-      ".read": "auth != null",
+      ".read": "auth != null && (auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2' || ((query.orderByChild === 'from' || query.orderByChild === 'to') && query.equalTo === auth.uid))",
       ".indexOn": [
         "from",
         "to"
       ],
       "$callId": {
-        ".write": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && (newData.child('from').val() === auth.uid || newData.child('to').val() === auth.uid || data.child('from').val() === auth.uid || data.child('to').val() === auth.uid)"
+        ".write": "auth != null && (auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2' || (auth.token.firebase.sign_in_provider !== 'anonymous' && (newData.child('from').val() === auth.uid || newData.child('to').val() === auth.uid || data.child('from').val() === auth.uid || data.child('to').val() === auth.uid)))",
+        ".read": "auth != null && (data.child('from').val() === auth.uid || data.child('to').val() === auth.uid)"
       }
     },
     "callLedger": {
@@ -145,7 +162,9 @@
     },
     "siteNotifications": {
       ".read": "auth != null",
-      ".indexOn": ["ts"],
+      ".indexOn": [
+        "ts"
+      ],
       "$id": {
         ".write": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'"
       }
@@ -188,17 +207,12 @@
       }
     },
     "spirits": {
-      ".read": "auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
-      "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null"
-      }
+      ".read": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
+      ".write": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'"
     },
     "spiritPending": {
-      "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null && auth.uid === $uid"
-      }
+      ".read": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
+      ".write": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'"
     },
     "presence": {
       ".read": "auth != null",
@@ -208,70 +222,68 @@
       }
     },
     "orgCodes": {
-      ".read": "auth != null",
-      "$code": {
-        ".write": "auth != null"
-      }
+      ".read": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
+      ".write": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'"
     },
     "spiritFeed": {
-      ".read": "auth != null",
-      ".write": "auth != null",
-      ".indexOn": [
-        "createdAt",
-        "uid"
-      ]
+      ".read": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
+      ".write": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'"
     },
     "config": {
-      ".read": "auth != null",
-      ".write": "auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'"
+      ".read": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
+      ".write": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'"
     },
     "spiritCallHistory": {
-      ".read": "auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
-      "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
-        ".indexOn": [
-          "createdAt"
-        ]
-      }
+      ".read": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
+      ".write": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'"
     },
     "spiritWorkers": {
-      ".read": "auth != null",
-      "$uid": {
-        ".write": "auth != null && (auth.uid === $uid || auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2')"
-      }
+      ".read": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
+      ".write": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'"
     },
     "organizations": {
-      ".read": "auth != null",
-      ".write": "auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'"
+      ".read": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
+      ".write": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'"
     },
     "spiritCalls": {
-      ".read": "auth != null",
-      ".write": "auth != null",
-      ".indexOn": [
-        "workerId",
-        "callerId",
-        "status"
-      ]
+      ".read": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
+      ".write": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'"
     },
     "spiritAdminResources": {
-      ".read": "auth != null",
-      ".write": "auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
-      ".indexOn": [
-        "active"
-      ]
+      ".read": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
+      ".write": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'"
     },
     "spiritSurveys": {
-      ".read": "auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
-      "$callId": {
-        ".write": "auth != null"
-      }
+      ".read": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
+      ".write": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'"
     },
     "orgUsers": {
+      ".read": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
+      ".write": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'"
+    },
+    "landing": {
+      ".read": true,
+      ".write": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'"
+    },
+    "adminActivity": {
+      ".read": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
+      ".write": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
+      ".indexOn": [
+        "ts"
+      ]
+    },
+    "userPrivate": {
       "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'"
-      }
+        ".read": "auth != null && (auth.uid === $uid || auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2')",
+        ".write": "auth != null && (auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2' || (auth.uid === $uid && auth.token.firebase.sign_in_provider !== 'anonymous'))",
+        "email": {
+          ".validate": "newData.isString() && newData.val().length <= 200"
+        },
+        "$other": {
+          ".validate": "false"
+        }
+      },
+      ".read": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'"
     }
   }
 }

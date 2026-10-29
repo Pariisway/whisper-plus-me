@@ -74,6 +74,23 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Meet & greets: anyone can see ones on sale. Spots (with door codes) only by that buyer, the host or the admin.
+    match /meetups/{id} {
+      allow read: if (resource.data.status == 'live' && resource.data.hidden == false)
+        || isAdmin() || (signedIn() && resource.data.hostUid == me());
+      allow write: if false;
+      match /spots/{uid} {
+        allow read: if isAdmin() || (signedIn() && (me() == uid || get(/databases/$(db)/documents/meetups/$(id)).data.hostUid == me()));
+        allow write: if false;
+      }
+      // Address, venue phone and host contact: only the host and the admin (buyers get the address through the app after paying).
+      match /private/{doc} {
+        allow read: if isAdmin() || (signedIn() && get(/databases/$(db)/documents/meetups/$(id)).data.hostUid == me());
+        allow write: if false;
+      }
+    }
+    match /meetupCodes/{code} { allow read, write: if false; }
+
     match /reports/{rid} {
       allow create: if signedIn()
         && request.resource.data.by == me()

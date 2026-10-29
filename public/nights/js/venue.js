@@ -287,7 +287,7 @@ document.addEventListener("submit", async e => {
     await busy(e.submitter, async () => {
       try {
         const r = await call("checkIn", { code });
-        out.innerHTML = `<div class="banner ${r.already ? "" : "ok"}" style="margin-top:12px"><span><b>${r.already ? "Already checked in" : "Checked in"}: ${esc(r.guest)}</b> · ${esc(r.title)} · party: ${r.party.map(x => esc(x.name) + (x.here ? " ✓" : "")).join(", ")}</span></div>`;
+        out.innerHTML = `<div class="banner ${r.already ? "" : "ok"}" style="margin-top:12px"><span><b>${r.already ? "Already checked in" : "Checked in"}: ${esc(r.guest)}</b> · ${esc(r.title)}${r.meetup ? " · meet & greet" : " · party: " + r.party.map(x => esc(x.name) + (x.here ? " ✓" : "")).join(", ")}</span></div>`;
         $("#ci-code").value = "";
       } catch (x) { out.innerHTML = `<div class="banner rose" style="margin-top:12px"><span>${esc(x.message)}</span></div>`; }
     });

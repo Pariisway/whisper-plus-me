@@ -207,8 +207,29 @@ let agoraJoining    = false;
 
 /* ── Authenticated Agora token fetch helper ──
    FIX: generateAgoraToken now requires Firebase auth — pass Bearer token every call */
-AgoraRTC.setLogLevel(3);
-AgoraRTC.onError = function(e){ console.warn("AgoraRTC error:", e); };
+/* ── Agora (voice) now loads only when voice is actually used ──
+   It's ~1 MB; loading it for every visitor slowed the landing page down.
+   Signed-in members get it warmed up quietly a few seconds after load,
+   so their first call/mic still starts instantly. */
+var __agoraPromise = null;
+function loadAgora(){
+  if(window.AgoraRTC) return Promise.resolve(window.AgoraRTC);
+  if(!__agoraPromise){
+    __agoraPromise = new Promise(function(resolve, reject){
+      var s = document.createElement("script");
+      s.src = "https://download.agora.io/sdk/release/AgoraRTC_N.js";
+      s.async = true;
+      s.onload = function(){
+        try{ AgoraRTC.setLogLevel(3); AgoraRTC.onError = function(e){ console.warn("AgoraRTC error:", e); }; }catch(e){}
+        resolve(window.AgoraRTC);
+      };
+      s.onerror = function(){ __agoraPromise = null; reject(new Error("Voice couldn't load. Check your connection and try again.")); };
+      document.head.appendChild(s);
+    });
+  }
+  return __agoraPromise;
+}
+window.loadAgora = loadAgora;
 
 async function fetchAgoraToken(channel) {
   if (!currentUser) throw new Error("Not logged in");
@@ -323,7 +344,9 @@ function loadPresetRoomsIntoApp(){
         return oa - ob;
       });
       CHAT_ROOMS = withIndex.map(function(x){ return x.r; });
-      if(typeof render === "function") render();
+      /* Room list only shows on the Chat screen — don't redraw (and wipe
+         whatever someone is typing) on other screens. */
+      if(typeof render === "function" && currentUser && active === 1 && !window.__liveCallHTML) render();
     }
 
     /* Live listeners — new/edited/deleted rooms and member-only toggles
@@ -445,8 +468,19 @@ window.showConfirm = function(msg, onOk, onCancel){
 function sanitize(str){
   return String(str||"")
     .replace(/&/g,"&amp;").replace(/</g,"&lt;")
-    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
 }
+/* A JS string argument for an inline handler: onclick="fn(" + jsAttr(x) + ")".
+   Safe for names with quotes, backslashes or HTML in them. */
+function jsAttr(str){ return sanitize(JSON.stringify(String(str == null ? "" : str))); }
+/* Only http(s) links from members; anything else (javascript:, data:) is dropped. */
+function safeUrl(u, prefix){
+  u = String(u || "").trim();
+  if(!u) return "";
+  if(!/^https?:\/\//i.test(u)) u = (prefix || "https://") + u.replace(/^@/, "");
+  try{ var x = new URL(u); if(x.protocol !== "http:" && x.protocol !== "https:") return ""; return x.href; }catch(e){ return ""; }
+}
+window.jsAttr = jsAttr; window.safeUrl = safeUrl;
 
 function timeAgo(ts){
   var d = Date.now() - ts;
@@ -479,121 +513,13 @@ function renderHeader(){
    LOGIN PAGE
 ═══════════════════════════════════════════ */
 function renderLoginPage(){
-  var h = "";
-
-  h += "<div class='lp-wrap'>";
-
-  h += "<div class='lp-orbs' aria-hidden='true'>";
-  h += "<div class='lp-orb lp-orb1'></div>";
-  h += "<div class='lp-orb lp-orb2'></div>";
-  h += "<div class='lp-orb lp-orb3'></div>";
-  h += "</div>";
-
-  h += "<div class='lp-desktop-grid'>";
-
-  /* ── LEFT hero col ── */
-  h += "<div class='lp-hero-col'>";
-
-  h += "<div class='lp-live-badge'>";
-  h += "<div class='lp-live-dot'></div>";
-  h += "<span>Safe Space — Always Open</span>";
-  h += "</div>";
-
-  h += "<h1 class='lp-headline'>Your Voice.<br><span class='lp-headline-grad'>Your Sanctuary.</span></h1>";
-
-  h += "<p class='lp-desc'>A safe, anonymous space to speak freely, release your emotions, and connect with real people — no face, no name, no judgment.</p>";
-
-  h += "<button onclick='enterAsGuest()' class='lp-guest-btn' id='lp-guest-btn'>";
-  h += "<span class='lp-guest-btn-main'>💬 Jump Into the Chat Room</span>";
-  h += "<span class='lp-guest-btn-sub'>No sign-up needed &middot; Free to try</span>";
-  h += "</button>";
-
-  h += "<div class='lp-founder-quote'>";
-  h += "<p>'I built Whisper+Me because text alone can be isolating, but video can be dangerous. Everyone deserves a safe space to release their emotions and connect with their community without being exposed or tracked.'</p>";
-  h += "<span>— Paris Wade, Founder</span>";
-  h += "</div>";
-
-  h += "<div class='lp-pills'>";
-  h += "<span class='lp-pill lp-pill-purple'>🔒 Fully Anonymous</span>";
-  h += "<span class='lp-pill lp-pill-teal'>🎙️ Live Voice</span>";
-  h += "<span class='lp-pill lp-pill-dim'>🗺️ Live Map</span>";
-  h += "<span class='lp-pill lp-pill-dim'>🏠 Support Rooms</span>";
-  h += "<span class='lp-pill lp-pill-purple'>🏳️‍🌈 LGBTQ+ Safe</span>";
-  h += "</div>";
-
-  
-  h += "<p class='lp-free-note lp-cta-desktop-only'>Safe to join · No credit card required</p>";
-
-  h += "<div class='lp-rooms-preview'>";
-  h += "<p class='lp-rooms-label'>Safe Spaces Waiting For You</p>";
-  h += "<div class='lp-rooms-grid'>";
-  h += "<div class='lp-room-card'><div class='lp-room-icon'>🫂</div><div class='lp-room-name'>Vent &amp; Release</div><div class='lp-room-desc'>Let it all out safely</div></div>";
-  h += "<div class='lp-room-card'><div class='lp-room-icon'>🌿</div><div class='lp-room-name'>Anxiety &amp; Stress</div><div class='lp-room-desc'>You are not alone</div></div>";
-  h += "<div class='lp-room-card'><div class='lp-room-icon'>🌙</div><div class='lp-room-name'>Night Owls</div><div class='lp-room-desc'>Awake at 3am? Us too</div></div>";
-  h += "<div class='lp-room-card lp-room-card-purple'><div class='lp-room-icon'>🏳️‍🌈</div><div class='lp-room-name lp-room-name-purple'>LGBTQ+ Safe</div><div class='lp-room-desc'>You belong here</div></div>";
-  h += "</div>";
-  h += "</div>";
-
-  h += "</div>"; /* end lp-hero-col */
-
-  /* ── RIGHT auth col ── */
-  h += "<div class='lp-auth-col' id='lp-auth'>";
-
-  
-  h += "<p class='lp-free-note lp-cta-mobile-only'>Safe to join · No credit card required</p>";
-
-  h += "<div class='lp-auth-card'>";
-  h += "<div class='lp-auth-title'>Join Your Sanctuary</div>";
-  h += "<div class='lp-auth-sub'>Safe forever · Anonymous · No judgment</div>";
-
-  h += "<div class='lp-auth-tabs'>";
-  h += "<button class='lp-tab lp-tab-active' id='lp-tab-login' onclick='lpTab(0)'>Login</button>";
-  h += "<button class='lp-tab' id='lp-tab-signup' onclick='lpTab(1)'>Sign Up Safe</button>";
-  h += "</div>";
-
-  h += "<input id='email' type='email' placeholder='Email address' autocomplete='email' inputmode='email' class='lp-input'>";
-  h += "<input id='password' type='password' placeholder='Password' autocomplete='current-password' class='lp-input'>";
-  h += "<input id='lp-name' type='text' placeholder='Choose a display name (can be anonymous)' class='lp-input lp-input-signup' style='display:none'>";
-  h += "<button class='lp-submit-btn' id='lp-submit-btn' onclick='lpSubmit()'>Enter Your Safe Space</button>";
-
-  h += "<div class='lp-divider'>";
-  h += "<div class='lp-divider-line'></div>";
-  h += "<span>or</span>";
-  h += "<div class='lp-divider-line'></div>";
-  h += "</div>";
-
-  h += "<button onclick='signInWithGoogle()' class='lp-google-btn'>";
-  h += "<img src='https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg' width='18' height='18' alt='Google'>";
-  h += "Continue with Google</button>";
-
-  h += "<p class='lp-terms'>By joining you agree to be kind and respectful.<br>No harassment. No minors. <a href='/terms.html'>Terms</a> &amp; <a href='/privacy.html'>Privacy</a></p>";
-  h += "<button onclick='lpForgotPassword()' class='lp-forgot-btn'>Forgot password?</button>";
-  h += "<div class='lp-org-divider'></div>";
-  h += "<button onclick='goToSpirits()' class='lp-cta-org-btn' style='width:100%;margin-top:4px;'>🏥 Organization Access</button>";
-  h += "</div>"; /* end lp-auth-card */
-  h += "</div>"; /* end lp-auth-col */
-  h += "</div>"; /* end lp-desktop-grid */
-
-  h += "<div class='lp-footer-note'>";
-  h += "<span>🔒 No recordings</span>";
-  h += "<span>👤 Stay anonymous</span>";
-  h += "<span>🌍 Global community</span>";
-  h += "</div>";
-  h += "<div class='lp-footer-links'>";
-  h += "<a href='/terms.html'>Terms</a>";
-  h += "<a href='/privacy.html'>Privacy</a>";
-  h += "</div>";
-
-  h += "</div>"; /* end lp-wrap */
-
-  if(!document.getElementById("lp-pulse-style")){
-    var s = document.createElement("style");
-    s.id = "lp-pulse-style";
-    s.textContent = "@keyframes lp-pulse{0%,100%{box-shadow:0 0 0 0 rgba(0,227,174,0.6);}50%{box-shadow:0 0 0 6px rgba(0,227,174,0);}}";
-    document.head.appendChild(s);
-  }
-
-  return h;
+  /* The live landing page (video / picture / color background, social
+     sign-in) lives in landing.js and is configured in Admin → Landing. */
+  if(window.Landing) return window.Landing.html();
+  return "<div style='min-height:70vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:#fff;padding:24px'>"
+    + "<h1 style='margin:0'>Whisper+Me</h1>"
+    + "<button onclick='signInWithGoogle()' style='padding:14px 22px;border-radius:999px;border:0;font-weight:800'>Continue with Google</button>"
+    + "<button onclick='enterAsGuest()' id='lp-guest-btn' style='background:none;border:0;color:#ccc'>Peek inside →</button></div>";
 }
 /* ── Landing page helpers ── */
 window.lpForgotPassword = function(){
@@ -604,47 +530,11 @@ window.lpForgotPassword = function(){
     .catch(function(e){ showToast(e.message,"error"); });
 };
 
-/* Update ticker with real online count (users with lat set = currently sharing location) */
-function updateLandingOnlineCount(){
-  if(!window.allUsers) return;
-  var count = Object.values(window.allUsers).filter(function(u){ return u && u.online; }).length;
-  var txt = count > 0 ? ("&#128293; " + count + " people online right now") : "&#128293; Join the community";
-  ["lp-online-count","lp-online-count2"].forEach(function(id){
-    var el = document.getElementById(id); if(el) el.innerHTML = txt;
-  });
-}
-setInterval(updateLandingOnlineCount, 8000);
-
+/* Old helpers kept as aliases so older links/buttons still work. */
+window.lpSubmit = function(){ if(window.Landing) window.Landing.submit(); };
 window.lpScrollToAuth = function(){
   var el = document.getElementById("lp-auth");
   if(el) el.scrollIntoView({behavior:"smooth"});
-};
-
-window.lpTab = function(tab){
-  var isSignup = (tab === "signup" || tab === 1);
-  document.getElementById("lp-tab-login").classList.toggle("lp-tab-active", !isSignup);
-  document.getElementById("lp-tab-signup").classList.toggle("lp-tab-active", isSignup);
-  var nameInput = document.querySelector(".lp-input-signup");
-  if(nameInput) nameInput.style.display = isSignup ? "block" : "none";
-  document.getElementById("lp-submit-btn").textContent = isSignup ? "Create Account" : "Login";
-};
-
-window.lpSubmit = function(){
-  var isSignup = document.getElementById("lp-tab-signup").classList.contains("lp-tab-active");
-  if(isSignup){
-    var nameEl = document.getElementById("lp-name");
-    if(nameEl && nameEl.value.trim()){
-      window.__pendingDisplayName = nameEl.value.trim();
-    }
-    /* Validate up front so errors show before the photo step, not after */
-    var email = (document.getElementById("email")||{}).value;
-    var pass  = (document.getElementById("password")||{}).value;
-    if(!email || !pass){ showToast("Enter email and password","warn"); return; }
-    if(pass.length < 6){ showToast("Password must be at least 6 characters","warn"); return; }
-    showSignupPhotoStep();
-  } else {
-    doLogin();
-  }
 };
 
 /* Optional profile photo step — shown between form validation and actual
@@ -655,8 +545,10 @@ window.showSignupPhotoStep = function(){
   if(!modal || !body){ doSignUp(); return; } /* safety fallback */
 
   body.innerHTML = "<div style='padding:26px 20px;text-align:center'>"
-    + "<div style='font-size:17px;font-weight:800;color:#fff;margin-bottom:6px'>Add a Profile Photo</div>"
-    + "<div style='font-size:12.5px;color:#999;margin-bottom:20px;line-height:1.5'>Optional — but profiles with a photo get far more calls.</div>"
+    + "<div style='font-size:19px;font-weight:800;color:#fff;margin-bottom:6px'>Almost there 🎉</div>"
+    + "<div style='font-size:12.5px;color:#999;margin-bottom:16px;line-height:1.5'>Pick the name people will see. A photo is optional, but profiles with one get far more calls.</div>"
+    + "<input id='signupName' maxlength='40' placeholder='Display name' autocomplete='nickname' value='" + sanitize(window.__pendingDisplayName || ((document.getElementById("email")||{}).value||"").split("@")[0].slice(0,40)) + "' "
+    + "style='width:100%;margin:0 0 16px;padding:13px 14px;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:#0f0d19;color:#fff;font-size:16px;box-sizing:border-box'>"
     + "<img id='signupPhotoPreview' style='display:none;width:100px;height:100px;border-radius:50%;"
     + "object-fit:cover;margin:0 auto 16px;border:2px solid #7b2ff7;box-shadow:0 0 20px rgba(123,47,247,0.4);'>"
     + "<label for='signupPhotoInput' style='display:block;padding:14px;margin-bottom:18px;"
@@ -689,6 +581,9 @@ window.showSignupPhotoStep = function(){
 
 /* Called by both the "Create Account" button and "Skip for now" link */
 window.completeSignupWithPhoto = function(){
+  var nm = ((document.getElementById("signupName")||{}).value||"").trim();
+  if(!nm){ showToast("Pick a display name","warn"); var f = document.getElementById("signupName"); if(f) f.focus(); return; }
+  window.__pendingDisplayName = nm;
   var input = document.getElementById("signupPhotoInput");
   window.__pendingSignupPhotoFile = (input && input.files && input.files[0]) || null;
   if(window.closeProfileModal) window.closeProfileModal();
@@ -812,33 +707,7 @@ function deviceContent(type, i){
   }
 
   if(type === "dashboard"){
-    var coins = (window.me && window.me.coins)    || 0;
-    var calls = (window.me && window.me.calls)    || 0;
-    var earn  = (window.me && window.me.earnings) || 0;
-    var me = window.me || {};
-    var steps = [];
-    if(!me.name  || me.name.trim()==="")  steps.push("1. Add your display name");
-    if(!me.bio   || me.bio.trim()==="")   steps.push("2. Write a short bio");
-    if(!me.photo || me.photo.trim()==="") steps.push("3. Upload a profile photo");
-    if(!me.price)                          steps.push("4. Set your call price");
-    var setupHTML = steps.length
-      ? "<div style='margin:12px 10px 0;padding:12px 14px;background:#0e0e1c;"
-        + "border:1px solid rgba(123,47,247,0.35);border-radius:14px'>"
-        + "<div style='font-size:12px;font-weight:800;color:#7b2ff7;margin-bottom:8px'>&#9881;&#65039; COMPLETE YOUR SETUP</div>"
-        + steps.map(function(s){
-            return "<div style='font-size:12px;color:#ccc;margin-bottom:5px'>&#9679; " + s + "</div>";
-          }).join("")
-        + "<div style='font-size:11px;color:#555;margin-top:6px'>Tap <b style='color:#7b2ff7'>Edit Profile</b> below to finish</div>"
-        + "</div>"
-      : "<div style='margin:12px 10px 0;padding:10px 14px;background:#0a1a12;"
-        + "border:1px solid rgba(0,227,174,0.3);border-radius:14px;"
-        + "font-size:12px;color:#00e3ae;font-weight:700;text-align:center'>"
-        + "&#9989; Profile complete &#8212; you're ready to receive calls!</div>";
-    return "<div class='dash-ui'>"
-      + "<div class='dash-stat'><span class='dash-num'>" + coins + "</span><span class='dash-label'>Coins</span></div>"
-      + "<div class='dash-stat'><span class='dash-num'>" + calls + "</span><span class='dash-label'>Calls</span></div>"
-      + "<div class='dash-stat'><span class='dash-num'>$" + Number(earn).toFixed(2) + "</span><span class='dash-label'>Earned</span></div>"
-      + "</div>" + setupHTML;
+    return window.Profile ? window.Profile.phoneHTML() : "";
   }
   return "";
 }
@@ -846,8 +715,13 @@ function deviceContent(type, i){
 /* Circular distance from i to active, normalized to the shortest signed
    offset for a ring of `len` screens — e.g. with 4 screens, dashboard(3)
    sits one step LEFT of phone(0) rather than three steps right. */
+/* Order the screens appear in (menu, swipes, carousel). The numbers are the
+   screen ids used everywhere else: 0 Phone, 1 Chat, 2 Map, 3 Profile, 4 Dates.
+   Dates sits between Chat and Map. */
+var SCREEN_ORDER = [0, 1, 4, 2, 3];
+function screenPos(i){ var p = SCREEN_ORDER.indexOf(i); return p < 0 ? i : p; }
 function carouselOffset(i, activeIdx, len){
-  var raw = i - activeIdx;
+  var raw = screenPos(i) - screenPos(activeIdx);
   if(raw > len/2)  raw -= len;
   if(raw < -len/2) raw += len;
   return raw;
@@ -901,7 +775,7 @@ function renderStage(){
                     : offset < 0    ? "carousel-far-left"
                     : "carousel-far-right";
         var shellCls = "phone-shell " + posCls + (visible ? " phone-shell-visible" : "");
-        var peekLabels = { phone:"Phone", chat:"Chat", map:"Map", dashboard:"Dashboard", dates:"Dates" };
+        var peekLabels = { phone:"Phone", chat:"Chat", map:"Map", dashboard:"Profile", dates:"M&G" };
         var innerPE = visible ? "" : "pointer-events:none!important;";
         return "<div class='" + shellCls + "' id='phone-shell-" + i + "' "
           + "data-peek-label='" + (peekLabels[s] || "") + "' "
@@ -926,11 +800,11 @@ function renderStage(){
 }
 
 function renderMenu(){
-  var icons  = ["📱","💬","🗺️","📊","🎟️"];
-  var labels = ["Phone","Chat","Map","Dash","Dates"];
+  var icons  = ["📱","💬","🗺️","👤","⭐"];
+  var labels = ["Phone","Chat","Map","Profile","M&G"];
   var guest  = isGuest();
   return "<div class='menu' role='tablist' aria-label='Navigation'>"
-    + screens.map(function(s,i){
+    + SCREEN_ORDER.map(function(i){
         var locked = guest && i !== 1;
         return "<div role='tab' tabindex='0' "
           + "class='menu-item " + (active===i ? "menu-active" : "") + (locked ? " menu-locked" : "") + "' "
@@ -1124,7 +998,7 @@ function contentPanel(){
         + "<div class='room-card-label'>" + sanitize(name) + "</div>"
         + "<div class='room-card-desc'>" + sanitize(r.desc) + "</div></div>"
         + "<button class='room-share-btn' "
-        + "onclick=\"shareRoom('" + r.id + "','" + r.label.replace(/'/g,"\\'") + "','" + r.desc.replace(/'/g,"\\'") + "')\" "
+        + "onclick=\"shareRoom(" + jsAttr(r.id) + "," + jsAttr(r.label) + "," + jsAttr(r.desc) + ")\" "
         + "aria-label='Share room' title='Share this room'>Share</button>"
         + "</div>";
     }).join("");
@@ -1179,193 +1053,10 @@ function contentPanel(){
   }
 
   if(active === 3){
-    var sp  = (window.me && window.me.price) || 1;
-    var myUid = currentUser ? currentUser.uid : "";
-    var stripeConnected = window.me && window.me.stripeAccountId;
-
-    return "<div class='form-section'>"
-      /* ── Profile ── */
-      + "<h2>Profile</h2>"
-      + "<input id='fi-name' placeholder='Display Name' value='" + sanitize((window.me&&window.me.name)||"") + "' autocomplete='name'>"
-      + "<input id='fi-bio'  placeholder='Bio' value='" + sanitize((window.me&&window.me.bio)||"") + "'>"
-      + "<h3>Profile Photo</h3>"
-      + "<input type='file' id='photoInput' accept='image/*' style='padding:10px;'>"
-      + "<h3>Social Links</h3>"
-      + "<input id='fi-ig'  placeholder='Instagram username or URL' value='" + sanitize((window.me&&window.me.instagram)||"") + "' autocomplete='off' inputmode='url'>"
-      + "<input id='fi-tw'  placeholder='Twitter URL' value='" + sanitize((window.me&&window.me.twitter)||"") + "' autocomplete='off' inputmode='url'>"
-      + "<input id='fi-web' placeholder='Website URL' value='" + sanitize((window.me&&window.me.website)||"") + "' autocomplete='off' inputmode='url'>"
-      + "<button onclick='saveProfile()' style='margin-top:10px;'>💾 Save Profile</button>"
-      + "<hr>"
-      /* ── Pricing ── */
-      + "<h2>Call Pricing</h2>"
-      + "<select id='priceSelect' aria-label='Call price'>"
-      + [1,2,3,4,5,6,7,8,9,10].map(function(n){
-          return "<option value='" + n + "'" + (sp==n?" selected":"") + ">"
-            + n + " Coin" + (n>1?"s":"") + " ($" + (n*3) + ")</option>";
-        }).join("")
-      + "</select>"
-      + "<button onclick='savePrice()' style='margin-top:8px;'>Update Price</button>"
-      + "<hr>"
-      /* ── Buy Coins ── */
-      + "<h2>Buy Coins <small style='font-size:12px;font-weight:400;color:#888;'>($3 per coin)</small></h2>"
-      + "<div style='margin-bottom:10px;color:#aaa;font-size:13px;'>Balance: <b style='color:#00e3ae;'>" + ((window.me&&window.me.coins)||0) + " coins</b></div>"
-      + "<div class='coin-buy-row'>"
-      + "<input id='coinQtyInput' type='number' min='1' max='500' value='5' class='coin-qty-input' "
-          + "aria-label='Coin quantity' inputmode='numeric' oninput='updateCoinTotal(this.value)'>"
-      + "<button class='coin-buy-btn' onclick='buyCoinsCustom()'>Buy Coins</button>"
-      + "</div>"
-      + "<div id='coinTotalLabel' class='coin-total-label'>5 coins = $15.00</div>"
-      + "<hr>"
-      /* ── Onboarding checklist ── */
-      + renderOnboardingBanner()
-      + "<div style='text-align:center;margin:-6px 0 14px;'>"
-      + "<a href='#' onclick='showHowItWorks();return false;' "
-      + "style='font-size:12px;color:#9d8fd9;text-decoration:none;border-bottom:1px solid rgba(157,143,217,0.4);'>"
-      + "❓ How does this all work?</a></div>"
-      /* ── Payouts ── */
-      + "<h2>Payouts</h2>"
-      + (stripeConnected
-          ? "<div style='color:#00e3ae;margin-bottom:10px;'>✅ Stripe connected — payouts above $50</div>"
-            + "<div style='font-size:12px;color:#888;margin-bottom:10px;'>Earnings: <b style='color:#00e3ae;'>$" + (((window.me&&window.me.earnings)||0)).toFixed(2) + "</b> · Minimum payout: <b>$50</b></div>"
-            + "<button onclick='openStripeDashboard()'>View Stripe Dashboard</button>"
-          : "<div style='font-size:13px;color:#ff9f43;font-weight:600;margin-bottom:6px;'>⚠️ Set up payouts to earn money</div>"
-            + "<div style='font-size:12px;color:#888;margin-bottom:10px;'>Connect Stripe to receive your earnings. Minimum payout: $50.</div>"
-            + "<button onclick='connectStripe()' style='background:linear-gradient(90deg,#7b2ff7,#00e3ae);'>Connect Stripe for Payouts</button>")
-      + "<hr>"
-      /* ── Incoming Calls Toggle ── */
-      + (function(){
-          var callsOn = window.me && window.me.callsEnabled !== false;
-          return "<div style='display:flex;align-items:center;justify-content:space-between;"
-            + "background:rgba(255,255,255,0.04);border:1px solid rgba(123,47,247,0.2);"
-            + "border-radius:14px;padding:14px 16px;margin-bottom:12px;'>"
-            + "<div>"
-            + "<div style='font-size:14px;font-weight:700;color:#fff;margin-bottom:2px;'>📞 Incoming Calls</div>"
-            + "<div style='font-size:11px;color:#666;'>"
-            + (callsOn ? "Members can call you right now" : "You won't receive any calls")
-            + "</div></div>"
-            + "<button onclick='toggleCallsEnabled()' style='padding:8px 18px;border-radius:20px;border:none;"
-            + "background:" + (callsOn ? "linear-gradient(90deg,#00e3ae,#0abf94)" : "rgba(100,100,100,0.3)") + ";"
-            + "color:#fff;font-size:12px;font-weight:700;cursor:pointer;min-width:60px;'>"
-            + (callsOn ? "ON" : "OFF")
-            + "</button></div>";
-        })()
-      /* ── Push Notifications ── */
-      + (function(){
-          var supported = (typeof Notification !== "undefined");
-          var perm = supported ? Notification.permission : "unsupported";
-          var label, sub, showBtn;
-          if(perm === "granted"){ label = "🔔 Push Notifications: On"; sub = "You'll be notified of calls and new rooms even when the app is closed"; showBtn = false; }
-          else if(perm === "denied"){ label = "🔕 Push Notifications: Blocked"; sub = "Blocked in your browser/phone settings — re-enable there to get call alerts"; showBtn = false; }
-          else if(!supported){ label = "🔕 Push Notifications: Unsupported"; sub = "Not available on this browser"; showBtn = false; }
-          else { label = "🔕 Push Notifications: Off"; sub = "Turn on to get notified of incoming calls even when the app is closed"; showBtn = true; }
-          return "<div id='push-notif-card' style='display:flex;align-items:center;justify-content:space-between;"
-            + "background:rgba(255,255,255,0.04);border:1px solid rgba(123,47,247,0.2);"
-            + "border-radius:14px;padding:14px 16px;margin-bottom:12px;'>"
-            + "<div>"
-            + "<div style='font-size:14px;font-weight:700;color:#fff;margin-bottom:2px;'>" + label + "</div>"
-            + "<div style='font-size:11px;color:#666;max-width:220px;'>" + sub + "</div></div>"
-            + (showBtn
-                ? "<button onclick='enableCallNotifications()' style='padding:8px 18px;border-radius:20px;border:none;"
-                  + "background:linear-gradient(90deg,#7b2ff7,#00e3ae);color:#fff;font-size:12px;font-weight:700;"
-                  + "cursor:pointer;min-width:60px;'>Enable</button>"
-                : "")
-            + "</div>";
-        })()
-      /* ── Info + Contact ── */
-      + "<hr>"
-      + "<div style='margin-bottom:12px;'>"
-      + "<div style='font-size:13px;font-weight:700;color:#e6d6ff;margin-bottom:10px;'>ℹ️ Help & Resources</div>"
-      + "<div style='display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;'>"
-      + "<button onclick='showInfoModal(\"setup\")' "
-          + "style='flex:1;min-width:100px;background:rgba(123,47,247,0.18);border:1px solid rgba(123,47,247,0.4);"
-          + "color:#b08fff;border-radius:12px;padding:10px 8px;font-size:12px;font-weight:700;cursor:pointer;'>"
-          + "🪄 Setup Profile</button>"
-      + "<button onclick='showInfoModal(\"howworks\")' "
-          + "style='flex:1;min-width:100px;background:rgba(0,227,174,0.12);border:1px solid rgba(0,227,174,0.3);"
-          + "color:#00e3ae;border-radius:12px;padding:10px 8px;font-size:12px;font-weight:700;cursor:pointer;'>"
-          + "⚡ How It Works</button>"
-      + "<button onclick='showInfoModal(\"earn\")' "
-          + "style='flex:1;min-width:100px;background:rgba(255,159,67,0.12);border:1px solid rgba(255,159,67,0.3);"
-          + "color:#ff9f43;border-radius:12px;padding:10px 8px;font-size:12px;font-weight:700;cursor:pointer;'>"
-          + "💰 Earn & Advertise</button>"
-      + "</div>"
-      /* ── Contact Form ── */
-      + "<div style='background:rgba(255,255,255,0.03);border:1px solid rgba(123,47,247,0.25);"
-          + "border-radius:14px;padding:16px;'>"
-      + "<div style='font-size:13px;font-weight:700;color:#e6d6ff;margin-bottom:4px;'>✉️ Contact Support</div>"
-      + "<div style='font-size:11px;color:#666;margin-bottom:10px;'>Send a message to Whisper+Me support</div>"
-      + "<input id='contact-subject' placeholder='Subject' maxlength='100' "
-          + "style='width:100%;background:#0e0e1c;border:1px solid #1a1a2a;color:#ccc;padding:9px 12px;"
-          + "border-radius:10px;font-size:12px;margin-bottom:8px;box-sizing:border-box;' autocomplete='off'>"
-      + "<textarea id='contact-msg' placeholder='Your message…' maxlength='1200' rows='4' "
-          + "style='width:100%;background:#0e0e1c;border:1px solid #1a1a2a;color:#ccc;padding:9px 12px;"
-          + "border-radius:10px;font-size:12px;resize:none;box-sizing:border-box;font-family:inherit;'></textarea>"
-      + "<button onclick='sendContactEmail()' "
-          + "style='width:100%;margin-top:8px;background:linear-gradient(90deg,#7b2ff7,#00e3ae);"
-          + "border:none;color:#fff;padding:11px;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;'>"
-          + "📨 Send Message</button>"
-      + "</div>"
-      + "</div>"
-      /* ── Share / Logout ── */
-      + "<div style='display:flex;gap:10px;flex-wrap:wrap;'>"
-      + "<button onclick=\"shareProfile('" + myUid + "')\" "
-          + "style='flex:1;background:#1e1e2a;color:#00e3ae;border:1px solid rgba(0,227,174,0.3);'>"
-          + "🔗 Share My Profile</button>"
-      + "<button onclick='firebase.auth().signOut()' "
-          + "style='flex:1;background:#1a0a0a;color:#e06060;border:1px solid rgba(224,96,96,0.3);'>"
-          + "Logout</button>"
-      + "</div>"
-      + "<button onclick='confirmDeleteOwnAccount()' "
-          + "style='width:100%;margin-top:10px;padding:11px;background:transparent;"
-          + "color:#883333;border:1px solid rgba(224,96,96,0.15);border-radius:12px;"
-          + "font-size:12px;cursor:pointer;'>Delete My Account</button>"
-      /* ── Admin shortcut — only visible to the admin account ── */
-      + (myUid === "v6aIXY12MDY9ci1wWJmCiLOAKoG2"
-          ? "<hr><div style='text-align:center;margin-top:4px;'>"
-              + "<a href='/admin.html' target='_blank' "
-              + "style='display:inline-block;padding:12px 28px;"
-              + "background:linear-gradient(90deg,#7b2ff7,#00e3ae);"
-              + "color:#fff;border-radius:14px;font-weight:700;font-size:14px;"
-              + "text-decoration:none;letter-spacing:1px;'>⚡ Admin Dashboard</a>"
-              + "</div>"
-          : "")
-      + "</div>";
+    /* 👤 Profile screen: profile.js (tabs Profile · Wallet · Calls · More) */
+    return window.Profile ? window.Profile.panelHTML() : "";
   }
   return "";
-}
-
-/* ═══════════════════════════════════════════
-   ONBOARDING BANNER
-═══════════════════════════════════════════ */
-function renderOnboardingBanner(){
-  if(!window.me) return "";
-  var hasName    = !!(window.me.name   && window.me.name.trim());
-  var hasPhoto   = !!(window.me.photo);
-  var hasCoins   = ((window.me.coins||0) > 0);
-  var hasStripe  = !!(window.me.stripeAccountId);
-  var allDone    = hasName && hasPhoto && hasCoins && hasStripe;
-  if(allDone) return "";
-
-  var steps = [];
-  if(!hasName)  steps.push({ done:false, label:"Add your display name",       action:"document.getElementById('fi-name').focus()" });
-  if(!hasPhoto) steps.push({ done:false, label:"Upload a profile photo — profiles without one get far fewer calls", action:"document.getElementById('photoInput') ? document.getElementById('photoInput').click() : document.getElementById('fi-name').focus()" });
-  if(!hasCoins) steps.push({ done:false, label:"Buy coins to unlock features", action:"document.getElementById('coinQtyInput').focus()" });
-  if(!hasStripe)steps.push({ done:false, label:"Connect Stripe to earn money", action:"connectStripe()" });
-
-  var html = "<div style='background:linear-gradient(135deg,rgba(123,47,247,0.15),rgba(0,227,174,0.08));"
-           + "border:1px solid rgba(123,47,247,0.35);border-radius:16px;padding:16px;margin-bottom:16px;'>"
-           + "<div style='font-size:13px;font-weight:700;color:#e6d6ff;margin-bottom:10px;'>🚀 Complete your setup</div>";
-  steps.forEach(function(s){
-    html += "<div onclick='" + s.action + "' style='display:flex;align-items:center;gap:10px;"
-          + "background:rgba(255,255,255,0.04);border-radius:10px;padding:10px 12px;"
-          + "margin-bottom:8px;cursor:pointer;border:1px solid rgba(123,47,247,0.2);'>"
-          + "<span style='font-size:16px;'>⚪</span>"
-          + "<span style='font-size:13px;color:#ccc;'>" + s.label + "</span>"
-          + "<span style='margin-left:auto;font-size:11px;color:#7b2ff7;'>Tap →</span>"
-          + "</div>";
-  });
-  html += "</div>";
-  return html;
 }
 
 /* ═══════════════════════════════════════════
@@ -1377,11 +1068,13 @@ function render(){
 
   if(!currentUser){
     app.innerHTML = renderLoginPage();
+    if(window.Landing) window.Landing.mount();
     /* hide members when logged out */
     var mc = document.getElementById("membersContainer");
     if(mc){ mc.style.display = "none"; mc.innerHTML = ""; }
     return;
   }
+  if(window.Landing) window.Landing.unmount();
 
   /* Authenticated layout:
      stage → menu → content panel
@@ -1414,7 +1107,7 @@ function afterRender(){
 ═══════════════════════════════════════════ */
 window.setActive = function(i){
   if(isGuest() && i !== 1){
-    var featureNames = ["Browsing members","","The live map","Your dashboard","Dates"];
+    var featureNames = ["Browsing members","","The live map","Your profile","M&G"];
     promptGuestUpgrade(featureNames[i] || "This feature");
     return;
   }
@@ -1446,12 +1139,26 @@ window.setActive = function(i){
 
 /* ── Swipe / touch navigation ── */
 (function initSwipe(){
-  var startX = 0, startY = 0, threshold = 50;
+  var startX = 0, startY = 0, threshold = 50, noSwipe = false;
+  /* Swiping inside something that scrolls sideways (Dates categories, picture
+     strips), a map, a form field or an open popup should never change screens. */
+  function blocksSwipe(el){
+    for(var n = el; n && n !== document.body; n = n.parentElement){
+      if(n.nodeType !== 1) continue;
+      if(n.id === "profileModal" || n.id === "mapMount" || n.hasAttribute("data-noswipe")) return true;
+      if(/^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName)) return true;
+      var cs = window.getComputedStyle ? getComputedStyle(n) : null;
+      if(cs && /(auto|scroll)/.test(cs.overflowX) && n.scrollWidth > n.clientWidth + 2) return true;
+    }
+    return false;
+  }
   function onTouchStart(e){
     startX = e.touches[0].clientX;
     startY = e.touches[0].clientY;
+    noSwipe = blocksSwipe(e.target);
   }
   function onTouchEnd(e){
+    if(noSwipe) return;
     var dx = e.changedTouches[0].clientX - startX;
     var dy = e.changedTouches[0].clientY - startY;
     /* Only horizontal swipes that are more horizontal than vertical */
@@ -1459,8 +1166,8 @@ window.setActive = function(i){
     /* Don't swipe while in a call or member room */
     if(window.__liveCallHTML || window.__inMemberRoom) return;
     var next = dx < 0
-      ? (active + 1) % screens.length              /* swipe left → next */
-      : (active - 1 + screens.length) % screens.length; /* swipe right → prev */
+      ? SCREEN_ORDER[(screenPos(active) + 1) % SCREEN_ORDER.length]                        /* swipe left → next */
+      : SCREEN_ORDER[(screenPos(active) - 1 + SCREEN_ORDER.length) % SCREEN_ORDER.length]; /* swipe right → prev */
     window.setActive(next);
   }
   document.addEventListener("touchstart", onTouchStart, { passive:true });
@@ -1493,51 +1200,9 @@ setInterval(function(){
 /* ═══════════════════════════════════════════
    PROFILE MODAL
 ═══════════════════════════════════════════ */
+/* The member card lives in profile.js (Profile.showMember). */
 window.showProfileModal = function(uid){
-  var u = (window.allUsers||{})[uid];
-  if(!u) return;
-  var myUid = currentUser ? currentUser.uid : "";
-  var isMe  = (uid === myUid);
-  var modal = document.getElementById("profileModal");
-  var body  = document.getElementById("profileModalBody");
-  if(!modal || !body) return;
-
-  var socials = "";
-  if(u.instagram) socials += "<a href='" + (u.instagram.startsWith("http") ? u.instagram : "https://instagram.com/" + u.instagram)
-    + "' target='_blank' rel='noopener noreferrer' style='margin:0 6px;font-size:22px;text-decoration:none;'>📸</a>";
-  if(u.twitter)   socials += "<a href='" + sanitize(u.twitter)
-    + "' target='_blank' rel='noopener noreferrer' style='margin:0 6px;font-size:22px;text-decoration:none;'>🐦</a>";
-  if(u.website)   socials += "<a href='" + sanitize(u.website)
-    + "' target='_blank' rel='noopener noreferrer' style='margin:0 6px;font-size:22px;text-decoration:none;'>🌐</a>";
-
-  var onlinePill = u.online ? "<span style='display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;background:rgba(0,227,174,0.12);border:1px solid rgba(0,227,174,0.4);font-size:11px;font-weight:700;color:#00e3ae;'>&#9679; Online now</span>" : "";
-  body.innerHTML = "<div style='text-align:center;padding:28px 20px 24px;'>"
-    + "<img src='" + sanitize(u.photo||"https://dummyimage.com/200x200/000/fff&text=W") + "' "
-    + "onerror=\"this.src='https://dummyimage.com/200x200/000/fff&text=W'\" "
-    + "style='width:90px;height:90px;border-radius:50%;object-fit:cover;border:3px solid #00e3ae;margin-bottom:12px;'>"
-    + "<div style='font-size:20px;font-weight:700;color:#fff;margin-bottom:4px;'>" + sanitize(u.name||"Member") + "</div>"
-    + (onlinePill ? "<div style='margin-bottom:8px'>" + onlinePill + "</div>" : "")
-    + "<div style='font-size:13px;color:#aaa;margin-bottom:8px;min-height:18px;'>" + sanitize(u.bio||"") + "</div>"
-    + "<div style='font-size:14px;color:#00e3ae;margin-bottom:12px;'>"
-      + (u.price||1) + " coin" + ((u.price||1)>1?"s":"") + " · $" + ((u.price||1)*3) + "/call</div>"
-    + (socials ? "<div style='margin-bottom:14px;'>" + socials + "</div>" : "")
-    + "<div style='display:flex;gap:10px;justify-content:center;flex-wrap:wrap;'>"
-    + (!isMe
-        ? "<button class='call-card-btn' data-uid='" + uid + "' "
-            + "onclick='closeProfileModal();startCallFromBtn(this);' "
-            + "style='flex:1;min-width:120px;padding:13px;font-size:15px;border-radius:24px;'>📞 Call " + sanitize(u.name||"Member") + "</button>"
-        : "<div style='color:#555;font-size:13px;padding:10px 0;'>This is your profile</div>")
-    + "<button onclick=\"shareProfile('" + uid + "')\" "
-        + "style='flex:1;min-width:120px;padding:13px;font-size:15px;border-radius:24px;border:none;"
-        + "background:#1e1e2a;color:#00e3ae;cursor:pointer;'>🔗 Share</button>"
-    + (!isMe && isModeratorOfActiveRoom
-        ? "<button onclick=\"removeUserFromRoom('" + uid + "','" + sanitize(u.name||"this user").replace(/'/g,"\\'") + "')\" "
-            + "style='flex:1;min-width:120px;padding:13px;font-size:15px;border-radius:24px;border:none;"
-            + "background:rgba(229,57,53,0.2);color:#ff8080;cursor:pointer;'>🚫 Remove from Room</button>"
-        : "")
-    + "</div></div>";
-
-  modal.style.display = "flex";
+  if(window.Profile) return window.Profile.showMember(uid);
 };
 
 window.closeProfileModal = function(){
@@ -1553,7 +1218,7 @@ var HOW_IT_WORKS_STEPS = [
   { img:"/howitworks-1.png", title:"Pick a room",           text:"Browse free chat rooms by topic — General, Night Owls, Vent & Release, and more. No sign-up needed just to look around." },
   { img:"/howitworks-2.png", title:"Go live with your mic", text:"Tap Live to speak out loud to everyone in the room — free for signed-up members, no coins required." },
   { img:"/howitworks-3.png", title:"Host your own room",    text:"Create a paid room, set your own entry cost, and earn coins every time someone joins to talk with you." },
-  { img:"/howitworks-4.png", title:"Add a profile photo",   text:"Profiles with a photo get far more calls. Takes ten seconds on the Dashboard." }
+  { img:"/howitworks-4.png", title:"Add a profile photo",   text:"Profiles with a photo get far more calls. Tap your picture on the 👤 Profile tab." }
 ];
 
 window.showHowItWorks = function(){
@@ -1836,17 +1501,9 @@ window.switchRoom = function(roomId){
   updateLiveMicBar();
 };
 
-function pruneRoom(roomId){
-  firebase.database().ref("chat/" + roomId).orderByChild("ts").once("value").then(function(snap){
-    var keys = [];
-    snap.forEach(function(c){ keys.push(c.key); });
-    if(keys.length > 80){
-      var upd = {};
-      keys.slice(0, keys.length-80).forEach(function(k){ upd["chat/" + roomId + "/" + k] = null; });
-      firebase.database().ref().update(upd);
-    }
-  });
-}
+/* Old messages are trimmed on the server now (chatPrune runs every 30 min),
+   so members can only delete their own messages. */
+function pruneRoom(roomId){}
 
 function renderChatMessages(){
   var box = document.getElementById("phoneChatMsgs");
@@ -2096,6 +1753,7 @@ window.startLiveMic = async function(){
 };
 
 async function startLiveMicAudio(endTs, room, uid){
+  await loadAgora();
   liveMicActive = true;
   /* Leave audience client before joining as host */
   await stopLiveMicAudience();
@@ -2194,6 +1852,7 @@ setInterval(function(){ if(active === 1) updateLiveMicBar(); }, 20000);
    LIVE MIC AUDIENCE — lets other devices hear
 ═══════════════════════════════════════════ */
 async function startLiveMicAudience(room){
+  await loadAgora();
   /* Don't create a second audience client if we're already the host */
   if(liveMicActive) return;
   /* Don't create audience client if we're in a P2P call */
@@ -2343,6 +2002,7 @@ function startVisualTimer(callId){
    AGORA VOICE (P2P, secure via server token)
 ═══════════════════════════════════════════ */
 async function setupAgora(callId, targetUser){
+  await loadAgora();
   agoraClient = AgoraRTC.createClient({ mode:"rtc", codec:"vp8" });
   agoraClient.on("user-published", async function(remote, mediaType){
     await agoraClient.subscribe(remote, mediaType);
@@ -2849,7 +2509,7 @@ function renderMemberRooms(){
       var isActive   = activeRoom === r.id;
       var isMine     = currentUser && r.ownerId === currentUser.uid;
 
-      html += "<div class='mroom-card" + (isActive ? " mroom-active" : "") + "' data-roomid='" + r.id + "'>";
+      html += "<div class='mroom-card" + (isActive ? " mroom-active" : "") + "' data-roomid='" + sanitize(r.id) + "'>";
       html += "<div class='mroom-avatar-wrap'>"
         + "<img class='mroom-avatar' src='" + ownerPhoto + "' "
         + "onerror=\"this.src='https://dummyimage.com/200x200/111/444&text=W'\" alt='" + ownerName + "'>"
@@ -2871,7 +2531,7 @@ function renderMemberRooms(){
       } else if(isClosing){
         html += "<button class='mroom-join-btn mroom-join-disabled' disabled>⏳ Closing…</button>";
       } else if(available > 0){
-        html += "<button class='mroom-join-btn' onclick='joinMemberRoom(\"" + r.id + "\",\"" + r.name + "\"," + cost + ")'>Enter " + cost + "🪙</button>";
+        html += "<button class='mroom-join-btn' onclick=\"joinMemberRoom(" + jsAttr(r.id) + "," + jsAttr(r.name || "Room") + "," + cost + ")\">Enter " + cost + "🪙</button>";
       } else {
         html += "<button class='mroom-join-btn mroom-join-disabled' disabled>Room Full</button>";
       }
@@ -2972,6 +2632,7 @@ var memberRoomAgoraTrack  = null;
 var memberRoomAgoraJoined = false;
 
 async function joinMemberRoomVoice(roomId, publishImmediately){
+  await loadAgora();
   if(memberRoomAgoraJoined) return;
   try {
     /* Request mic permission up-front so the first member doesn't hit a permission error */
@@ -3017,6 +2678,7 @@ async function joinMemberRoomVoice(roomId, publishImmediately){
 
 /* Creator calls this to start their mic once the first member arrives */
 async function publishCreatorMic(){
+  await loadAgora();
   if(!memberRoomAgoraClient || !memberRoomAgoraJoined) return;
   if(memberRoomAgoraTrack) return; /* already publishing */
   try {
@@ -3185,7 +2847,7 @@ function switchToMemberRoom(roomId, roomName, roomData){
         + "</div>"
         + "<div style='margin-left:auto;display:flex;align-items:center;gap:10px;'>"
         + "<div style='font-size:11px;color:#00e3ae;font-weight:600;'>🎙️ Live Voice</div>"
-        + "<button onclick=\"shareMemberRoom('" + activeRoom + "','" + sanitize(roomName).replace(/'/g,"\\'") + "','" + (roomData.cost||1) + "')\" "
+        + "<button onclick=\"shareMemberRoom(" + jsAttr(activeRoom) + "," + jsAttr(roomName) + "," + jsAttr(roomData.cost||1) + ")\" "
         + "style='background:rgba(123,47,247,0.25);border:1px solid rgba(123,47,247,0.5);"
         + "color:#fff;border-radius:14px;padding:5px 10px;font-size:11px;font-weight:700;"
         + "cursor:pointer;flex-shrink:0;' aria-label='Share this room' title='Share this room'>🔗 Share</button>"
@@ -3238,7 +2900,9 @@ window.confirmDeleteOwnAccount = function(){
    deletions of someone else's account don't need that. */
 function runDeleteAccount(targetUid, selfDelete){
   if(!currentUser) return;
-  currentUser.getIdToken().then(function(idToken){
+  /* Private email isn't covered by the server cleanup yet, so clear it first */
+  firebase.database().ref("userPrivate/" + targetUid).remove().catch(function(){})
+  .then(function(){ return currentUser.getIdToken(); }).then(function(idToken){
     return fetch(CF_BASE + "/deleteAccount", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": "Bearer " + idToken },
@@ -3301,12 +2965,12 @@ window.showInfoModal = function(type){
       title: "Setting Up Your Profile",
       color: "#b08fff",
       sections: [
-        { emoji: "📛", head: "1. Display Name", text: "Go to the Dash tab → type your name in the Display Name field → Save Profile. Your name appears on your caller card." },
-        { emoji: "📸", head: "2. Profile Photo", text: "Tap the photo upload field and choose a clear, friendly image. A face photo gets 3× more calls. Square crops work best." },
+        { emoji: "📛", head: "1. Display Name", text: "Open the 👤 Profile tab, type your name and tap Save changes. It shows on your card everywhere." },
+        { emoji: "📸", head: "2. Profile Photo", text: "Tap your picture at the top of the Profile tab. A clear, friendly photo gets far more calls. It uploads right away." },
         { emoji: "✍️", head: "3. Write a Bio", text: "A short bio (1–2 sentences) tells callers what you're about. Be genuine — 'great listener, love deep talks' converts better than vague." },
-        { emoji: "💲", head: "4. Set Your Price", text: "Choose 1–10 coins per call ($3–$30). New members do well starting at 1–2 coins. Raise it as your reputation grows." },
-        { emoji: "🏦", head: "5. Connect Stripe", text: "Tap Connect Stripe for Payouts. You need a Stripe account (free) to receive your earnings. Without it, coins accumulate but you can't cash out." },
-        { emoji: "📞", head: "6. Enable Calls", text: "Make sure Incoming Calls is toggled ON. When you're available, stay on the page — calls ring in real time." }
+        { emoji: "💲", head: "4. Set Your Price", text: "Profile → Calls: tap 1–10 coins per call ($3–$30). New members do well starting at 1–2 coins. Raise it as you grow." },
+        { emoji: "🏦", head: "5. Set Up Payouts", text: "Profile → Wallet → Set up payouts. Stripe is free and pays your earnings to your bank. Without it, earnings add up but you can't cash out." },
+        { emoji: "📞", head: "6. Be Reachable", text: "Profile → Calls: keep Let people call me on, and turn on call alerts so your phone rings even when the app is closed." }
       ]
     },
     howworks: {
@@ -3314,13 +2978,13 @@ window.showInfoModal = function(type){
       title: "How Whisper+Me Works",
       color: "#00e3ae",
       sections: [
-        { emoji: "🎙️", head: "Anonymous Voice Calls", text: "Members pay coins to call creators. Calls are one-on-one, voice-only, and fully anonymous. No video, no face required." },
+        { emoji: "🎙️", head: "1-on-1 Voice Calls", text: "Members spend coins to call people they want to talk to. Calls are voice-only, so you choose what you share." },
         { emoji: "🪙", head: "The Coin System", text: "Callers buy coins at $3 each. Each coin spent during a call pays you $2 (you keep 67%). The site keeps $1 per coin to cover hosting and payment fees." },
-        { emoji: "💬", head: "Chat Rooms", text: "Free public rooms (General, Vent, Night Owls, etc.) let anyone talk via text or Live Mic — no coins needed. Great for visibility." },
+        { emoji: "💬", head: "Live Rooms", text: "Free public rooms let anyone chat or grab the Live Mic, no coins needed. The fastest way to get seen." },
         { emoji: "🏠", head: "Member Rooms", text: "Create a private voice room and charge a per-minute coin fee. Callers pay to join; you earn the same $2/coin rate." },
         { emoji: "💰", head: "Payouts", text: "Earnings accumulate in your account. Payouts happen every 24 hours for any balance over $50. Connect Stripe to receive transfers automatically." },
         { emoji: "📵", head: "Early Hang-Ups", text: "Disconnecting a call early (under ~30 seconds) can flag the payment for review. Repeated early hang-ups may result in payment suspension for that session. Finish calls properly." },
-        { emoji: "🔒", head: "Safety & Privacy", text: "No names, no faces are required. You control your availability with the Incoming Calls toggle. Block or report any caller from the call screen." }
+        { emoji: "🔒", head: "You're in control", text: "No face required. Turn calls on or off any time in Profile → Calls. Block or report anyone from the call screen." }
       ]
     },
     earn: {
@@ -3331,7 +2995,7 @@ window.showInfoModal = function(type){
         { emoji: "💵", head: "Your Earnings Rate", text: "You earn $2 for every coin a caller spends with you. Example: a 5-coin call = $10 in your pocket. The more callers, the more you earn." },
         { emoji: "⏱️", head: "Payout Schedule", text: "Payouts are processed every 24 hours. Any balance over $50 is sent to your Stripe account automatically. No minimum waiting period after that threshold." },
         { emoji: "📵", head: "Hang-Up Policy", text: "Ending a call within the first ~30 seconds can trigger a payment hold. Repeated early disconnects may result in earnings being withheld for those sessions. Stay on calls." },
-        { emoji: "🔗", head: "Share Button = Your Best Ad", text: "The 🔗 Share My Profile button generates a direct link with your name, bio, and price. Sharing it sends a concise message: your name + bio + cost per call. Post it everywhere — social media, forums, groups." },
+        { emoji: "🔗", head: "Share Button = Your Best Ad", text: "The 🔗 Share profile button generates a direct link with your name, bio, and price. Sharing it sends a concise message: your name + bio + cost per call. Post it everywhere — social media, forums, groups." },
         { emoji: "📢", head: "Advertising Tips", text: "• Post your profile link on TikTok, Twitter/X, Instagram, Reddit, or Facebook groups related to your niche.\n• Use the Share Room button in the Chat tab to promote free rooms — it drives traffic to the site where people discover creators.\n• A short TikTok or Reel about what you talk about (emotions, advice, fun, tarot, etc.) with your link in bio converts extremely well.\n• Consistency beats volume — post once a day for 2 weeks and you'll build a caller base." },
         { emoji: "🏷️", head: "Boosting Your Card", text: "A complete profile (name + photo + bio + price set) ranks higher in the Members grid. Members with photos get 3× more clicks. Callers sort by price, so new members starting at 1–2 coins get discovered faster." },
         { emoji: "🏠", head: "Host Member Rooms", text: "Create paid voice rooms from the Chat tab. Charge per-minute coin fees. Rooms appear in the Members list — it's free real-estate advertising for your profile while you earn at the same time." }
@@ -3540,17 +3204,18 @@ window.doSignUp = function(){
       window.__pendingSignupPhotoFile = null;
 
       if(photoFile && cred.user){
-        if(photoFile.size > 3 * 1024 * 1024){
-          showToast("Photo too large (max 3MB) — add it later from Dashboard","warn");
+        if(photoFile.size > 20 * 1024 * 1024){
+          showToast("Photo too large — add it later from your Profile","warn");
           afterSetup();
           return;
         }
-        firebase.storage().ref("profilePhotos/" + cred.user.uid).put(photoFile)
+        (window.shrinkImage ? window.shrinkImage(photoFile, 720) : Promise.resolve(photoFile))
+          .then(function(blob){ return firebase.storage().ref("profilePhotos/" + cred.user.uid).put(blob, { contentType: blob.type || "image/jpeg" }); })
           .then(function(s){ return s.ref.getDownloadURL(); })
           .then(function(url){
             return firebase.database().ref("users/" + cred.user.uid).update({ photo: url });
           })
-          .catch(function(){ showToast("Photo upload failed — add it later from Dashboard","warn"); })
+          .catch(function(){ showToast("Photo upload failed — add it later from your Profile","warn"); })
           .then(afterSetup);
       } else {
         afterSetup();
@@ -3569,9 +3234,10 @@ window.signInWithGoogle = function(){
       if(result.additionalUserInfo && result.additionalUserInfo.isNewUser){
         firebase.database().ref("users/" + user.uid).update({
           name:  user.displayName || "Member",
-          photo: user.photoURL    || "",
-          email: user.email       || ""
+          photo: user.photoURL    || ""
         });
+        /* Email stays private (only you and the admin can read it) */
+        if(user.email) firebase.database().ref("userPrivate/" + user.uid).update({ email: user.email }).catch(function(){});
         active = 3; /* same reasoning as email signup above */
         if(typeof render === "function") render();
         setTimeout(function(){ if(window.showHowItWorks) window.showHowItWorks(); }, 400);
@@ -3631,6 +3297,14 @@ firebase.auth().onAuthStateChanged(async function(user){
       .catch(function(){ r(); });
   });
 
+  /* Move an old public email into private storage (one time per member) */
+  if(window.me && window.me.email){
+    var __em = window.me.email;
+    firebase.database().ref("userPrivate/" + user.uid).update({ email: __em })
+      .then(function(){ return firebase.database().ref("users/" + user.uid + "/email").remove(); })
+      .catch(function(){});
+  }
+
   /* Set online presence and lastSeen on every login/page load */
   var presRef = firebase.database().ref("users/" + user.uid);
   presRef.update({ online: true, lastSeen: firebase.database.ServerValue.TIMESTAMP });
@@ -3649,6 +3323,8 @@ firebase.auth().onAuthStateChanged(async function(user){
   resumeCallIfNeeded();
   restoreLiveMicIfActive(); /* re-join Agora if mic was live before refresh */
   restoreCreatorRoomIfNeeded(); /* re-open room page if creator refreshed */
+  /* Warm up voice in the background so the first call starts instantly */
+  setTimeout(function(){ loadAgora().catch(function(){}); }, 4000);
 
   if(window.__deepLinkRoom){
     var __dlr = window.__deepLinkRoom;
@@ -3667,9 +3343,10 @@ firebase.auth().onAuthStateChanged(async function(user){
     window.me = snap.val()||{};
     window.userData = window.me;
     if(window.__liveCallHTML) return;
-    /* FIX: always re-render dashboard coin count, not only when already on that tab.
-       Also refresh the header coin badge if present. */
-    if(active === 3) render();
+    /* Profile screen: refresh numbers without wiping what you're typing */
+    if(active === 3){
+      if(window.Profile) window.Profile.refresh(); else render();
+    }
     /* Update any visible coin balance displays without full re-render */
     var coinEls = document.querySelectorAll(".dash-coin-count, #dash-coins-display");
     coinEls.forEach(function(el){ el.textContent = window.me.coins || 0; });
@@ -3686,8 +3363,14 @@ window.allUsers = {};
 function loadAllUsers(){
   if(window.__usersListenerAttached) return;
   window.__usersListenerAttached = true;
-  firebase.database().ref("users").on("value", function(snap){
-    window.allUsers = snap.val() || {};
+  /* Only the 1,500 most recently active members are kept live, so the app
+     stays fast as the community grows. Anyone else is fetched on demand. */
+  firebase.database().ref("users").orderByChild("lastSeen").limitToLast(1500).on("value", function(snap){
+    var list = [];
+    snap.forEach(function(c){ list.push([c.key, c.val()]); });
+    var fresh = {};
+    list.reverse().forEach(function(e){ fresh[e[0]] = e[1]; }); /* most recent first */
+    window.allUsers = fresh;
     window.__allUsersLoaded = true;
     profiles = Object.values(window.allUsers);
     if(!window.__liveCallHTML){
@@ -3824,7 +3507,7 @@ window.openMemberRoomPage = function(roomId, roomName, roomCost){
     "<div class='mrp-header'>"
       + "<div class='mrp-title'>🏠 <span id='mrp-room-name'>" + sanitize(roomName) + "</span>"
         + "<span class='mrp-badge' id='mrp-status-badge'>LIVE</span></div>"
-      + "<button class='mrp-share-btn' id='mrp-share-btn' onclick=\"shareMemberRoom('" + roomId + "','" + sanitize(roomName).replace(/'/g,"\\'") + "','" + (roomCost||1) + "')\">🔗 Share</button>"
+      + "<button class='mrp-share-btn' id='mrp-share-btn' onclick=\"shareMemberRoom(" + jsAttr(roomId) + "," + jsAttr(roomName) + "," + jsAttr(roomCost||1) + ")\">🔗 Share</button>"
       + "<button class='mrp-close-btn' id='mrp-close-btn' onclick='creatorCloseRoom()'>Close Room</button>"
     + "</div>"
     + "<div class='mrp-info'>You are locked in as host. Members join for "
@@ -3992,8 +3675,12 @@ function finalizeMemberRoomClose(){
   /* Clean up Firebase */
   var rid = window.__myRoomId;
   if(rid){
-    firebase.database().ref("memberRooms/" + rid).remove().catch(function(){});
-    firebase.database().ref("memberRoomSessions/" + rid).remove().catch(function(){});
+    /* Sessions first: the security rules only let the room's owner clear
+       its sessions while the room still exists. */
+    firebase.database().ref("memberRoomSessions/" + rid).remove()
+      .catch(function(){})
+      .then(function(){ return firebase.database().ref("memberRooms/" + rid).remove(); })
+      .catch(function(){});
   }
 
   /* Stop listeners + timers */
@@ -4193,7 +3880,6 @@ window.toggleCallsEnabled = function(){
     .then(function(){
       if(window.me) window.me.callsEnabled = newVal;
       showToast(newVal ? "📞 Calls enabled — members can reach you" : "🔕 Calls disabled — you won't be disturbed", newVal ? "success" : "warn", 3000);
-      if(active === 3) render();
+      if(active === 3){ if(window.Profile) window.Profile.tab("calls"); else render(); }
     });
 };
-window.goToSpirits = function(){ window.location.href = '/spirits'; };

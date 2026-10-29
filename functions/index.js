@@ -1359,9 +1359,7 @@ exports.deleteAccount = onRequest({ cors: true }, async (req, res) => {
       "fcmTokens/" + targetUid,
       "memberRoomCooldown/" + targetUid,
       "presence/" + targetUid,
-      "spirits/" + targetUid,
-      "spiritPending/" + targetUid,
-      "orgUsers/" + targetUid
+      "userPrivate/" + targetUid
     ];
     await Promise.all(cleanupPaths.map(p => db.ref(p).remove().catch(e => {
       console.warn("deleteAccount: cleanup failed for", p, e.message);

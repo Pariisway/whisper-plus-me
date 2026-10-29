@@ -8,6 +8,42 @@
     ],
     "headers": [
       {
+        "source": "/",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      },
+      {
+        "source": "**/*.@(html|js|css|json)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      },
+      {
+        "source": "/nights/**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      },
+      {
+        "source": "**/*.@(png|jpg|jpeg|gif|webp|svg|ico|mp3|mp4|webm)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=604800"
+          }
+        ]
+      },
+      {
         "source": "/ads.txt",
         "headers": [
           {
@@ -37,15 +73,6 @@
             "value": "application/xml"
           }
         ]
-      },
-      {
-        "source": "/nights/**/*.@(js|css)",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "public, max-age=300"
-          }
-        ]
       }
     ],
     "redirects": [],
@@ -61,18 +88,6 @@
       {
         "source": "/join",
         "function": "joinOG"
-      },
-      {
-        "source": "/spirits",
-        "destination": "/spirits.html"
-      },
-      {
-        "source": "/spirits-admin",
-        "destination": "/spirits-admin.html"
-      },
-      {
-        "source": "/briefing",
-        "destination": "/briefing.html"
       },
       {
         "source": "/admin-api/adminGiveCoins",
@@ -109,6 +124,14 @@
       {
         "source": "/nights/admin",
         "destination": "/nights/admin.html"
+      },
+      {
+        "source": "/d/**",
+        "function": "dateOG"
+      },
+      {
+        "source": "/m/**",
+        "function": "meetupOG"
       },
       {
         "source": "**",

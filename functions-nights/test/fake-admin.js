@@ -12,17 +12,19 @@ class Timestamp {
   toMillis() { return this._m; }
   toDate() { return new Date(this._m); }
 }
-const INC = Symbol("inc"), DEL = Symbol("del"), STS = Symbol("sts");
+const INC = Symbol("inc"), DEL = Symbol("del"), STS = Symbol("sts"), AU = Symbol("au");
 const FieldValue = {
   increment: n => ({ [INC]: n }),
   delete: () => ({ [DEL]: true }),
-  serverTimestamp: () => ({ [STS]: true })
+  serverTimestamp: () => ({ [STS]: true }),
+  arrayUnion: (...v) => ({ [AU]: v })
 };
 const clone = v => (v instanceof Timestamp ? v : Array.isArray(v) ? v.map(clone) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, clone(x)])) : v);
 
 function applyValue(cur, val) {
   if (val && typeof val === "object" && INC in val) return (Number(cur) || 0) + val[INC];
   if (val && typeof val === "object" && STS in val) return Timestamp.now();
+  if (val && typeof val === "object" && AU in val) return [...new Set([...(Array.isArray(cur) ? cur : []), ...val[AU]])];
   return clone(val);
 }
 function setPath(obj, path, val) {
@@ -35,7 +37,7 @@ function setPath(obj, path, val) {
 }
 function merge(target, src) {
   for (const [k, v] of Object.entries(src)) {
-    if (v && typeof v === "object" && !(v instanceof Timestamp) && !Array.isArray(v) && !(INC in v) && !(DEL in v) && !(STS in v)) {
+    if (v && typeof v === "object" && !(v instanceof Timestamp) && !Array.isArray(v) && !(INC in v) && !(DEL in v) && !(STS in v) && !(AU in v)) {
       target[k] = target[k] && typeof target[k] === "object" ? target[k] : {};
       merge(target[k], v);
     } else setPath(target, k, v);
@@ -110,7 +112,12 @@ const database = {
   ref: path => ({
     once: async () => ({ val: () => clone(rtGet(path)), exists: () => rtGet(path) !== undefined }),
     set: async v => rtSet(path, v),
-    transaction: async fn => { const nv = fn(clone(rtGet(path))); if (nv !== undefined) rtSet(path, nv); return { committed: nv !== undefined }; }
+    transaction: async fn => { const nv = fn(clone(rtGet(path))); if (nv !== undefined) rtSet(path, nv); return { committed: nv !== undefined }; },
+    update: async obj => Object.entries(obj).forEach(([k, v]) => {
+      const full = [path || "", k].filter(Boolean).join("/");
+      if (v === null) { const parts = full.split("/").filter(Boolean); const parent = rtGet(parts.slice(0, -1).join("/")); if (parent) delete parent[parts.at(-1)]; }
+      else rtSet(full, v);
+    })
   })
 };
 

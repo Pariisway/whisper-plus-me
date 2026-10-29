@@ -2,12 +2,10 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    /* Spirits feature — unchanged, already correctly scoped per-uid */
-    match /spiritPhotos/{uid}/{allPaths=**} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == uid
-                   && request.resource.size < 3 * 1024 * 1024
-                   && request.resource.contentType.matches('image/.*');
+    /* Old Organization (Spirits) photos: the feature is removed. Only the
+       admin can see or delete what's left (Admin → Safety). */
+    match /spiritPhotos/{allPaths=**} {
+      allow read, delete: if request.auth != null && request.auth.uid == 'v6aIXY12MDY9ci1wWJmCiLOAKoG2';
     }
 
     /* Profile photos — readable by anyone (needed for public share-card
@@ -17,6 +15,7 @@ service firebase.storage {
     match /profilePhotos/{uid} {
       allow read: if true;
       allow write: if request.auth != null && request.auth.uid == uid
+                   && request.auth.token.firebase.sign_in_provider != 'anonymous'
                    && request.resource.size < 3 * 1024 * 1024
                    && request.resource.contentType.matches('image/.*');
     }
@@ -49,6 +48,17 @@ service firebase.storage {
                    && request.auth.uid == 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'
                    && request.resource.size < 3 * 1024 * 1024
                    && request.resource.contentType.matches('image/.*');
+    }
+
+    /* Landing page background videos/pictures — public, admin uploads only.
+       Videos up to 60 MB; keep them short and compressed (see admin tips). */
+    match /landingMedia/{file} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.auth.uid == 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'
+                   && request.resource.size < 60 * 1024 * 1024
+                   && (request.resource.contentType.matches('video/.*') || request.resource.contentType.matches('image/.*'));
+      allow delete: if request.auth != null && request.auth.uid == 'v6aIXY12MDY9ci1wWJmCiLOAKoG2';
     }
 
     /* ── Whisper+me Dates ── */
