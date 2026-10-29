@@ -441,6 +441,14 @@ async function test(name, fn) {
     assert.ok(/FAN1/.test(ci.guest));
     const earn0 = Number(rtdb.users.star.earnings || 0), r0 = S.refunds.length;
     advanceHours(4); await T.housekeeping();
+    // paid out 3 days after the start, not right away
+    assert.strictEqual(doc("meetups/" + id).status, "paying");
+    assert.strictEqual(Number(rtdb.users.star.earnings || 0), earn0, "not paid yet");
+    const hostView = (await call("myMeetups", "star")).meetups.find(m => m.id === id && m.host);
+    assert.deepStrictEqual(hostView.guests.map(g => [g.name, g.here]), [["FAN1", true], ["FAN2", false]]);
+    advanceHours(40); await T.housekeeping();
+    assert.strictEqual(doc("meetups/" + id).status, "paying");
+    advanceHours(30); await T.housekeeping();
     assert.strictEqual(doc("meetups/" + id).status, "completed");
     assert.strictEqual(doc("meetups/" + id + "/spots/fan3").status, "released");
     assert.strictEqual(Number(rtdb.users.star.earnings) - earn0, 180, "2 spots × $100 × 90%");
@@ -478,6 +486,58 @@ async function test(name, fn) {
     await call("cancelMeetup", "celeb", { meetupId: id });
     assert.deepStrictEqual([doc("meetups/" + id).status, doc("meetups/" + id).hostDeposit.status], ["canceled", "refunded"]);
     assert.ok(!doc("members/celeb").strikes);
+  });
+
+  await test("M&G: 1 spot = $5 deposit; birth year inline; a buyer report holds the payout", async () => {
+    seedPeople("solo", "kid", "newfan", "f6");
+    // no separate setup: birth year comes with the first request
+    await assert.rejects(call("createMeetup", "solo", mgData({ spots: 1 })), /birth year/);
+    const { id } = await call("createMeetup", "solo", mgData({ spots: 1, price: 250, birthYear: 1991 }));
+    const dep = [...S.sessions].reverse().find(x => x.metadata.uid === "solo");
+    assert.strictEqual(dep.line_items[0].price_data.unit_amount, 500, "1 spot → $5 deposit");
+    await completeLastCheckout("solo");
+    await assert.rejects(call("editMeetup", "solo", { meetupId: id, data: mgData({ spots: 4, price: 250 }) }), /1-spot M&G/);
+    const two = await call("createMeetup", "solo", mgData({ spots: 2, price: 40, title: "Two" }));
+    assert.strictEqual([...S.sessions].reverse().find(x => x.metadata.uid === "solo").line_items[0].price_data.unit_amount, 4000, "2+ spots → one spot's price");
+    await admin({ action: "approveMeetup", id });
+    await assert.rejects(call("buyMeetupSpot", "kid", { meetupId: id, birthYear: new Date().getFullYear() - 19 }), /21 and older/);
+    await call("buyMeetupSpot", "newfan", { meetupId: id, birthYear: 1995 }); await completeLastCheckout("newfan");
+    assert.strictEqual(doc("meetups/" + id).sold, 1);
+    const code = (await call("myMeetups", "newfan")).meetups[0].code;
+    advanceHours(72); await call("checkInGuest", "solo", { code });
+    advanceHours(4); await T.housekeeping();
+    assert.strictEqual(doc("meetups/" + id).status, "paying");
+    const mine = (await call("myMeetups", "newfan")).meetups[0];
+    assert.ok(mine.canReport);
+    await call("reportMeetup", "newfan", { meetupId: id, reason: "Host left after 5 minutes" });
+    assert.strictEqual(doc("meetups/" + id).status, "review", "report puts the payout on hold");
+    advanceHours(80); await T.housekeeping();
+    assert.strictEqual(doc("meetups/" + id).status, "review", "never auto-paid after a report");
+    const g = await admin({ action: "meetupGuests", id });
+    assert.deepStrictEqual([g.guests.length, g.guests[0].here, g.reports[0].reason], [1, true, "Host left after 5 minutes"]);
+    const e0 = Number(rtdb.users.solo.earnings || 0);
+    await admin({ action: "payMeetupHost", id });
+    assert.strictEqual(Math.round((Number(rtdb.users.solo.earnings) - e0) * 100), 22500, "$250 × 90%");
+    await assert.rejects(call("reportMeetup", "f6", { meetupId: id }), /Only people with a spot/);
+    assert.ok(two.id);
+  });
+
+  await test("M&G: official Whisper+Me M&G goes live at once; site keeps it; invites", async () => {
+    seedPeople("buyer1", "pal");
+    const r = await admin({ action: "postMeetup", data: mgData({ title: "Jazz Night", price: 30, spots: 20, contact: {}, startsAt: Date.now() + 10 * H }) });
+    const x = doc("meetups/" + r.id);
+    assert.deepStrictEqual([x.status, x.official, x.hostName, x.hostDeposit], ["live", true, "Whisper+Me", null]);
+    await assert.rejects(admin({ action: "postMeetup", data: mgData({ venue: { name: "A", address: "", city: "B", phone: "618-555-0100" } }) }), /street address/);
+    await call("buyMeetupSpot", "buyer1", { meetupId: r.id, birthYear: 1990 }); await completeLastCheckout("buyer1");
+    await assert.rejects(admin({ action: "postMeetup", id: r.id, data: mgData({ title: "Jazz Night", price: 35, spots: 20, contact: {}, startsAt: Date.now() + 10 * H }) }), /locked/);
+    await admin({ action: "postMeetup", id: r.id, data: mgData({ title: "Jazz Night Live", price: 30, spots: 25, contact: {}, startsAt: x.startsAt.toMillis() }) });
+    assert.deepStrictEqual([doc("meetups/" + r.id).title, doc("meetups/" + r.id).spots], ["Jazz Night Live", 25]);
+    const inv = await call("inviteToMeetup", "buyer1", { meetupId: r.id, uid: "pal" });
+    assert.strictEqual(inv.message, "Invite sent");
+    const rev0 = Number(rtdb.siteRevenue || 0);
+    advanceHours(14); await T.housekeeping();
+    assert.strictEqual(doc("meetups/" + r.id).status, "completed", "official: no check-in or payout wait needed");
+    assert.strictEqual(Math.round((Number(rtdb.siteRevenue) - rev0) * 100), 3000, "site keeps the whole $30");
   });
 
   await test("Landing counter and chat cleanup keep the site fast", async () => {

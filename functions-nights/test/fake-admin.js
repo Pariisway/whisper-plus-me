@@ -78,6 +78,7 @@ class Query {
         if (op === "==") return valOf(x) === valOf(v);
         if (op === "<") return valOf(x) < valOf(v);
         if (op === "array-contains") return Array.isArray(x) && x.includes(v);
+        if (op === "in") return v.includes(valOf(x));
         throw new Error("op " + op);
       })).slice(0, this.lim).map(([p, d]) => snap(new DocRef(p), d));
     return { empty: !docs.length, size: docs.length, docs };

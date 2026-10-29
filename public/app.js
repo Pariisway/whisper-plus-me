@@ -805,7 +805,7 @@ function renderMenu(){
   var guest  = isGuest();
   return "<div class='menu' role='tablist' aria-label='Navigation'>"
     + SCREEN_ORDER.map(function(i){
-        var locked = guest && i !== 1;
+        var locked = guest && i !== 1 && i !== 4; /* guests can chat and browse M&Gs */
         return "<div role='tab' tabindex='0' "
           + "class='menu-item " + (active===i ? "menu-active" : "") + (locked ? " menu-locked" : "") + "' "
           + "onclick='setActive(" + i + ")' "
@@ -1006,7 +1006,7 @@ function contentPanel(){
     return (isGuest()
         ? "<div class='guest-banner'>"
           + "<div class='guest-banner-text'>"
-          + "<b>👋 You're browsing as a guest.</b> Sign up free to go live, meet members, and unlock the map."
+          + "<b>👋 You're browsing as a guest.</b> Sign up free to go live, get M&G spots, and unlock the map."
           + "</div>"
           + "<button class='guest-banner-btn' onclick='exitGuestToSignup()'>Sign Up Free</button>"
           + "</div>"
@@ -1106,7 +1106,7 @@ function afterRender(){
    NAVIGATION
 ═══════════════════════════════════════════ */
 window.setActive = function(i){
-  if(isGuest() && i !== 1){
+  if(isGuest() && i !== 1 && i !== 4){
     var featureNames = ["Browsing members","","The live map","Your profile","M&G"];
     promptGuestUpgrade(featureNames[i] || "This feature");
     return;
@@ -3793,6 +3793,8 @@ window.addEventListener("pagehide", function(){
 (function handleStripeReturn(){
   var params = new URLSearchParams(window.location.search);
   if(!params.toString()) return;
+  /* dates.js (M&G) loads after this file and needs ?dates= / ?meetup= too */
+  window.__initialSearch = window.location.search;
 
   /* Capture a shared room link (?room=xyz) before we wipe the query string.
      Consumed by the auth-state handlers below, for both guests and members. */

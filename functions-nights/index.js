@@ -60,7 +60,8 @@ const DEFAULT_SETTINGS = {
   rescheduleCutoffHours: 48,
   openRequests: true,         // members may post "find me an M&G" and request to join
   autoApproveVenues: false,
-  hostFee: 10                 // % the site keeps from each hosted M&G spot
+  hostFee: 10,                // % the site keeps from each hosted M&G spot
+  hostPayoutHours: 72         // hosts are paid this long after their M&G starts (time for buyers to report a problem)
 };
 const CATEGORIES = ["Dinner", "Activities", "Concerts", "Movies", "Other"];
 const HOST_PAY_MINUTES = 35;
@@ -116,15 +117,16 @@ function checkCanDate(m, s) {
   }
 }
 
-async function push(uid, title, body) {
+async function push(uid, title, body, link) {
   try {
     const token = (await rtdb.ref(`fcmTokens/${uid}/token`).once("value")).val();
     if (!token) return;
+    const url = link || `${APP_URL}/?dates=1`;
     await admin.messaging().send({
       token,
       notification: { title, body },
-      data: { type: "dates", url: `${APP_URL}/?dates=1` },
-      webpush: { fcmOptions: { link: `${APP_URL}/?dates=1` }, notification: { icon: `${APP_URL}/favicon-32.png` } }
+      data: { type: "dates", url },
+      webpush: { fcmOptions: { link: url }, notification: { icon: `${APP_URL}/favicon-32.png` } }
     });
   } catch (e) { logger.warn("push failed", uid, e.message); }
 }
@@ -934,7 +936,7 @@ exports.nightsAdminAction = onCall(withStripe, async req => {
     }
     case "payMeetupHost": {
       const x = (await mtRef(id).get()).data();
-      if (!x || !["review", "live"].includes(x.status)) fail("failed-precondition", "Nothing to pay.");
+      if (!x || !["review", "live", "paying"].includes(x.status)) fail("failed-precondition", "Nothing to pay.");
       const n = await payHost(id, x, await getSettings());
       await log(req, action, id, fmtMoney(n)); return { message: `Paid the host ${fmtMoney(n)}.` };
     }
@@ -944,6 +946,24 @@ exports.nightsAdminAction = onCall(withStripe, async req => {
       if (x && data.keepDeposit) { await keepHostDeposit(id, x, "Host no-show (admin)"); await addStrike(x.hostUid, await getSettings(), "Missed their M&G"); }
       else if (x) await releaseHostDeposit(id, x, "Canceled by admin");
       await log(req, action, id, reason); return { message: `Canceled. ${n || 0} buyer(s) refunded.${data.keepDeposit ? " Host deposit kept." : ""}` };
+    }
+    case "postMeetup": {
+      const r = await postOfficialMeetup(req, id || null, data);
+      await log(req, action, r.id, str(data.title, 80)); return r;
+    }
+    case "holdMeetupPayout": {
+      const x = (await mtRef(id).get()).data();
+      if (!x || x.status !== "paying") fail("failed-precondition", "Only M&Gs waiting to pay the host can be held.");
+      await mtRef(id).update({ status: "review", reviewSince: nowTs(), lastReport: str(reason, 300) || "Held by admin" });
+      await log(req, action, id, reason); return { message: "Payout on hold. Decide in the review list." };
+    }
+    case "meetupGuests": {
+      const x = (await mtRef(id).get()).data();
+      if (!x) fail("not-found", "Not found.");
+      const g = await mtRef(id).collection("spots").where("status", "in", ["paid", "refunded"]).limit(500).get();
+      const reports = await db.collection("reports").where("meetupId", "==", id).limit(50).get();
+      return { guests: g.docs.map(z => ({ name: z.data().name || "Guest", code: z.data().code || "", status: z.data().status, here: !!z.data().checkedInAt, reported: !!z.data().reported })),
+        reports: reports.docs.map(z => ({ reason: z.data().reason, detail: z.data().detail || "", by: z.data().by })) };
     }
     case "hideMeetup":
     case "showMeetup": { await mtRef(id).update({ hidden: action === "hideMeetup" }); await log(req, action, id); return { message: action === "hideMeetup" ? "M&G paused" : "M&G is back on sale" }; }
@@ -1041,7 +1061,8 @@ exports.nightsAdminAction = onCall(withStripe, async req => {
         minAge: n(data.minAge, 18, 25), stoodUpRewardCoins: n(data.stoodUpRewardCoins, 0, 20), strikesForSuspension: n(data.strikesForSuspension, 1, 10),
         suspensionDays: n(data.suspensionDays, 1, 90), lateCancelHours: n(data.lateCancelHours, 1, 168), rescheduleCutoffHours: n(data.rescheduleCutoffHours, 1, 168),
         requireIdVerify: !!data.requireIdVerify, openRequests: !!data.openRequests, autoApproveVenues: !!data.autoApproveVenues,
-        hostFee: data.hostFee == null ? 10 : n(data.hostFee, 0, 50)
+        hostFee: data.hostFee == null ? 10 : n(data.hostFee, 0, 50),
+        hostPayoutHours: data.hostPayoutHours == null ? 72 : n(data.hostPayoutHours, 24, 240)
       };
       if (Object.values(s).some(v => typeof v === "number" && Number.isNaN(v))) fail("invalid-argument", "Every number setting needs a number.");
       await db.doc("settings/platform").set(s, { merge: true });
@@ -1054,26 +1075,36 @@ exports.nightsAdminAction = onCall(withStripe, async req => {
 
 /* ═══════════════════════════════════════════════════════════════
    MEET & GREETS (M&G)
-   A member or creator hosts an M&G at any public place and sets a price per
-   spot. Flow: host fills it out → pays a host deposit (one spot's price) →
-   admin reviews (approve / ask for changes / reject) → it goes on sale.
+   Everything on the M&G screen is an M&G: one price per person, buy a
+   spot, get the address and a code. Two kinds:
+   - Hosted: a member or creator posts it → pays a host deposit (one
+     spot's price when selling 2+ spots, $5 for a 1-spot M&G) → admin
+     reviews (approve / ask for changes / reject) → on sale.
+   - Official (official: true): posted by Whisper+Me from the admin. Live
+     right away, no deposit, the site keeps the ticket money (you pay the
+     venue yourself).
    The venue's address + phone and the host's contact info are private
    (meetups/{id}/private/info): buyers see the address after they pay.
    At the M&G the host checks guests in with their MG- codes.
-   ~3h after the start: guests checked in → host gets price minus the site
-   fee for every sold spot and the deposit back. Nobody checked in → it goes
-   to the admin to decide (pay the host, or refund buyers and keep the
-   deposit). Host cancels late or no-shows → buyers refunded, deposit kept.
+   ~3h after the start: guests checked in → "paying": the host is paid
+   (price minus the site fee for every spot) and gets the deposit back
+   hostPayoutHours (72) after the start, unless a buyer reports a
+   problem first. Nobody checked in → the admin decides (pay the host, or
+   refund buyers and keep the deposit). Host cancels late or no-shows →
+   buyers refunded, deposit kept, strike.
 ═══════════════════════════════════════════════════════════════ */
 const MEETUP_PAY_MINUTES = 40;
+const SMALL_HOST_DEPOSIT = 500; // a 1-spot M&G only needs a $5 deposit
 const mtRef = id => db.doc(`meetups/${id}`);
 const mtPrivate = id => db.doc(`meetups/${id}/private/info`);
 function newCode() { return makeCode().replace("WN-", "MG-"); }
 const str = (v, max) => String(v == null ? "" : v).trim().slice(0, max);
 const PHONE_RE = /^[0-9+().\-\s]{7,20}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const hostDepositFor = (spots, price) => (spots > 1 ? price : SMALL_HOST_DEPOSIT);
+const OPEN_STATUSES = ["draft", "pending", "changes", "live"];
 
-function cleanMeetup(d, { forUpdate = false } = {}) {
+function cleanMeetup(d, { official = false } = {}) {
   const v = d.venue || {};
   const out = {
     title: str(d.title, 80), about: str(d.about, 800), category: CATEGORIES.includes(d.category) ? d.category : "Other",
@@ -1085,10 +1116,12 @@ function cleanMeetup(d, { forUpdate = false } = {}) {
   };
   if (!out.title) fail("invalid-argument", "Give your M&G a name.");
   if (!out.venue.name || !out.venue.address || !out.venue.city) fail("invalid-argument", "Add the place's name, street address and city.");
-  if (!PHONE_RE.test(out.venue.phone)) fail("invalid-argument", "Add the place's phone number so we can confirm your booking.");
-  if (!EMAIL_RE.test(out.contact.email)) fail("invalid-argument", "Add an email we can reach you at.");
-  if (!PHONE_RE.test(out.contact.phone)) fail("invalid-argument", "Add a phone number we can reach you at.");
-  if (!(out.startsAt > Date.now() + 24 * 3600000)) fail("invalid-argument", "Pick a time at least 24 hours away, so there's time to review it and sell spots.");
+  if (!PHONE_RE.test(out.venue.phone)) fail("invalid-argument", "Add the place's phone number so we can confirm the booking.");
+  if (!official) {
+    if (!EMAIL_RE.test(out.contact.email)) fail("invalid-argument", "Add an email we can reach you at.");
+    if (!PHONE_RE.test(out.contact.phone)) fail("invalid-argument", "Add a phone number we can reach you at.");
+    if (!(out.startsAt > Date.now() + 24 * 3600000)) fail("invalid-argument", "Pick a time at least 24 hours away, so there's time to review it and sell spots.");
+  } else if (!(out.startsAt > Date.now() + 3 * 3600000)) fail("invalid-argument", "Pick a time at least 3 hours away.");
   if (!(out.price >= 500)) fail("invalid-argument", "The price per spot has to be at least $5.");
   if (out.price > 500000) fail("invalid-argument", "That price is too high.");
   if (!(out.spots >= 1 && out.spots <= 500)) fail("invalid-argument", "Spots: 1 to 500.");
@@ -1100,22 +1133,38 @@ function publicFields(c, host) {
     startsAt: fromMs(c.startsAt), price: c.price, spots: c.spots, venueName: c.venue.name, city: c.venue.city };
 }
 
-/** Host submits a new M&G. Returns a checkout link for the host deposit (one spot's price). */
+/** First time someone books or hosts: their birth year comes with the request, so there's no separate setup step. */
+async function memberFor(uid, birthYear) {
+  const m = await getMember(uid);
+  if (m) return m;
+  const s = await getSettings();
+  const by = Math.round(Number(birthYear));
+  if (!by || by < 1900) fail("failed-precondition", "Enter your birth year to continue.");
+  if (new Date().getFullYear() - by < s.minAge) fail("failed-precondition", `M&G is for people ${s.minAge} and older.`);
+  const p = await whisperProfile(uid);
+  const doc = { name: p.name, photo: p.photo, birthYear: by, deposit: { status: "none" }, strikes: 0, verified: false, idUploaded: false, createdAt: nowTs() };
+  await db.doc(`members/${uid}`).set(doc, { merge: true });
+  return { id: uid, ...doc };
+}
+function notSuspended(m) {
+  if (m.suspendedUntil && ms(m.suspendedUntil) > Date.now()) fail("failed-precondition", `You're on a break from M&G until ${fmtWhen(m.suspendedUntil)}.`);
+}
+
+/** Host submits a new M&G. Returns a checkout link for the host deposit. */
 exports.createMeetup = onCall(withStripe, async req => {
   const uid = requireUser(req);
   const s = await getSettings();
-  const m = await getMember(uid);
-  if (!m) fail("failed-precondition", "Set up M&G first (it takes a few seconds).");
-  if (m.suspendedUntil && ms(m.suspendedUntil) > Date.now()) fail("failed-precondition", `You're on a break until ${fmtWhen(m.suspendedUntil)}.`);
+  notSuspended(await memberFor(uid, req.data?.birthYear));
   const c = cleanMeetup(req.data || {});
   const host = await whisperProfile(uid);
+  const deposit = hostDepositFor(c.spots, c.price);
   const ref = db.collection("meetups").doc();
   await ref.set({ ...publicFields(c, host), hostUid: uid, hostName: host.name, hostPhoto: host.photo, sold: 0, held: 0, buyerUids: [],
-    hostFeePct: s.hostFee, status: "draft", hidden: false, checkedIn: 0, hostDeposit: { status: "unpaid", amount: c.price }, createdAt: nowTs() });
+    hostFeePct: s.hostFee, status: "draft", hidden: false, checkedIn: 0, hostDeposit: { status: "unpaid", amount: deposit }, createdAt: nowTs() });
   await mtPrivate(ref.id).set({ venue: c.venue, contact: c.contact, hostUid: uid });
   await db.doc(`members/${uid}`).set({ hostContact: c.contact }, { merge: true }); // saved for next time
-  const url = await checkoutFor({ kind: "hostdeposit", uid, email: c.contact.email || req.auth.token.email, amount: c.price, dateId: ref.id,
-    name: `Host deposit · ${c.title}`, description: "Equal to one spot. You get it back after your M&G happens (or if it isn't approved). Kept if you cancel late or don't show up." });
+  const url = await checkoutFor({ kind: "hostdeposit", uid, email: c.contact.email || req.auth.token.email, amount: deposit, dateId: ref.id,
+    name: `Host deposit · ${c.title}`, description: "You get it back with your pay after your M&G (or right away if it isn't approved). Kept only if you cancel late or don't show up." });
   return { id: ref.id, url };
 });
 
@@ -1126,19 +1175,24 @@ exports.payHostDeposit = onCall(withStripe, async req => {
   if (!x || x.hostUid !== uid) fail("permission-denied", "Not your M&G.");
   if (x.status !== "draft") fail("failed-precondition", "The deposit is already paid.");
   const p = (await mtPrivate(id).get()).data() || {};
-  return { url: await checkoutFor({ kind: "hostdeposit", uid, email: (p.contact || {}).email || req.auth.token.email, amount: x.price, dateId: id, name: `Host deposit · ${x.title}`, description: "Equal to one spot. Returned after your M&G happens." }) };
+  const amount = hostDepositFor(x.spots, x.price);
+  if (x.hostDeposit?.amount !== amount) await mtRef(id).update({ "hostDeposit.amount": amount });
+  return { url: await checkoutFor({ kind: "hostdeposit", uid, email: (p.contact || {}).email || req.auth.token.email, amount, dateId: id, name: `Host deposit · ${x.title}`, description: "You get it back with your pay after your M&G." }) };
 });
 
-/** Host edits their M&G. Before any sales everything can change; after, only the description and contact info. */
+/** Host edits their M&G. Before any sales everything can change; after, only the description, spots (up) and contact info. */
 exports.editMeetup = onCall(async req => {
   const uid = requireUser(req);
   const id = str(req.data?.meetupId, 64), ref = mtRef(id), x = (await ref.get()).data();
   if (!x || x.hostUid !== uid) fail("permission-denied", "Not your M&G.");
-  if (!["draft", "pending", "changes", "live"].includes(x.status)) fail("failed-precondition", "This M&G can't be edited anymore.");
+  if (!OPEN_STATUSES.includes(x.status)) fail("failed-precondition", "This M&G can't be edited anymore.");
   const cur = (await mtPrivate(id).get()).data() || {};
   const sold = (x.sold || 0) + (x.held || 0);
   const d = req.data.data || {};
   const c = cleanMeetup(sold ? { ...d, startsAt: Date.now() + 25 * 3600000, price: x.price / 100, spots: Math.max(x.spots, Number(d.spots) || 0) } : d);
+  if (x.hostDeposit?.status === "held" && x.spots <= 1 && c.spots > 1) {
+    fail("failed-precondition", `Your ${fmtMoney(x.hostDeposit.amount)} deposit covers a 1-spot M&G. To sell more spots, cancel this one (your deposit comes back) and post it again.`);
+  }
   const host = await whisperProfile(uid);
   const pub = publicFields(c, host);
   if (sold) {
@@ -1150,26 +1204,50 @@ exports.editMeetup = onCall(async req => {
   const major = !sold && (c.price !== x.price || c.startsAt !== ms(x.startsAt) || c.venue.address !== cur.venue?.address || c.venue.name !== cur.venue?.name);
   const status = x.status === "changes" ? "pending" : x.status === "live" && major ? "pending" : x.status;
   await ref.update({ ...pub, status, changesNote: status === "pending" ? FieldValue.delete() : (x.changesNote || FieldValue.delete()), editedAt: nowTs(),
-    ...(x.status === "draft" ? { "hostDeposit.amount": c.price } : {}) });
+    ...(x.status === "draft" ? { "hostDeposit.amount": hostDepositFor(c.spots, c.price) } : {}) });
   await mtPrivate(id).set({ venue: sold ? cur.venue : c.venue, contact: c.contact, hostUid: uid });
   await db.doc(`members/${uid}`).set({ hostContact: c.contact }, { merge: true });
   return { message: status === "pending" && x.status !== "pending" ? "Saved and sent for review" : "Saved", status };
 });
 
+/** Admin posts (or edits) an official Whisper+Me M&G. It's live right away. */
+async function postOfficialMeetup(req, id, data) {
+  const c = cleanMeetup(data || {}, { official: true });
+  const site = { name: "Whisper+Me", photo: `${APP_URL}/icon-192.png` };
+  if (!id) {
+    const ref = db.collection("meetups").doc();
+    await ref.set({ ...publicFields(c, site), hostUid: req.auth.uid, hostName: site.name, hostPhoto: site.photo, official: true, sold: 0, held: 0, buyerUids: [],
+      hostFeePct: 100, status: "live", hidden: false, checkedIn: 0, hostDeposit: null, createdAt: nowTs(), approvedAt: nowTs() });
+    await mtPrivate(ref.id).set({ venue: c.venue, contact: { email: req.auth.token.email || "", phone: "" }, hostUid: req.auth.uid });
+    return { id: ref.id, message: `“${c.title}” is live for everyone` };
+  }
+  const ref = mtRef(id), x = (await ref.get()).data();
+  if (!x) fail("not-found", "Not found.");
+  const cur = (await mtPrivate(id).get()).data() || {};
+  const sold = (x.sold || 0) + (x.held || 0);
+  const pub = publicFields(c, site);
+  if (sold) {
+    if (c.price !== x.price || c.startsAt !== ms(x.startsAt) || c.venue.address !== cur.venue?.address) fail("failed-precondition", "People already bought spots, so the time, price and place are locked. Cancel & refund it and post a new one if they must change.");
+    if (c.spots < sold) fail("invalid-argument", `Already sold ${sold}.`);
+  }
+  await ref.update({ ...pub, editedAt: nowTs() });
+  await mtPrivate(id).set({ ...cur, venue: c.venue }, { merge: true });
+  return { id, message: `“${c.title}” updated` };
+}
+
 exports.buyMeetupSpot = onCall(withStripe, async req => {
   const uid = requireUser(req);
-  const m = await getMember(uid);
-  if (!m) fail("failed-precondition", "Set up M&G first (it takes a few seconds).");
+  notSuspended(await memberFor(uid, req.data?.birthYear));
   const id = str(req.data?.meetupId, 64);
   const ref = mtRef(id), spotRef = ref.collection("spots").doc(uid);
   let x;
   await db.runTransaction(async tx => {
     x = (await tx.get(ref)).data();
     if (!x || x.status !== "live" || x.hidden) fail("failed-precondition", "This M&G isn't available.");
-    if (x.hostUid === uid) fail("failed-precondition", "You're the host.");
+    if (x.hostUid === uid && !x.official) fail("failed-precondition", "You're the host.");
     if (ms(x.startsAt) < Date.now() + 2 * 3600000) fail("failed-precondition", "Sales for this one have closed.");
     const spot = (await tx.get(spotRef)).data();
-    if (spot && spot.status === "paid") fail("already-exists", "You already have a spot. Your code is in My M&G.");
+    if (spot && spot.status === "paid") fail("already-exists", "You already have a spot. Your code is under My tickets.");
     const fresh = spot && spot.status === "pending" && ms(spot.createdAt) > Date.now() - MEETUP_PAY_MINUTES * 60000;
     if (!fresh) {
       if (x.sold + x.held >= x.spots) fail("resource-exhausted", "Sold out.");
@@ -1180,7 +1258,7 @@ exports.buyMeetupSpot = onCall(withStripe, async req => {
   const me = await whisperProfile(uid);
   await spotRef.set({ name: me.name, photo: me.photo }, { merge: true });
   const url = await checkoutFor({ kind: "meetup", uid, email: req.auth.token.email, amount: x.price, dateId: id,
-    name: `${x.title} · M&G with ${x.hostName}`, description: `${fmtWhen(x.startsAt)} · ${x.venueName}, ${x.city}. The exact address is sent to you after you pay.` });
+    name: `${x.title} · M&G${x.official ? "" : " with " + x.hostName}`, description: `${fmtWhen(x.startsAt)} · ${x.venueName}, ${x.city}. The exact address and your code show in the app right after you pay.` });
   return { url };
 });
 
@@ -1203,8 +1281,8 @@ async function onMeetupPaid(sess) {
   if (undo) { await stripe().refunds.create({ payment_intent: pi }).catch(() => {}); return; }
   if (!code) return;
   const p = (await mtPrivate(id).get()).data() || {};
-  await push(uid, "You're in!", `${x.title} · ${fmtWhen(x.startsAt)} at ${p.venue?.name || x.venueName}, ${p.venue?.address || x.city}. Your code is in My M&G.`);
-  await push(x.hostUid, "Someone bought a spot", `${x.title}: ${x.sold + 1} of ${x.spots} sold.`);
+  await push(uid, "You're in!", `${x.title} · ${fmtWhen(x.startsAt)} at ${p.venue?.name || x.venueName}, ${p.venue?.address || x.city}. Your code is under My tickets.`);
+  if (!x.official) await push(x.hostUid, "Someone bought a spot", `${x.title}: ${x.sold + 1} of ${x.spots} sold.`);
 }
 
 async function onHostDepositPaid(sess) {
@@ -1216,8 +1294,8 @@ async function onHostDepositPaid(sess) {
   if (x.hostDeposit?.paymentIntent === pi) return;
   await ref.update({ status: x.status === "draft" ? "pending" : x.status, hostDeposit: { status: "held", amount: sess.amount_total, paymentIntent: pi, paidAt: nowTs() } });
   await db.collection("ledger").add({ kind: "hostDepositPaid", uid: x.hostUid, meetupId: id, amount: sess.amount_total, at: nowTs() });
-  for (const a of ADMIN_UIDS) await push(a, "New M&G to review", `${x.title} by ${x.hostName}`);
-  await push(x.hostUid, "Sent for review", `${x.title} will go on sale once it's approved. We may call to confirm details.`);
+  for (const a of ADMIN_UIDS) await push(a, "New M&G to review", `${x.title} by ${x.hostName}`, `${APP_URL}/admin.html`);
+  await push(x.hostUid, "Sent for review", `${x.title} will go on sale once it's approved, usually within a day. We may call to confirm details.`);
 }
 
 async function releaseHostDeposit(id, x, why) {
@@ -1236,7 +1314,7 @@ async function keepHostDeposit(id, x, why) {
   return true;
 }
 
-/** Host checks a guest in at the M&G with the guest's code. */
+/** Host (or an admin) checks a guest in at the M&G with the guest's code. */
 exports.checkInGuest = onCall(async req => {
   const uid = requireUser(req);
   const code = str(req.data?.code, 20).toUpperCase();
@@ -1253,11 +1331,50 @@ exports.checkInGuest = onCall(async req => {
   return { guest: spot.name || "Guest", already, title: x.title };
 });
 
+/** A buyer reports a problem (host didn't show, it didn't happen…). Holds the host's payout for the admin. */
+exports.reportMeetup = onCall(async req => {
+  const uid = requireUser(req);
+  const id = str(req.data?.meetupId, 64), ref = mtRef(id), x = (await ref.get()).data();
+  if (!x) fail("not-found", "Not found.");
+  const spot = (await ref.collection("spots").doc(uid).get()).data();
+  if (!spot || spot.status !== "paid") fail("permission-denied", "Only people with a spot can report this M&G.");
+  if (!["live", "paying", "review"].includes(x.status)) fail("failed-precondition", "This M&G is already settled. Contact support.");
+  const reason = str(req.data?.reason, 80) || "Something else", detail = str(req.data?.detail, 1000);
+  await db.collection("reports").add({ about: x.hostUid, aboutType: "user", by: uid, meetupId: id, reason, detail, status: "open", createdAt: nowTs() });
+  await ref.collection("spots").doc(uid).update({ reported: true, reportedAt: nowTs() });
+  const up = { reported: FieldValue.increment(1), lastReport: `${reason}${detail ? ": " + detail.slice(0, 200) : ""}` };
+  if (x.status === "paying") Object.assign(up, { status: "review", reviewSince: nowTs() });
+  await ref.update(up);
+  for (const a of ADMIN_UIDS) await push(a, "M&G problem reported", `${x.title}: ${reason}. The host's payout is on hold.`, `${APP_URL}/admin.html`);
+  return { message: "Thanks for telling us. The host isn't paid until we've looked into it." };
+});
+
+/** Invite another member to an M&G: they get a notification that opens it. */
+exports.inviteToMeetup = onCall(async req => {
+  const uid = requireUser(req);
+  const id = str(req.data?.meetupId, 64), to = str(req.data?.uid, 128);
+  if (!to || to === uid) fail("invalid-argument", "Pick someone to invite.");
+  const x = (await mtRef(id).get()).data();
+  if (!x || x.status !== "live" || x.hidden) fail("failed-precondition", "This M&G isn't on sale.");
+  const day = dayKey(new Date());
+  const cnt = db.doc(`members/${uid}`);
+  const n = await db.runTransaction(async tx => {
+    const m = (await tx.get(cnt)).data() || {};
+    const used = m.invitesDay === day ? (m.invitesUsed || 0) : 0;
+    if (used >= 30) fail("resource-exhausted", "That's a lot of invites for one day. Try again tomorrow.");
+    tx.set(cnt, { invitesDay: day, invitesUsed: used + 1 }, { merge: true });
+    return used + 1;
+  });
+  const me = await whisperProfile(uid);
+  await push(to, `${me.name} invited you to an M&G`, `${x.title} · ${fmtWhen(x.startsAt)} at ${x.venueName}. ${fmtMoney(x.price)} a spot.`, `${APP_URL}/?dates=1&meetup=${id}`);
+  return { message: "Invite sent", used: n };
+});
+
 async function refundMeetup(id, reason) {
   const ref = mtRef(id);
   const x = await db.runTransaction(async tx => {
     const v = (await tx.get(ref)).data();
-    if (!v || !["live", "review", "pending", "changes", "draft"].includes(v.status)) return null;
+    if (!v || !["live", "review", "paying", "pending", "changes", "draft"].includes(v.status)) return null;
     tx.update(ref, { status: "canceled", canceledReason: reason, canceledAt: nowTs() });
     return v;
   });
@@ -1282,8 +1399,9 @@ exports.cancelMeetup = onCall(withStripe, async req => {
   const id = str(req.data?.meetupId, 64);
   const x = (await mtRef(id).get()).data();
   if (!x || x.hostUid !== uid) fail("permission-denied", "Only the host can cancel.");
+  if (!OPEN_STATUSES.includes(x.status)) fail("failed-precondition", "This M&G can't be canceled anymore. Contact support.");
   const late = ms(x.startsAt) - Date.now() < s.lateCancelHours * 3600000;
-  const keep = late && x.sold > 0;
+  const keep = late && x.sold > 0 && !x.official;
   if (req.data?.preview) {
     return { lines: [x.sold ? `Everyone who bought a spot (${x.sold}) gets a full refund.` : "Nobody has bought a spot yet.",
       x.hostDeposit?.status === "held" ? (keep ? `It's within ${s.lateCancelHours} hours, so your ${fmtMoney(x.hostDeposit.amount)} host deposit is kept and it counts as a strike.` : `Your ${fmtMoney(x.hostDeposit.amount)} host deposit is returned.`) : ""].filter(Boolean) };
@@ -1294,32 +1412,47 @@ exports.cancelMeetup = onCall(withStripe, async req => {
   return { message: keep ? "Canceled. Buyers were refunded; your deposit was kept." : "Canceled. Everyone was refunded, including your deposit." };
 });
 
-/** The M&Gs you host or bought. Buyers get the address and phone; hosts get everything. */
+/** Your tickets and the M&Gs you host. Buyers get the address and phone; hosts get everything plus the guest list. */
 exports.myMeetups = onCall(async req => {
   const uid = requireUser(req);
+  const s = await getSettings();
   const [hosted, bought, mem] = await Promise.all([
     db.collection("meetups").where("hostUid", "==", uid).orderBy("startsAt", "desc").limit(30).get(),
     db.collection("meetups").where("buyerUids", "array-contains", uid).limit(30).get(),
     getMember(uid)
   ]);
-  const out = [];
+  const out = [], seen = new Set();
   for (const d of [...hosted.docs, ...bought.docs]) {
     const x = d.data(), host = x.hostUid === uid;
     const spot = (await d.ref.collection("spots").doc(uid).get()).data() || {};
     const paid = spot.status === "paid";
+    // An admin who bought a spot at their own official M&G sees both the host card and the ticket.
+    const views = host && paid ? [true, false] : [host];
+    if (!host && !paid && !["refunded"].includes(spot.status)) continue;
     const p = host || paid ? ((await mtPrivate(d.id).get()).data() || {}) : {};
     const pct = x.hostFeePct ?? 10;
-    out.push({ id: d.id, host, title: x.title, about: x.about, category: x.category, items: x.items || [], venueName: x.venueName, city: x.city,
-      startsAt: ms(x.startsAt), status: x.status, hidden: !!x.hidden, price: x.price, spots: x.spots, sold: x.sold, checkedIn: x.checkedIn || 0, hostName: x.hostName,
-      imageURL: x.imageURL || "", hue: x.hue, changesNote: host ? (x.changesNote || "") : "",
-      code: paid ? spot.code : "", spotStatus: spot.status || "", guestCheckedIn: !!spot.checkedInAt,
-      address: (host || paid) ? (p.venue?.address || "") : "", venuePhone: (host || paid) ? (p.venue?.phone || "") : "",
-      venue: host ? (p.venue || null) : null, contact: host ? (p.contact || null) : null,
-      hostDeposit: host ? (x.hostDeposit || null) : null,
-      hostCut: host ? Math.round(x.price * (100 - pct) / 100) : 0 });
+    let guests = null;
+    if (host && ["live", "paying", "review", "completed"].includes(x.status) && x.sold) {
+      const g = await d.ref.collection("spots").where("status", "==", "paid").limit(500).get();
+      guests = g.docs.map(z => ({ name: z.data().name || "Guest", here: !!z.data().checkedInAt }));
+    }
+    const settledAt = ms(x.startsAt) + (s.hostPayoutHours || 72) * 3600000;
+    for (const asHost of views) {
+      const key = d.id + (asHost ? "h" : "b"); if (seen.has(key)) continue; seen.add(key);
+      out.push({ id: d.id, host: asHost, official: !!x.official, title: x.title, about: x.about, category: x.category, items: x.items || [], venueName: x.venueName, city: x.city,
+        startsAt: ms(x.startsAt), status: x.status, hidden: !!x.hidden, price: x.price, spots: x.spots, sold: x.sold, checkedIn: x.checkedIn || 0, hostName: x.hostName, hostPhoto: x.hostPhoto || "",
+        imageURL: x.imageURL || "", hue: x.hue, changesNote: asHost ? (x.changesNote || "") : "",
+        code: !asHost && paid ? spot.code : "", spotStatus: spot.status || "", guestCheckedIn: !!spot.checkedInAt, reported: !!spot.reported,
+        canReport: !asHost && paid && ["live", "paying", "review"].includes(x.status) && Date.now() > ms(x.startsAt) - 2 * 3600000,
+        address: (asHost || paid) ? (p.venue?.address || "") : "", venuePhone: (asHost || paid) ? (p.venue?.phone || "") : "",
+        venue: asHost ? (p.venue || null) : null, contact: asHost ? (p.contact || null) : null,
+        hostDeposit: asHost ? (x.hostDeposit || null) : null, guests: asHost ? guests : null,
+        payoutAt: asHost ? (ms(x.payoutAt) || settledAt) : 0, hostEarned: asHost ? (x.hostEarned || 0) : 0,
+        hostCut: asHost && !x.official ? Math.round(x.price * (100 - pct) / 100) : 0 });
+    }
   }
   out.sort((a, b) => b.startsAt - a.startsAt);
-  return { meetups: out, hostContact: mem?.hostContact || null };
+  return { meetups: out, hostContact: mem?.hostContact || null, member: mem ? { birthYear: !!mem.birthYear, strikes: mem.strikes || 0, suspendedUntil: ms(mem.suspendedUntil) || 0 } : null };
 });
 
 async function meetupHousekeeping(s) {
@@ -1341,38 +1474,50 @@ async function meetupHousekeeping(s) {
     }
     if (ms(x.startsAt) < now - SETTLE_AFTER_HOURS * 3600000) await settleMeetup(d.id, s);
   }
+  // Hosts are paid a few days after their M&G, if nobody reported a problem.
+  const paying = await db.collection("meetups").where("status", "==", "paying").limit(300).get();
+  for (const d of paying.docs) {
+    const x = d.data();
+    if (ms(x.payoutAt) <= now && !x.reported) await payHost(d.id, x, s);
+  }
   // Drafts whose deposit was never paid disappear after a day.
   const drafts = await db.collection("meetups").where("status", "==", "draft").limit(200).get();
   for (const d of drafts.docs) if (ms(d.data().createdAt) < now - 86400000) await d.ref.update({ status: "expired" });
 }
 
 async function payHost(id, x, s) {
-  const pct = x.hostFeePct ?? s.hostFee;
+  const pct = x.official ? 100 : (x.hostFeePct ?? s.hostFee);
   const gross = x.price * x.sold;
   const hostTotal = Math.round(gross * (100 - pct) / 100), siteTotal = gross - hostTotal;
   if (hostTotal) await rtdb.ref(`users/${x.hostUid}/earnings`).transaction(e => Math.round(((Number(e) || 0) + hostTotal / 100) * 100) / 100);
   if (siteTotal) await rtdb.ref("siteRevenue").transaction(v => Math.round(((Number(v) || 0) + siteTotal / 100) * 100) / 100);
-  await db.collection("ledger").add({ kind: "meetupSettled", meetupId: id, hostUid: x.hostUid, sold: x.sold, hostEarned: hostTotal, siteFee: siteTotal, at: nowTs() });
+  await db.collection("ledger").add({ kind: "meetupSettled", meetupId: id, hostUid: x.hostUid, official: !!x.official, sold: x.sold, hostEarned: hostTotal, siteFee: siteTotal, at: nowTs() });
   const day = dayKey(new Date());
   await db.doc(`stats/day-${day}`).set({ day, fees: FieldValue.increment(siteTotal), meetups: FieldValue.increment(1) }, { merge: true });
   await mtRef(id).update({ status: "completed", completedAt: nowTs(), hostEarned: hostTotal, siteFee: siteTotal });
   await releaseHostDeposit(id, x, "M&G happened");
-  if (hostTotal) await push(x.hostUid, "You got paid", `${fmtMoney(hostTotal)} from ${x.title} was added to your Whisper+Me earnings, and your host deposit is on its way back.`);
+  if (hostTotal) await push(x.hostUid, "You got paid", `${fmtMoney(hostTotal)} from ${x.title} was added to your Whisper+Me earnings${x.hostDeposit?.status === "held" ? ", and your host deposit is on its way back" : ""}.`);
   return hostTotal;
 }
 
 async function settleMeetup(id, s) {
   const x = (await mtRef(id).get()).data();
   if (!x || x.status !== "live") return;
-  if (!x.sold || x.checkedIn > 0) { await payHost(id, x, s); return; }
-  // People paid but nobody was checked in: the admin checks with the host and venue.
+  if (x.official || !x.sold) { await payHost(id, x, s); return; }
+  if (x.checkedIn > 0 && !x.reported) {
+    const payoutAt = ms(x.startsAt) + (s.hostPayoutHours || 72) * 3600000;
+    const hostTotal = Math.round(x.price * x.sold * (100 - (x.hostFeePct ?? s.hostFee)) / 100);
+    await mtRef(id).update({ status: "paying", payoutAt: fromMs(payoutAt) });
+    await push(x.hostUid, "Thanks for hosting!", `${fmtMoney(hostTotal)} from ${x.title} will be added to your earnings on ${fmtWhen(payoutAt)}, with your deposit back.`);
+    return;
+  }
+  // People paid but nobody was checked in (or a buyer reported a problem): the admin checks with the host and venue.
   await mtRef(id).update({ status: "review", reviewSince: nowTs() });
-  for (const a of ADMIN_UIDS) await push(a, "M&G needs a look", `${x.title}: ${x.sold} sold, nobody checked in. Pay the host or refund buyers.`);
+  for (const a of ADMIN_UIDS) await push(a, "M&G needs a look", `${x.title}: ${x.sold} sold, ${x.reported ? "a buyer reported a problem" : "nobody checked in"}. Pay the host or refund buyers.`, `${APP_URL}/admin.html`);
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   SHARE LINKS/* ═══════════════════════════════════════════════════════════════
-   SHARE LINKS: whisperplusme.com/d/{ticketId}
+   SHARE LINKS: whisperplusme.com/m/{meetupId} (and old /d/{ticketId})
    Social apps read the title, description and picture from this page;
    people are sent straight on to the ticket in the app.
 ═══════════════════════════════════════════════════════════════ */

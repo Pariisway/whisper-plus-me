@@ -54,6 +54,14 @@ body.lp2-on{background:#0b0b16}\
 .lp2-emailbox{display:flex;flex-direction:column;gap:10px}\
 .lp2-emailbox[hidden]{display:none}\
 .lp2-pair{display:flex;gap:10px;width:100%}.lp2-pair .lp2-btn{flex:1}\
+.lp2-inv{display:flex;gap:12px;align-items:center;text-align:left;width:100%;max-width:420px;margin:0 auto 6px;padding:12px;border-radius:18px;background:rgba(12,10,26,.82);border:1px solid rgba(214,177,107,.55);box-shadow:0 10px 40px rgba(0,0,0,.45);backdrop-filter:blur(10px)}\
+.lp2-inv img,.lp2-inv-ph{width:72px;height:72px;border-radius:14px;object-fit:cover;flex:none;display:grid;place-items:center;font-size:30px;background:linear-gradient(135deg,#7b2ff7,#00e3ae)}\
+.lp2-inv small{display:block;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:#f3d08a;font-weight:800}\
+.lp2-inv b{display:block;font-size:16px;line-height:1.2;margin:2px 0;color:#fff}\
+.lp2-inv span{display:block;font-size:12.5px;color:#cfc8e8;line-height:1.4}\
+.lp2-inv em{display:block;font-style:normal;font-weight:800;color:#00e3ae;font-size:13px;margin-top:3px}\
+.lp2-inv-go{margin:0 0 4px;font-size:13px;color:#fff;font-weight:700;text-align:center}\
+#lp2-invite{width:100%}#lp2-invite:not(:empty){margin-top:clamp(50px,18vh,240px)}#lp2-invite:not(:empty)+.lp2-card{margin-top:0}\
 .lp2-forgot{align-self:center;font-size:13px}\
 .lp2-or{display:flex;align-items:center;gap:10px;color:rgba(255,255,255,.55);font-size:12px;text-transform:uppercase;letter-spacing:.1em}.lp2-or::before,.lp2-or::after{content:'';flex:1;height:1px;background:rgba(255,255,255,.18)}\
 .lp2-card{width:100%;max-width:440px;margin-top:clamp(70px,24vh,300px);background:rgba(10,10,22,.42)!important;text-align:left;display:flex;flex-direction:column;gap:10px;background:rgba(10,10,22,.55);border:1px solid rgba(255,255,255,.14);border-radius:22px;padding:16px;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}\
@@ -252,6 +260,38 @@ body.lp2-on{background:#0b0b16}\
     var c = document.getElementById("lp2-sub"); if (c) c.textContent = cfg.subline;
   }
 
+  /* ---------- someone opened a shared M&G link: show it above sign-up ---------- */
+  var invite = null, inviteLoading = false;
+  function sharedMeetupId() {
+    var id = (new URLSearchParams(location.search).get("meetup") || "").replace(/[^A-Za-z0-9_-]/g, "");
+    if (!id) { try { id = sessionStorage.getItem("wpmMeetup") || ""; } catch (e) {} }
+    return id.slice(0, 64);
+  }
+  function loadInvite() {
+    var id = sharedMeetupId();
+    if (!id || invite || inviteLoading || !window.fetch) return;
+    inviteLoading = true;
+    // Live M&Gs are public, so the Firestore REST API can read one without signing in.
+    var pid = (window.firebaseConfig && firebaseConfig.projectId) || "whisperplusme-46d9c";
+    fetch("https://firestore.googleapis.com/v1/projects/" + pid + "/databases/(default)/documents/meetups/" + id).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+      if (!j || !j.fields) return;
+      var f = j.fields, v = function (k) { var x = f[k] || {}; return x.stringValue != null ? x.stringValue : x.integerValue != null ? Number(x.integerValue) : x.doubleValue != null ? x.doubleValue : x.booleanValue != null ? x.booleanValue : x.timestampValue || null; };
+      if (v("status") !== "live" || v("hidden")) return;
+      invite = { title: v("title"), host: v("official") ? "Whisper+Me" : v("hostName"), photo: v("imageURL") || v("hostPhoto") || "", venue: v("venueName"), city: v("city"),
+        price: v("price"), left: Math.max(0, (v("spots") || 0) - (v("sold") || 0) - (v("held") || 0)), at: Date.parse(v("startsAt")) };
+      var el = document.getElementById("lp2-invite"); if (el) el.innerHTML = inviteHTML();
+    }).catch(function () {});
+  }
+  function inviteHTML() {
+    if (!invite) { loadInvite(); return ""; }
+    var d = new Date(invite.at), when = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) + " · " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+    var money = "$" + ((invite.price || 0) / 100).toFixed(invite.price % 100 ? 2 : 0);
+    return "<div class='lp2-inv'>" + (invite.photo ? "<img src='" + esc(invite.photo) + "' alt=''>" : "<span class='lp2-inv-ph'>⭐</span>")
+      + "<div><small>You're invited · M&amp;G</small><b>" + esc(invite.title) + "</b><span>with " + esc(invite.host) + " · " + esc(when) + "<br>📍 " + esc(invite.venue) + (invite.city ? ", " + esc(invite.city) : "") + "</span>"
+      + "<em>" + money + " per person" + (invite.left && invite.left <= 10 ? " · only " + invite.left + " left" : "") + "</em></div></div>"
+      + "<p class='lp2-inv-go'>Sign up free below to get your spot 👇</p>";
+  }
+
   /* ---------- markup (rendered by app.js when signed out) ---------- */
   function html() {
     return "<div class='lp2'>"
@@ -261,6 +301,7 @@ body.lp2-on{background:#0b0b16}\
       + "<div class='lp2-live'><i></i><span id='lp2-live-text'>" + esc(liveText()) + "</span></div>"
       + "<h1 class='lp2-h1' id='lp2-h1'>" + headlineHTML(cfg.headline) + "</h1>"
       + "<p class='lp2-sub' id='lp2-sub'>" + esc(cfg.subline) + "</p>"
+      + "<div id='lp2-invite'>" + inviteHTML() + "</div>"
       + "<div class='lp2-card' id='lp-auth'>"
       + "<input id='email' class='lp2-in' type='email' placeholder='Email' autocomplete='email' inputmode='email'>"
       + "<input id='password' class='lp2-in' type='password' placeholder='Password (6+ characters)' autocomplete='current-password'>"

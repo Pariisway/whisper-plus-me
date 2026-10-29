@@ -12,6 +12,32 @@ Branch `social-upgrade`. This rebuild turns the front door, the profile, and the
 | **Admin** (`/admin.html`) | One long page of tables, browser pop-ups | MergeChat-style layout: top emoji tabs (🏁 Start here · 📡 Live now · 👥 People · 💰 Money · 🎬 Landing page · 📢 Announce · 💬 Rooms · 🛡️ Safety · ⭐ M&G · 🧾 Activity), "What do you want to do?" tiles, a "Needs your attention" list, "At a glance" numbers, and a "How the site fits together" map. Simple/Full layout switch. Every confirmation is an in-page dialog. The activity log is saved, so it survives a refresh. |
 | **Landing page manager** (new, Admin → 🎬) | none | Upload videos or pictures (or paste links), reorder, remove, shuffle, seconds per picture, darkness slider, sound-button switch, headline and subline, phone/computer preview, then **🚀 Publish**. |
 
+## ⭐ M&G: one simple flow (latest)
+
+Everything on the M&G screen is now an **M&G sold per person**. The old "for 2 / group of 4" venue tickets, split payments, card holds, invites, the $5 account deposit, strikes for buyers and reschedules are gone from the screen (bookings already made with them still work and show under "Earlier bookings").
+
+**Buyers (3 steps):** pick an M&G → **Get my spot** (one button; the first time it also asks their birth year, no separate setup) → the address, the place's phone, a Maps link and their code show under **🎟️ My tickets** (button at the top of the M&G screen). If the host cancels or no-shows they get every cent back. They can **Report a problem** until the host is paid.
+
+**Hosts:** ⭐ Host one → a 4-part form (What · Where · When & price · How we reach you) → pay the deposit → you review it → they share their link → check guests in with codes → paid **3 days after** the M&G (you can change the days in Admin → ⭐ M&G → Rules).
+- **Host deposit:** one spot's price when selling 2+ spots, **$5 when selling 1 spot**. Returned with their pay, if you reject it, or if they cancel early. Kept on a late cancel (48h) after sales, or a no-show.
+- Their card shows what happens next ("We're reviewing it", "You'll get $108 on Friday…"), the guest list with check marks, and Share / Edit / Cancel.
+
+**More sales:**
+- **Guests** ("Peek inside first") can browse M&Gs; tapping Get my spot asks them to sign up, then brings them right back to that M&G.
+- **Shared links** (`whisperplusme.com/m/<id>`): people who aren't signed in see a "You're invited" card with the M&G above the sign-up box.
+- Cards show **"5 left"** badges and **"🔥 23 going"**; the M&G page shows price, spots left and how many are going.
+- **👋 Invite a member** on every M&G (and "Invite to an M&G" on profiles) sends them a notification that opens it.
+- After buying: **↗ Bring a friend**.
+- "Host your own M&G" sits at the end of the list.
+
+**Your admin (⭐ M&G):**
+- **Needs you:** new M&Gs to approve, plus ones where nobody was checked in or a buyer reported a problem (pay host or refund buyers). **Details** shows the host's email/phone, the place's address/phone, the guest list with codes, and reports; on the day you can check guests in there too.
+- **Paying soon:** hosts waiting for their 3-day payout: **Pay now** or **✋ Hold**.
+- **Post a Whisper+Me M&G:** replaces "Post a venue ticket". Same place search, price per person, spots. Live right away; you keep the ticket money and pay the venue yourself.
+- **Old venue tickets:** any still on sale are listed with **Repost as M&G** (fills the form, price ÷ group size) and **Stop selling**.
+
+**Fixed:** coming back from Stripe never switched to the M&G screen or showed "You're in!" (the app cleared the web address before M&G could read it). Shared M&G links had the same problem.
+
 ## ⭐ M&G (meet & greets), reviewed by you
 
 "Dates" is now **M&G** everywhere: the bottom menu, the M&G screen, the admin tab, buttons, messages, share pages, and a new **M&G section in the Terms** (`/terms.html`, section 6).

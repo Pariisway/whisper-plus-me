@@ -248,7 +248,7 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
       <button class="tile" onclick="go('rooms')"><span class="e">💬</span><div><b>Add or edit a chat room</b><span>Name, emoji, photo, mic access</span></div></button>
       <button class="tile" onclick="go('safety','sec-msgs')"><span class="e">🧹</span><div><b>Remove a bad message</b><span>Read and clean any room</span></div></button>
       <button class="tile" onclick="go('safety')"><span class="e">🛡️</span><div><b>Add a moderator</b><span>Up to 3 per room</span></div></button>
-      <button class="tile" onclick="go('dates','sec-mgreview')"><span class="e">🎟️</span><div><b>Review M&amp;Gs</b><span>Approve hosts, post venue tickets</span></div></button>
+      <button class="tile" onclick="go('dates','sec-mgreview')"><span class="e">⭐</span><div><b>M&amp;Gs</b><span>Approve hosts, post your own</span></div></button>
     </div>
   </section>
 
@@ -280,7 +280,7 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
       <div class="step"><b>🪙 Coins</b><span>$3 each. Used for calls and paid rooms.</span></div><div class="arrow">→</div>
       <div class="step"><b>📞 Calls</b><span>Creator gets $2 per coin, you keep $1.</span></div><div class="arrow">→</div>
       <div class="step"><b>💸 Payouts</b><span>Creators cash out at $50 via Stripe.</span></div><div class="arrow">→</div>
-      <div class="step"><b>⭐ M&amp;G</b><span>Meet in person: hosted M&amp;Gs and venue tickets.</span></div>
+      <div class="step"><b>⭐ M&amp;G</b><span>Meet in person: members host M&amp;Gs (you review them) and you post your own.</span></div>
     </div>
   </section>
 </div>
@@ -557,38 +557,41 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
 <!-- ══════════ DATES ══════════ -->
 <div class="page" id="p-dates">
   <h1 class="page-title">⭐ M&amp;G</h1>
-  <p class="page-sub">Review hosts' M&amp;Gs and post venue tickets. Approved M&amp;Gs and posted tickets show on everyone's M&amp;G screen right away.</p>
+  <p class="page-sub">Everything on the M&amp;G screen is an M&amp;G: one price per person, buyers get the address and a code. Members' M&amp;Gs wait for your review; the ones you post here go live right away.</p>
 
   <section class="card" id="sec-mgreview">
-    <h2>⭐ Hosted M&amp;Gs <span class="right"><div class="seg" id="mg-f"><button data-f="todo" class="on" onclick="mgFilter('todo')">To review</button><button data-f="live" onclick="mgFilter('live')">On sale</button><button data-f="all" onclick="mgFilter('all')">All</button></div></span></h2>
-    <p class="help">Members and creators submit these with a host deposit (one spot's price). Check the details, call the host or the place if needed, then <b>Approve</b>, <b>Ask for changes</b> (the host gets your note and can edit), or <b>Reject</b> (their deposit is returned). Buyers only see the address after they pay. The host gets the price minus your fee for every spot, after they check guests in. If nobody was checked in, it lands here for you to decide.</p>
+    <h2>⭐ M&amp;Gs <span class="right"><div class="seg" id="mg-f"><button data-f="todo" class="on" onclick="mgFilter('todo')">Needs you</button><button data-f="live" onclick="mgFilter('live')">On sale</button><button data-f="paying" onclick="mgFilter('paying')">Paying soon</button><button data-f="all" onclick="mgFilter('all')">All</button></div></span></h2>
+    <p class="help"><b>Needs you:</b> new M&amp;Gs to approve, and ones where nobody was checked in or a buyer reported a problem. Open <b>Details</b> to see the address, phone numbers, guest list and reports. <b>Paying soon:</b> hosts are paid <span id="mg-days">3</span> days after their M&amp;G unless you <b>Hold</b> it or a buyer reports a problem.</p>
     <div id="dt-meetups" class="list"><div class="empty">Loading…</div></div>
   </section>
 
   <div class="lm">
     <section class="card" id="sec-newticket">
-      <h2>➕ Post a venue ticket</h2>
-      <label class="field"><span>Venue</span>
-        <div class="row"><select class="in grow" id="dt-venue" onchange="dtPreview()"><option value="">Loading venues…</option></select><button class="btn" onclick="dtVenueModal()">+ New venue</button></div></label>
-      <label class="field"><span>Ticket name</span><input class="in" id="dt-title" maxlength="80" placeholder="Dinner &amp; a Movie" oninput="dtPreview()"></label>
+      <h2 id="dt-form-title">➕ Post a Whisper+Me M&amp;G</h2>
+      <p class="help" style="margin-top:-6px">Goes live for everyone right away. You keep the ticket money (pay the venue yourself). Buyers see the address after they pay.</p>
+      <label class="field"><span>Name</span><input class="in" id="dt-title" maxlength="80" placeholder="Jazz Night at The Pageant" oninput="dtPreview()"></label>
+      <label class="field"><span>What happens <em>(optional)</em></span><textarea class="in" id="dt-note" maxlength="800" rows="2" placeholder="Live band, a drink each, meet new people. Dress code, parking…" oninput="dtPreview()"></textarea></label>
       <div class="field"><span>Category</span><div class="seg" id="dt-cat"></div></div>
-      <div class="row">
-        <div class="field"><span>For</span><div class="seg" id="dt-size"><button data-v="2" class="on" onclick="dtSize(2)">👫 2 people</button><button data-v="4" onclick="dtSize(4)">👯 4 people</button></div></div>
-        <label class="field grow"><span>Total price for the group ($)</span><input class="in" id="dt-price" type="number" min="5" step="1" placeholder="80" oninput="dtPreview()"></label>
+      <div class="field"><span>Place</span>
+        <input class="in" id="dt-vq" placeholder="Search: restaurant, lounge, theater…" autocomplete="off" oninput="dtVenueSearch(this.value)">
+        <div class="list" id="dt-vres" style="margin-top:6px"></div>
+        <div class="row" style="margin-top:6px"><input class="in grow" id="dt-vname" placeholder="Place name" oninput="dtPreview()"><input class="in grow" id="dt-vphone" type="tel" placeholder="Place phone"></div>
+        <div class="row" style="margin-top:6px"><input class="in grow" id="dt-vaddr" placeholder="Street address"><input class="in grow" id="dt-vcity" placeholder="City, state" oninput="dtPreview()"></div>
+        <p class="help" style="margin:4px 0 0">Search by © OpenStreetMap contributors. Not listed? Just type it in.</p>
       </div>
       <div class="row">
         <label class="field grow"><span>Date &amp; time</span><input class="in" id="dt-when" type="datetime-local" oninput="dtPreview()"></label>
-        <label class="field" style="width:140px"><span>How many to sell</span><input class="in" id="dt-qty" type="number" min="1" max="500" value="10"></label>
+        <label class="field" style="width:130px"><span>Price per person ($)</span><input class="in" id="dt-price" type="number" min="5" step="1" placeholder="30" oninput="dtPreview()"></label>
+        <label class="field" style="width:110px"><span>Spots</span><input class="in" id="dt-qty" type="number" min="1" max="500" value="20" oninput="dtPreview()"></label>
       </div>
-      <div class="field"><span>What's included</span>
-        <div class="row"><input class="in grow" id="dt-item" maxlength="60" placeholder="3-course dinner" onkeydown="if(event.key==='Enter'){event.preventDefault();dtAddItem()}"><button class="btn" onclick="dtAddItem()">Add</button></div>
+      <div class="field"><span>What's included <em>(optional)</em></span>
+        <div class="row"><input class="in grow" id="dt-item" maxlength="60" placeholder="A drink each" onkeydown="if(event.key==='Enter'){event.preventDefault();dtAddItem()}"><button class="btn" onclick="dtAddItem()">Add</button></div>
         <div class="row" id="dt-presets" style="margin-top:8px"></div>
         <div class="list" id="dt-items" style="margin-top:8px"></div>
       </div>
-      <label class="field"><span>Note for guests <em>(optional)</em></span><textarea class="in" id="dt-note" maxlength="300" rows="2" placeholder="Dress code, parking, what to say at the door…"></textarea></label>
       <div class="field"><span>Cover picture <em>(optional)</em></span>
         <div class="row"><label class="btn" style="cursor:pointer">🖼️ Choose picture<input type="file" accept="image/*" hidden onchange="dtPic(this)"></label><button class="btn sm red" id="dt-pic-x" onclick="dtPicClear()" hidden>Remove</button></div></div>
-      <button class="btn main block" id="dt-post" onclick="dtPost()">🚀 Post it — everyone sees it right away</button>
+      <button class="btn main block" id="dt-post" onclick="dtPost()">🚀 Post it. Everyone sees it right away</button>
       <button class="btn block" id="dt-cancel-edit" onclick="dtCancelEdit()" style="margin-top:8px" hidden>Cancel editing</button>
       <p class="help" id="dt-status" style="margin:10px 0 0"></p>
     </section>
@@ -599,28 +602,23 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
     </section>
   </div>
 
-  <section class="card">
-    <h2>🎟️ Tickets <span class="right"><div class="seg" id="dt-tf"><button data-f="live" class="on" onclick="dtFilter('live')">Upcoming</button><button data-f="all" onclick="dtFilter('all')">All</button></div></span></h2>
-    <div id="dt-tickets" class="list"><div class="empty">Loading…</div></div>
-  </section>
-
-  <section class="card">
-    <h2>🏪 Venues <span class="right"><button class="btn sm main" onclick="dtVenueModal()">+ New venue</button></span></h2>
-    <p class="help">A <b>venue</b> is the place (restaurant, theater, lounge). A <b>ticket</b> is a night out you sell there. Venues that sign up at <a href="/nights/venue" target="_blank" rel="noopener">/nights/venue</a> wait here for your OK; venues you add are approved right away. <b>Pause</b> hides all its tickets for now; <b>Remove</b> takes it off the site but keeps its history.</p>
-    <div id="dt-venues" class="list"><div class="empty">Loading…</div></div>
+  <section class="card" id="sec-oldtickets" hidden>
+    <h2>🎟️ Old venue tickets</h2>
+    <p class="help">The old "for 2 / group of 4" tickets don't show on the M&amp;G screen anymore. Bookings already made still happen. Tap <b>Repost as M&amp;G</b> to sell one again per person (add the address and phone), then <b>Stop selling</b> the old one.</p>
+    <div id="dt-tickets" class="list"></div>
   </section>
 
   <section class="card" id="sec-dtrules">
     <h2>⚖️ Rules</h2>
-    <p class="help"><b>Stood-up reward:</b> Whisper coins someone gets when their date doesn't show up (only if they checked in at the venue). <b>Meet & greet site fee:</b> your cut of what hosts charge above the venue price.</p>
-    <div class="row"><input class="in" id="dt-reward" type="number" min="0" max="20" style="width:110px"><span>coin(s)</span>
-      <input class="in" id="dt-hostfee" type="number" min="0" max="50" style="width:110px;margin-left:12px"><span>% meet & greet fee</span><button class="btn main" onclick="dtSaveReward()">Save</button></div>
+    <p class="help"><b>Site fee:</b> your cut of every spot a member's M&amp;G sells. <b>Pay hosts after:</b> how many days after their M&amp;G hosts get paid (time for buyers to report a problem).</p>
+    <div class="row"><input class="in" id="dt-hostfee" type="number" min="0" max="50" style="width:100px"><span>% site fee</span>
+      <input class="in" id="dt-paydays" type="number" min="1" max="10" style="width:100px;margin-left:12px"><span>days</span><button class="btn main" onclick="dtSaveReward()">Save</button></div>
     <p class="help" id="dt-reward-note" style="margin:10px 0 0"></p>
   </section>
 
   <section class="card" data-adv>
     <h2>More M&amp;G tools</h2>
-    <p class="help">Members, deposits, reports, bookings and venue payouts are in the full M&amp;G admin.</p>
+    <p class="help">Members, strikes, reports and old bookings are in the full M&amp;G admin.</p>
     <a class="btn" href="/nights/admin" target="_blank" rel="noopener">Open full M&amp;G admin ↗</a>
   </section>
 </div>
@@ -1475,10 +1473,10 @@ async function orgDelete() {
   if (ok !== undefined) { try { await delFolder(storage.ref("spiritPhotos")); } catch (e) { logAct("Organization photos: " + e.message, "err"); } loadOrg(); }
 }
 
-/* ───────── M&G: post tickets + venues right here ───────── */
-const DT_CATS = [["Dinner", "🍽️"], ["Activities", "🎳"], ["Concerts", "🎤"], ["Movies", "🎬"], ["Other", "🎟️"]];
-const DT_PRESETS = ["2 movie tickets", "3-course dinner", "2 cocktails each", "Bottle of wine", "Popcorn combo", "Reserved booth", "Dessert", "Appetizer platter", "Skip-the-line entry"];
-const DT = { venues: [], tickets: [], settings: {}, cat: "Dinner", size: 2, items: [], pic: null, filter: "live", unsubs: [] };
+/* ───────── M&G: review, post official M&Gs, old tickets ───────── */
+const DT_CATS = [["Dinner", "🍽️"], ["Activities", "🎳"], ["Concerts", "🎤"], ["Movies", "🎬"], ["Other", "⭐"]];
+const DT_PRESETS = ["A drink each", "Dinner", "Show ticket", "Appetizers", "Reserved section", "Photo with the host", "Skip-the-line entry", "Dessert"];
+const DT = { tickets: [], meetups: [], settings: {}, cat: "Dinner", items: [], pic: null, editing: null, venue: { source: "other" }, vres: [], unsubs: [] };
 function loadScript(src) { return new Promise((res, rej) => { if (document.querySelector(`script[src="${src}"]`)) return res(); const sc = document.createElement("script"); sc.src = src; sc.onload = res; sc.onerror = () => rej(new Error("Couldn't load " + src)); document.head.appendChild(sc); }); }
 async function dtSdk() {
   if (!firebase.firestore) await loadScript("https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js");
@@ -1491,32 +1489,31 @@ async function dtLoad() {
   $("dt-presets").innerHTML = DT_PRESETS.map(p => `<button class="btn sm" onclick="dtAddItem(${j(p)})">+ ${h(p)}</button>`).join("");
   dtCat(DT.cat); dtItems();
   if (!$("dt-when").value) { const d = new Date(Date.now() + 3 * 86400000); d.setHours(19, 0, 0, 0); $("dt-when").value = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); }
-  try { await dtSdk(); } catch (e) { $("dt-tickets").innerHTML = $("dt-venues").innerHTML = `<div class="empty">${h(e.message)}</div>`; return; }
+  try { await dtSdk(); } catch (e) { $("dt-meetups").innerHTML = `<div class="empty">${h(e.message)}</div>`; return; }
   DT.unsubs.forEach(u => u()); DT.unsubs = [];
   const fs = firebase.firestore();
-  DT.unsubs.push(fs.collection("venues").onSnapshot(s => { DT.venues = s.docs.map(d => Object.assign({ id: d.id }, d.data())); dtRenderVenues(); }, e => { $("dt-venues").innerHTML = `<div class="empty">Couldn't load venues: ${h(e.message)}</div>`; }));
-  DT.unsubs.push(fs.collection("tickets").orderBy("startsAt", "desc").limit(150).onSnapshot(s => { DT.tickets = s.docs.map(d => Object.assign({ id: d.id }, d.data())); dtRenderTickets(); }, e => { $("dt-tickets").innerHTML = `<div class="empty">Couldn't load tickets: ${h(e.message)}</div>`; }));
-  DT.unsubs.push(fs.collection("meetups").orderBy("startsAt", "desc").limit(100).onSnapshot(s => { DT.meetups = s.docs.map(d => Object.assign({ id: d.id }, d.data())); dtRenderMeetups(); }, e => { $("dt-meetups").innerHTML = `<div class="empty">Couldn't load: ${h(e.message)}</div>`; }));
+  DT.unsubs.push(fs.collection("tickets").orderBy("startsAt", "desc").limit(150).onSnapshot(s => { DT.tickets = s.docs.map(d => Object.assign({ id: d.id }, d.data())); dtRenderTickets(); }, () => {}));
+  DT.unsubs.push(fs.collection("meetups").orderBy("startsAt", "desc").limit(150).onSnapshot(s => { DT.meetups = s.docs.map(d => Object.assign({ id: d.id }, d.data())); dtRenderMeetups(); }, e => { $("dt-meetups").innerHTML = `<div class="empty">Couldn't load: ${h(e.message)}</div>`; }));
   DT.unsubs.push(fs.doc("settings/platform").onSnapshot(s => {
     DT.settings = s.exists ? s.data() : {};
-    const saved = DT.settings.stoodUpRewardCoins;
-    const el = $("dt-reward");
-    if (document.activeElement !== el) el.value = saved == null || saved === 5 ? 1 : saved;
+    const days = Math.round((DT.settings.hostPayoutHours || 72) / 24);
     if (document.activeElement !== $("dt-hostfee")) $("dt-hostfee").value = DT.settings.hostFee == null ? 10 : DT.settings.hostFee;
-    $("dt-reward-note").innerHTML = saved === 5 ? "⚠️ Your saved setting still gives <b>5 coins</b>. Tap <b>Save</b> to change it to 1." : saved == null ? "Default: 1 coin. Tap Save to lock it in." : "✅ Saved: " + saved + " coin" + (saved === 1 ? "" : "s") + ".";
+    if (document.activeElement !== $("dt-paydays")) $("dt-paydays").value = days;
+    $("mg-days").textContent = days;
+    $("dt-reward-note").textContent = `Now: ${DT.settings.hostFee == null ? 10 : DT.settings.hostFee}% site fee, hosts paid ${days} day${days === 1 ? "" : "s"} after their M&G.`;
   }, () => {}));
+  dtPreview();
 }
 function dtCat(c) { DT.cat = c; document.querySelectorAll("#dt-cat button").forEach(b => b.classList.toggle("on", b.dataset.v === c)); dtPreview(); }
-function dtSize(n) { DT.size = n; document.querySelectorAll("#dt-size button").forEach(b => b.classList.toggle("on", Number(b.dataset.v) === n)); dtPreview(); }
 function dtAddItem(text) {
   const v = String(text || $("dt-item").value || "").trim().slice(0, 60);
-  if (!v) return; if (DT.items.length >= 12) { toast("12 items max", true); return; }
+  if (!v) return; if (DT.items.length >= 10) { toast("10 items max", true); return; }
   if (!DT.items.includes(v)) DT.items.push(v);
   if (!text) $("dt-item").value = "";
   dtItems();
 }
 function dtRemoveItem(i) { DT.items.splice(i, 1); dtItems(); }
-function dtItems() { $("dt-items").innerHTML = DT.items.map((x, i) => `<div class="item" style="padding:6px 10px"><div class="who"><b>• ${h(x)}</b></div><button class="icon-btn" onclick="dtRemoveItem(${i})" aria-label="Remove">✕</button></div>`).join(""); dtPreview(); }
+function dtItems() { $("dt-items").innerHTML = DT.items.map((x, i) => `<div class="item" style="padding:6px 10px"><div class="who"><b>✓ ${h(x)}</b></div><button class="icon-btn" onclick="dtRemoveItem(${i})" aria-label="Remove">✕</button></div>`).join(""); dtPreview(); }
 function dtPic(input) {
   const f = input.files && input.files[0]; if (!f) return;
   if (!/^image\//.test(f.type) || f.size > 5 * 1048576) { toast("Pick a picture under 5 MB", true); input.value = ""; return; }
@@ -1525,196 +1522,183 @@ function dtPic(input) {
 function dtPicClear() { DT.pic = null; DT.picUrl = ""; DT.keepImage = ""; $("dt-pic-x").hidden = true; dtPreview(); }
 function dtHue(t) { let x = 0; String(t).split("").forEach(c => { x = (x * 31 + c.charCodeAt(0)) % 360; }); return x; }
 function dtWhenText(ms) { return ms ? new Date(ms).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "Pick a date"; }
-function dtPreview() {
-  const v = DT.venues.find(x => x.id === $("dt-venue").value);
-  const title = $("dt-title").value.trim() || "Your ticket name";
-  const price = Number($("dt-price").value) || 0, ms = $("dt-when").value ? new Date($("dt-when").value).getTime() : 0;
-  const cat = DT_CATS.find(c => c[0] === DT.cat) || DT_CATS[0], hue = dtHue(title);
-  $("dt-card").innerHTML = `<div style="border-radius:16px;overflow:hidden;background:#15152a;border:1px solid var(--line)">
-    <div style="position:relative;height:150px;background:linear-gradient(135deg,hsl(${hue} 70% 45%),hsl(${(hue + 60) % 360} 70% 30%))">${DT.picUrl ? `<img src="${h(DT.picUrl)}" alt="" style="width:100%;height:100%;object-fit:cover">` : ""}
-      <span class="pill" style="position:absolute;left:10px;top:10px;background:rgba(0,0,0,.55);color:#fff">${cat[1]} ${cat[0]}</span>
-      <span class="pill" style="position:absolute;right:10px;top:10px;background:rgba(0,0,0,.55);color:#fff">For ${DT.size}</span></div>
-    <div style="padding:12px 14px"><b style="font-size:17px">${h(title)}</b><div class="help" style="margin:2px 0 8px">${h(v ? v.name : "Venue")} · ${h(dtWhenText(ms))}</div>
-      ${DT.items.length ? `<div class="help" style="margin:0 0 8px">${DT.items.map(x => "• " + h(x)).join("<br>")}</div>` : ""}
-      <div class="row" style="justify-content:space-between"><b style="font-size:18px">${price ? "$" + price.toFixed(2).replace(/\.00$/, "") : "$–"}</b><span class="help" style="margin:0">${price ? "Split: $" + (price / DT.size).toFixed(2) + " each" : ""}</span></div></div></div>`;
-}
-function dtRenderVenues() {
-  const sel = $("dt-venue"), cur = sel.value;
-  const ok = DT.venues.filter(v => v.status === "approved" && !v.adminDeleted).sort((a, b) => a.name.localeCompare(b.name));
-  sel.innerHTML = ok.length ? `<option value="">Pick a venue…</option>` + ok.map(v => `<option value="${h(v.id)}">${h(v.name)} · ${h(v.city || "")}</option>`).join("") : `<option value="">No venues yet. Tap + New venue</option>`;
-  if (cur && ok.some(v => v.id === cur)) sel.value = cur; else if (DT.pickVenue) { sel.value = DT.pickVenue; DT.pickVenue = null; }
-  const order = { pending: 0, approved: 1, paused: 2, declined: 3, removed: 4 };
-  const list = DT.venues.filter(v => !v.adminDeleted).sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
-  $("dt-venues").innerHTML = list.length ? list.map(v => `<div class="item"><div class="ava" style="font-size:20px;background:#1f1b30">🏪</div><div class="who"><b>${h(v.name)} ${v.status === "pending" ? `<span class="pill warn">Waiting for you</span>` : v.status === "approved" ? `<span class="pill on">Approved</span>` : `<span class="pill bad">${h(v.status)}</span>`}</b><span>${h(v.type || "")} · ${h(v.city || "")}${v.address ? " · " + h(v.address) : ""}${v.payoutsEnabled ? " · payouts on" : ""}</span></div>
-      <div class="acts">${v.status === "pending" ? `<button class="btn sm teal" onclick="dtVenueAct('approveVenue',${j(v.id)})">Approve</button><button class="btn sm red" onclick="dtVenueAct('declineVenue',${j(v.id)})">Decline</button>`
-        : v.status === "approved" ? `<button class="btn sm" onclick="dtUseVenue(${j(v.id)})">Post a ticket here</button><button class="btn sm gold" onclick="dtVenueAct('pauseVenue',${j(v.id)})">⏸ Pause</button><button class="btn sm red" onclick="dtVenueAct('removeVenue',${j(v.id)})">Remove</button>`
-        : v.status === "paused" ? `<button class="btn sm teal" onclick="dtVenueAct('resumeVenue',${j(v.id)})">▶ Resume</button><button class="btn sm red" onclick="dtVenueAct('removeVenue',${j(v.id)})">Remove</button>`
-        : v.status === "removed" ? `<button class="btn sm" onclick="dtVenueAct('resumeVenue',${j(v.id)})">Bring back</button>` : ""}<button class="btn sm" onclick="dtVenueModal(${j(v.id)})">✏️ Edit</button><button class="btn sm red" onclick="dtVenueAct('deleteVenue',${j(v.id)})">🗑 Delete</button></div></div>`).join("") : `<div class="empty">No venues yet.</div>`;
-  dtPreview();
-}
-function dtUseVenue(id) { $("dt-venue").value = id; dtPreview(); go("dates", "sec-newticket"); }
-const VENUE_ACT = {
-  approveVenue: ["Approve", "They can start posting tickets right away.", "Approved ", false],
-  declineVenue: ["Decline", "They won't be able to post tickets.", "Declined ", true],
-  pauseVenue: ["Pause", "All its tickets disappear from the M&G screen until you resume it. Bookings already made still happen.", "Paused ", true],
-  resumeVenue: ["Resume", "It's approved again and its tickets come back on the M&G screen.", "Resumed ", false],
-  deleteVenue: ["Delete", "It disappears from this dashboard and the M&G screen for good, and its tickets are hidden. Bookings already made still happen. Its record stays saved in your Firebase database for payouts and history.", "Deleted ", true],
-  removeVenue: ["Remove", "It disappears from the M&G screen and its tickets are hidden. Bookings already made still happen, and its history stays on file for payouts. You can bring it back later.", "Removed ", true]
-};
-async function dtVenueAct(action, id) {
-  const v = DT.venues.find(x => x.id === id) || {}, a = VENUE_ACT[action];
-  if (!await dialog({ title: a[0] + " " + (v.name || "this venue") + "?", body: a[1], ok: a[0], danger: a[3] })) return;
-  await safely(() => dtCall(action, { id }), a[2] + (v.name || id), "Couldn't update venue");
-}
-function dtVenueModal(id) {
-  const v = (id && DT.venues.find(x => x.id === id)) || {};
-  DT.editVenue = id || null;
-  const types = ["Restaurant", "Movie theater", "Lounge", "Bar", "Live music", "Nightclub", "Entertainment", "Other"];
-  openModal(`<h3>${id ? "Edit venue" : "Add a venue"}</h3><p class="help">${id ? "Changes show on all of its tickets right away." : "It's approved right away so you can post tickets for it."}</p>
-    <label class="field"><span>Venue name</span><input class="in" id="nv-name" maxlength="60" placeholder="Ember &amp; Oak" value="${h(v.name || "")}"></label>
-    <label class="field"><span>Type</span><select class="in" id="nv-type">${types.map(t => `<option${t === v.type ? " selected" : ""}>${t}</option>`).join("")}</select></label>
-    <label class="field"><span>City, state</span><input class="in" id="nv-city" maxlength="60" placeholder="Belleville, IL" value="${h(v.city || "")}"></label>
-    <label class="field"><span>Street address <em>(optional)</em></span><input class="in" id="nv-address" maxlength="120" value="${h(v.address || "")}"></label>
-    <label class="field"><span>Phone <em>(optional)</em></span><input class="in" id="nv-phone" type="tel" maxlength="20" value="${h(v.phone || "")}"></label>
-    <label class="field"><span>About it <em>(optional)</em></span><textarea class="in" id="nv-desc" maxlength="500" rows="2">${h(v.description || "")}</textarea></label>
-    <div class="acts"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn main" id="nv-save" onclick="dtSaveVenue()">${id ? "Save changes" : "Add venue"}</button></div>`);
-  setTimeout(() => $("nv-name") && $("nv-name").focus(), 30);
-}
-async function dtSaveVenue() {
-  const g = id => ($(id).value || "").trim();
-  if (!g("nv-name") || !g("nv-city")) { toast("Add the name and city", true); return; }
-  const btn = $("nv-save"); btn.disabled = true; btn.textContent = "Saving…";
-  if (DT.editVenue) {
-    const ok = await safely(() => dtCall("editVenue", { id: DT.editVenue, data: { name: g("nv-name"), type: $("nv-type").value, city: g("nv-city"), address: g("nv-address"), phone: g("nv-phone"), description: g("nv-desc") } }), "Updated venue " + g("nv-name"), "Couldn't save");
-    if (ok !== undefined) closeModal(); else { btn.disabled = false; btn.textContent = "Save changes"; }
-    return;
-  }
-  const r = await safely(() => dtCall("createVenue", { data: { name: g("nv-name"), type: $("nv-type").value, city: g("nv-city"), address: g("nv-address"), phone: g("nv-phone"), description: g("nv-desc") } }), null, "Couldn't add venue");
-  if (r && r.id) { toast(r.message || "Venue added"); logAct("Added venue " + g("nv-name")); DT.pickVenue = r.id; closeModal(); if ($("dt-venue")) { $("dt-venue").value = r.id; } }
-  else { btn.disabled = false; btn.textContent = "Add venue"; }
-}
-function dtEditTicket(id) {
-  const t = DT.tickets.find(x => x.id === id); if (!t) return;
-  DT.editing = id;
-  $("dt-venue").value = t.venueId; $("dt-venue").disabled = true;
-  $("dt-title").value = t.title || ""; dtCat(t.category || "Dinner"); dtSize(Number(t.size) || 2);
-  $("dt-price").value = (Number(t.price || 0) / 100).toFixed(2).replace(/\.00$/, "");
-  const d = new Date(dtMs(t.startsAt)); $("dt-when").value = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  $("dt-qty").value = t.quantity || 1; $("dt-note").value = t.note || "";
-  DT.items = (t.items || []).slice(); DT.pic = null; DT.picUrl = t.imageURL || ""; DT.keepImage = t.imageURL || ""; $("dt-pic-x").hidden = !DT.picUrl;
-  dtItems();
-  const booked = (t.sold || 0) + (t.held || 0);
-  $("dt-status").textContent = booked ? `✏️ Editing. ${booked} already booked, so price, group size and date are locked.` : "✏️ Editing. Change anything, then Save changes.";
-  $("dt-post").textContent = "💾 Save changes"; $("dt-cancel-edit").hidden = false;
-  go("dates", "sec-newticket");
-}
-function dtCancelEdit() {
-  DT.editing = null; DT.keepImage = ""; $("dt-venue").disabled = false; $("dt-cancel-edit").hidden = true;
-  $("dt-post").textContent = "🚀 Post it — everyone sees it right away";
-  $("dt-title").value = ""; $("dt-price").value = ""; $("dt-note").value = ""; $("dt-status").textContent = ""; DT.items = []; dtPicClear(); dtItems();
-}
-async function dtPost() {
-  if (DT.editing) return dtSaveEdit();
-  const venueId = $("dt-venue").value, title = $("dt-title").value.trim(), price = Number($("dt-price").value), qty = Number($("dt-qty").value);
-  const ms = $("dt-when").value ? new Date($("dt-when").value).getTime() : 0;
-  const miss = !venueId ? "Pick a venue (or add one)" : !title ? "Give it a name" : !(price >= 5) ? "Price must be at least $5" : !ms ? "Pick a date and time" : ms < Date.now() + 3 * 3600000 ? "Pick a time at least 3 hours from now" : !DT.items.length ? "Add at least one thing that's included" : !(qty >= 1) ? "How many can be sold?" : "";
-  if (miss) { toast(miss, true); return; }
-  const btn = $("dt-post"); btn.disabled = true; btn.textContent = "Posting…";
-  const r = await safely(async () => {
-    let imageURL = "";
-    if (DT.pic) { const ref = storage.ref(`nights/ticketImages/${ADMIN_UID}/${Date.now()}`); await ref.put(DT.pic, { contentType: DT.pic.type }); imageURL = await ref.getDownloadURL(); }
-    return dtCall("createTicket", { data: { venueId, title, category: DT.cat, size: DT.size, price, startsAt: ms, quantity: qty, items: DT.items.slice(), note: $("dt-note").value.trim(), imageURL } });
-  }, null, "Couldn't post");
-  btn.disabled = false; btn.textContent = "🚀 Post it — everyone sees it right away";
-  if (r && r.id) {
-    toast(r.message || "Posted"); logAct(`Posted venue ticket "${title}"`);
-    $("dt-status").textContent = "✅ “" + title + "” is live on the M&G screen for everyone.";
-    $("dt-title").value = ""; $("dt-price").value = ""; $("dt-note").value = ""; DT.items = []; dtPicClear(); dtItems();
-  }
-}
-async function dtSaveEdit() {
-  const id = DT.editing, title = $("dt-title").value.trim(), price = Number($("dt-price").value), qty = Number($("dt-qty").value);
-  const ms = $("dt-when").value ? new Date($("dt-when").value).getTime() : 0;
-  if (!title || !(price >= 5) || !ms || !DT.items.length || !(qty >= 1)) { toast("Fill in the name, price, date, what's included and how many", true); return; }
-  const t = DT.tickets.find(x => x.id === id) || {};
-  const sameTime = Math.abs(ms - dtMs(t.startsAt)) < 60000;
-  const btn = $("dt-post"); btn.disabled = true; btn.textContent = "Saving…";
-  const r = await safely(async () => {
-    let imageURL = DT.keepImage || "";
-    if (DT.pic) { const ref = storage.ref(`nights/ticketImages/${ADMIN_UID}/${Date.now()}`); await ref.put(DT.pic, { contentType: DT.pic.type }); imageURL = await ref.getDownloadURL(); }
-    return dtCall("editTicket", { id, data: { title, category: DT.cat, size: DT.size, price, startsAt: sameTime ? dtMs(t.startsAt) : ms, quantity: qty, items: DT.items.slice(), note: $("dt-note").value.trim(), imageURL } });
-  }, null, "Couldn't save");
-  btn.disabled = false;
-  if (r) { toast(r.message || "Saved"); logAct(`Edited ticket "${title}"`); dtCancelEdit(); $("dt-status").textContent = "✅ Saved. Everyone sees the changes now."; }
-  else btn.textContent = "💾 Save changes";
-}
-function dtFilter(f) { DT.filter = f; document.querySelectorAll("#dt-tf button").forEach(b => b.classList.toggle("on", b.dataset.f === f)); dtRenderTickets(); }
 function dtMs(t) { return t && t.toMillis ? t.toMillis() : (t && t.seconds ? t.seconds * 1000 : Number(t) || 0); }
+const usd = c => "$" + (Number(c || 0) / 100).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+function dtPreview() {
+  if (!$("dt-card")) return;
+  const title = $("dt-title").value.trim() || "Your M&G name";
+  const price = Number($("dt-price").value) || 0, ms = $("dt-when").value ? new Date($("dt-when").value).getTime() : 0, spots = Number($("dt-qty").value) || 0;
+  const hue = dtHue(title), place = $("dt-vname").value.trim() || "Place", city = $("dt-vcity").value.trim();
+  $("dt-card").innerHTML = `<div style="border-radius:16px;overflow:hidden;background:#12122a;border:1px solid rgba(0,227,174,.35)">
+    <div style="position:relative;height:120px;padding:10px 12px;display:flex;flex-direction:column;justify-content:space-between;background:linear-gradient(135deg,hsl(${hue} 60% 32%),hsl(${(hue + 40) % 360} 65% 16%) 70%,#0b0b16)">${DT.picUrl ? `<img src="${h(DT.picUrl)}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.55">` : ""}
+      <span style="position:relative;font-size:10px;letter-spacing:.12em;text-transform:uppercase;display:flex;justify-content:space-between"><span>⭐ Whisper+Me pick</span><span>${spots && spots <= 5 ? spots + " left" : ""}</span></span>
+      <b style="position:relative;font-size:18px">${h(title)}</b></div>
+    <div style="padding:10px 12px;display:flex;justify-content:space-between;gap:10px;align-items:center"><div class="help" style="margin:0"><b style="color:var(--text)">Hosted by Whisper+Me</b><br>${h(dtWhenText(ms))}<br>📍 ${h(place)}${city ? ", " + h(city.split(",")[0]) : ""}</div>
+      <div style="text-align:right"><b style="font-size:18px">${price ? "$" + price.toFixed(2).replace(/\.00$/, "") : "$–"}</b><div class="help" style="margin:0">per person</div></div></div></div>
+    ${DT.items.length ? `<p class="help" style="margin:10px 0 0">${DT.items.map(x => "✓ " + h(x)).join("<br>")}</p>` : ""}
+    ${price && spots ? `<p class="help" style="margin:10px 0 0">All ${spots} sold = <b>${usd(price * 100 * spots)}</b> collected.</p>` : ""}`;
+}
+let dtVTimer = null;
+function dtVenueSearch(q) {
+  clearTimeout(dtVTimer); q = String(q || "").trim();
+  $("dt-vname").value = q; dtPreview(); DT.venue = { source: "other" };
+  if (q.length < 3) { $("dt-vres").innerHTML = ""; return; }
+  dtVTimer = setTimeout(() => {
+    $("dt-vres").innerHTML = `<div class="help">Searching…</div>`;
+    fetch("https://photon.komoot.io/api/?q=" + encodeURIComponent(q) + "&limit=6&lang=en&lat=38.6&lon=-90.2").then(r => r.json()).then(js => {
+      DT.vres = (js.features || []).map(f => { const p = f.properties || {}, c = (f.geometry || {}).coordinates || []; return { name: p.name || "", address: [p.housenumber, p.street].filter(Boolean).join(" "), city: [p.city || p.town || p.village || p.county, p.state].filter(Boolean).join(", "), osmType: p.osm_type, osmNum: p.osm_id, osmId: (p.osm_type || "") + (p.osm_id || ""), lat: c[1], lon: c[0], kind: p.osm_value || "" }; }).filter(r => r.name && r.city);
+      $("dt-vres").innerHTML = DT.vres.length ? DT.vres.map((r, i) => `<div class="item" style="padding:6px 10px;cursor:pointer" onclick="dtPickVenue(${i})"><div class="who"><b>${h(r.name)} <span class="pill">${h(r.kind.replace(/_/g, " "))}</span></b><span>${h([r.address, r.city].filter(Boolean).join(", "))}</span></div></div>`).join("") : `<div class="help">No places found. Type the details in below.</div>`;
+    }, () => { $("dt-vres").innerHTML = `<div class="help">Search isn't working right now. Type the details in below.</div>`; });
+  }, 350);
+}
+function dtPickVenue(i) {
+  const r = DT.vres[i]; if (!r) return;
+  DT.venue = Object.assign({ source: "osm" }, r);
+  $("dt-vq").value = r.name; $("dt-vname").value = r.name; $("dt-vaddr").value = r.address; $("dt-vcity").value = r.city; $("dt-vres").innerHTML = ""; dtPreview();
+  if (r.osmType && r.osmNum) {
+    $("dt-vphone").placeholder = "Place phone (looking it up…)";
+    const t = { N: "node", W: "way", R: "relation" }[r.osmType] || "node";
+    fetch("https://overpass-api.de/api/interpreter?data=" + encodeURIComponent("[out:json][timeout:5];" + t + "(" + r.osmNum + ");out tags;")).then(x => x.json()).then(js => { const tg = ((js.elements || [])[0] || {}).tags || {}; const ph = tg.phone || tg["contact:phone"] || ""; if (ph && !$("dt-vphone").value) $("dt-vphone").value = ph; }).catch(() => {}).finally(() => { $("dt-vphone").placeholder = "Place phone"; });
+  }
+}
+function dtFormData() {
+  const ms = $("dt-when").value ? new Date($("dt-when").value).getTime() : 0;
+  return { title: $("dt-title").value.trim(), about: $("dt-note").value.trim(), category: DT.cat, items: DT.items.slice(), startsAt: ms, price: Number($("dt-price").value), spots: Number($("dt-qty").value),
+    venue: Object.assign({}, DT.venue, { name: $("dt-vname").value.trim(), address: $("dt-vaddr").value.trim(), city: $("dt-vcity").value.trim(), phone: $("dt-vphone").value.trim() }) };
+}
+function dtResetForm() {
+  DT.editing = null; DT.keepImage = ""; DT.venue = { source: "other" };
+  ["dt-title", "dt-note", "dt-price", "dt-vq", "dt-vname", "dt-vaddr", "dt-vcity", "dt-vphone"].forEach(k => { $(k).value = ""; });
+  $("dt-qty").value = 20; $("dt-vres").innerHTML = ""; DT.items = []; dtPicClear(); dtItems();
+  $("dt-cancel-edit").hidden = true; $("dt-form-title").textContent = "➕ Post a Whisper+Me M&G"; $("dt-post").textContent = "🚀 Post it. Everyone sees it right away";
+}
+function dtCancelEdit() { dtResetForm(); $("dt-status").textContent = ""; }
+async function dtPost() {
+  const d = dtFormData();
+  const miss = !d.title ? "Give it a name" : !d.venue.name || !d.venue.address || !d.venue.city ? "Add the place's name, street address and city" : !d.venue.phone ? "Add the place's phone number" : !(d.price >= 5) ? "Price must be at least $5" : !d.startsAt ? "Pick a date and time" : !(d.spots >= 1) ? "How many spots?" : "";
+  if (miss) { toast(miss, true); return; }
+  const btn = $("dt-post"), label = btn.textContent; btn.disabled = true; btn.textContent = DT.editing ? "Saving…" : "Posting…";
+  const r = await safely(async () => {
+    d.imageURL = DT.keepImage || "";
+    if (DT.pic) { const ref = storage.ref(`nights/ticketImages/${ADMIN_UID}/${Date.now()}`); await ref.put(DT.pic, { contentType: DT.pic.type }); d.imageURL = await ref.getDownloadURL(); }
+    return dtCall("postMeetup", { id: DT.editing || null, data: d });
+  }, null, DT.editing ? "Couldn't save" : "Couldn't post");
+  btn.disabled = false; btn.textContent = label;
+  if (r && r.id) {
+    toast(r.message || "Posted"); logAct((DT.editing ? "Edited" : "Posted") + ` M&G "${d.title}"`);
+    if (DT.fromTicket) { $("dt-status").innerHTML = `✅ Live. Now <b>Stop selling</b> the old ticket below.`; DT.fromTicket = null; }
+    else $("dt-status").textContent = DT.editing ? "✅ Saved. Everyone sees the changes now." : "✅ “" + d.title + "” is live on the M&G screen for everyone.";
+    dtResetForm();
+  }
+}
+function dtEditMeetup(id) {
+  const m = DT.meetups.find(x => x.id === id); if (!m) return;
+  firebase.firestore().doc(`meetups/${id}/private/info`).get().then(p => {
+    const v = (p.exists && p.data().venue) || {};
+    dtResetForm(); DT.editing = id; DT.venue = Object.assign({ source: "other" }, v);
+    $("dt-title").value = m.title || ""; $("dt-note").value = m.about || ""; dtCat(m.category || "Other");
+    $("dt-vq").value = v.name || m.venueName || ""; $("dt-vname").value = v.name || m.venueName || ""; $("dt-vaddr").value = v.address || ""; $("dt-vcity").value = v.city || m.city || ""; $("dt-vphone").value = v.phone || "";
+    $("dt-price").value = (Number(m.price || 0) / 100).toFixed(2).replace(/\.00$/, ""); $("dt-qty").value = m.spots || 1;
+    const d = new Date(dtMs(m.startsAt)); $("dt-when").value = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    DT.items = (m.items || []).slice(); DT.picUrl = m.imageURL || ""; DT.keepImage = m.imageURL || ""; $("dt-pic-x").hidden = !DT.picUrl; dtItems();
+    $("dt-form-title").textContent = "✏️ Edit M&G"; $("dt-post").textContent = "💾 Save changes"; $("dt-cancel-edit").hidden = false;
+    $("dt-status").textContent = m.sold ? `✏️ ${m.sold} already sold, so the time, price and place are locked.` : "✏️ Change anything, then Save changes.";
+    go("dates", "sec-newticket");
+  }, e => toast(e.message, true));
+}
+
+/* old "for 2 / group of 4" tickets: no longer sold; repost per person */
 function dtRenderTickets() {
   const now = Date.now();
-  let list = DT.tickets.filter(t => { const v = DT.venues.find(x => x.id === t.venueId); return !(v && v.adminDeleted); });
-  if (DT.filter === "live") list = list.filter(t => dtMs(t.startsAt) > now);
-  list.sort((a, b) => dtMs(a.startsAt) - dtMs(b.startsAt));
-  $("dt-tickets").innerHTML = list.length ? list.map(t => {
-    const past = dtMs(t.startsAt) < now;
-    const venuePaused = t.adminHidden && t.hiddenReason === "venuePaused";
-    const st = past ? `<span class="pill">Past</span>` : t.status === "ended" ? `<span class="pill warn">Not selling</span>` : venuePaused ? `<span class="pill bad">Venue paused</span>` : t.adminHidden ? `<span class="pill bad">Paused</span>` : `<span class="pill on">On sale</span>`;
-    const acts = past ? "" : [
-      t.status === "ended" ? `<button class="btn sm teal" onclick="dtTicketAct('sell',${j(t.id)})">▶ Sell again</button>`
-        : venuePaused ? `<span class="help" style="margin:0">Resume the venue to sell</span>`
-        : t.adminHidden ? `<button class="btn sm teal" onclick="dtTicketAct('showTicket',${j(t.id)})">▶ Resume</button>`
-        : `<button class="btn sm gold" onclick="dtTicketAct('hideTicket',${j(t.id)})">⏸ Pause</button>`,
-      `<button class="btn sm" onclick="dtEditTicket(${j(t.id)})">✏️ Edit</button>`,
-      `<button class="btn sm" onclick="dtCopyLink(${j(t.id)})">🔗 Link</button>`,
-      t.status !== "ended" ? `<button class="btn sm red" onclick="dtTicketAct('end',${j(t.id)})">Stop selling</button>` : ""
-    ].join("");
-    return `<div class="item"><div class="ava" style="background:linear-gradient(135deg,hsl(${t.hue || 0} 70% 45%),hsl(${((t.hue || 0) + 60) % 360} 70% 30%))">${t.imageURL ? `<img src="${h(t.imageURL)}" alt="" style="width:40px;height:40px;border-radius:50%;object-fit:cover">` : "🎟️"}</div>
-      <div class="who"><b>${h(t.title)} ${st}</b><span>${h(t.venueName || "")} · ${h(dtWhenText(dtMs(t.startsAt)))} · $${(Number(t.price || 0) / 100).toFixed(2)} for ${Number(t.size || 2)} · ${Number(t.sold || 0)} sold, ${Number(t.held || 0)} pending of ${Number(t.quantity || 0)}</span></div>
-      <div class="acts">${acts}</div></div>`;
-  }).join("") : `<div class="empty">${DT.filter === "live" ? "No upcoming tickets. Post one above." : "No tickets yet."}</div>`;
+  const list = DT.tickets.filter(t => dtMs(t.startsAt) > now && t.status !== "ended").sort((a, b) => dtMs(a.startsAt) - dtMs(b.startsAt));
+  $("sec-oldtickets").hidden = !list.length;
+  $("dt-tickets").innerHTML = list.map(t => `<div class="item"><div class="who"><b>${h(t.title)}</b><span>${h(t.venueName || "")} · ${h(dtWhenText(dtMs(t.startsAt)))} · ${usd(t.price)} for ${Number(t.size || 2)} · ${Number(t.sold || 0)} booked</span></div>
+    <div class="acts"><button class="btn sm teal" onclick="dtRepost(${j(t.id)})">Repost as M&amp;G</button><button class="btn sm red" onclick="dtTicketAct('end',${j(t.id)})">Stop selling</button></div></div>`).join("");
 }
+function dtRepost(id) {
+  const t = DT.tickets.find(x => x.id === id); if (!t) return;
+  dtResetForm(); DT.fromTicket = id;
+  $("dt-title").value = t.title || ""; $("dt-note").value = t.note || ""; dtCat(t.category === "Other" ? "Other" : t.category || "Other");
+  $("dt-vq").value = $("dt-vname").value = t.venueName || "";
+  $("dt-price").value = Math.round(Number(t.price || 0) / Number(t.size || 2) / 100) || "";
+  $("dt-qty").value = Math.max(1, (Number(t.quantity || 1) - Number(t.sold || 0)) * Number(t.size || 2));
+  const d = new Date(dtMs(t.startsAt)); $("dt-when").value = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  DT.items = (t.items || []).slice(0, 10); DT.picUrl = t.imageURL || ""; DT.keepImage = t.imageURL || ""; $("dt-pic-x").hidden = !DT.picUrl; dtItems();
+  $("dt-status").innerHTML = "Price per person is the old price ÷ group size. <b>Add the street address and phone</b>, check it, then Post.";
+  go("dates", "sec-newticket");
+}
+async function dtTicketAct(act, id) {
+  const t = DT.tickets.find(x => x.id === id) || {};
+  if (act === "end") {
+    if (!await dialog({ title: "Stop selling “" + (t.title || "") + "”?", body: "Bookings already made still happen. Nobody new can book it.", ok: "Stop selling", danger: true })) return;
+    await safely(() => dtCall("updateTicket", { id, data: { status: "ended" } }), "Stopped selling " + (t.title || id), "Couldn't update");
+  }
+}
+
+/* the M&G list */
 let mgF = "todo";
 function mgFilter(f) { mgF = f; document.querySelectorAll("#mg-f button").forEach(b => b.classList.toggle("on", b.dataset.f === f)); dtRenderMeetups(); }
-const MG_ST = { draft: ["", "Deposit not paid"], pending: ["warn", "Needs review"], changes: ["warn", "Waiting on host changes"], live: ["on", "On sale"], review: ["bad", "Nobody checked in · decide"], completed: ["", "Done"], canceled: ["bad", "Canceled"], rejected: ["bad", "Rejected"], expired: ["", "Expired"] };
+const MG_ST = { draft: ["", "Deposit not paid"], pending: ["warn", "Needs review"], changes: ["warn", "Waiting on host changes"], live: ["on", "On sale"], review: ["bad", "Decide: pay or refund"], paying: ["on", "Paying host soon"], completed: ["", "Done"], canceled: ["bad", "Canceled"], rejected: ["bad", "Rejected"], expired: ["", "Expired"] };
+const mgTodo = m => ["pending", "review"].includes(m.status);
 function dtRenderMeetups() {
   let list = (DT.meetups || []).slice();
-  if (mgF === "todo") list = list.filter(m => ["pending", "review"].includes(m.status));
+  if (mgF === "todo") list = list.filter(mgTodo);
   if (mgF === "live") list = list.filter(m => m.status === "live");
-  list.sort((a, b) => mgF === "todo" ? dtMs(a.startsAt) - dtMs(b.startsAt) : dtMs(b.startsAt) - dtMs(a.startsAt));
-  const nTodo = (DT.meetups || []).filter(m => ["pending", "review"].includes(m.status)).length;
-  const tb = document.querySelector('#mg-f button[data-f="todo"]'); if (tb) tb.textContent = "To review" + (nTodo ? " (" + nTodo + ")" : "");
+  if (mgF === "paying") list = list.filter(m => m.status === "paying");
+  list.sort((a, b) => mgF === "all" ? dtMs(b.startsAt) - dtMs(a.startsAt) : dtMs(a.startsAt) - dtMs(b.startsAt));
+  const nTodo = (DT.meetups || []).filter(mgTodo).length;
+  const tb = document.querySelector('#mg-f button[data-f="todo"]'); if (tb) tb.textContent = "Needs you" + (nTodo ? " (" + nTodo + ")" : "");
   $("dt-meetups").innerHTML = list.length ? list.map(m => {
     const st = MG_ST[m.status] || ["", m.status];
-    const pill = `<span class="pill ${st[0]}">${m.hidden && m.status === "live" ? "Paused" : st[1]}</span>`;
+    const pill = `<span class="pill ${st[0]}">${m.hidden && m.status === "live" ? "Paused" : st[1]}</span>${m.official ? ` <span class="pill on">Whisper+Me</span>` : ""}${m.reported ? ` <span class="pill bad">${m.reported} report${m.reported > 1 ? "s" : ""}</span>` : ""}`;
     const acts = [];
     if (["pending", "changes"].includes(m.status)) acts.push(`<button class="btn sm teal" onclick="mgAct('approveMeetup',${j(m.id)})">✅ Approve</button>`, `<button class="btn sm gold" onclick="mgAct('requestMeetupChanges',${j(m.id)})">✏️ Ask for changes</button>`, `<button class="btn sm red" onclick="mgAct('rejectMeetup',${j(m.id)})">Reject</button>`);
-    if (m.status === "live") acts.push(m.hidden ? `<button class="btn sm teal" onclick="mgAct('showMeetup',${j(m.id)})">▶ Resume</button>` : `<button class="btn sm gold" onclick="mgAct('hideMeetup',${j(m.id)})">⏸ Pause</button>`, `<button class="btn sm gold" onclick="mgAct('requestMeetupChanges',${j(m.id)})">✏️ Ask for changes</button>`, `<button class="btn sm" onclick="dtCopyMeetLink(${j(m.id)})">🔗 Link</button>`, `<button class="btn sm red" onclick="mgAct('cancelMeetup',${j(m.id)})">Cancel & refund</button>`);
-    if (m.status === "review") acts.push(`<button class="btn sm teal" onclick="mgAct('payMeetupHost',${j(m.id)})">It happened: pay host</button>`, `<button class="btn sm red" onclick="mgAct('noShow',${j(m.id)})">Host no-show: refund buyers</button>`);
-    return `<div class="item" style="flex-wrap:wrap">${ava({ name: m.hostName, photo: m.hostPhoto })}<div class="who"><b>${h(m.title)} ${pill}</b><span>by ${h(m.hostName)} · ${h(m.venueName)}, ${h(m.city || "")} · ${h(dtWhenText(dtMs(m.startsAt)))} · $${(m.price / 100).toFixed(2)} a spot · ${Number(m.sold || 0)} of ${Number(m.spots || 0)} sold${m.checkedIn ? " · " + m.checkedIn + " checked in" : ""} · deposit ${h((m.hostDeposit || {}).status || "–")}</span>${m.changesNote ? `<span style="color:var(--gold)">Your note: ${h(m.changesNote)}</span>` : ""}</div>
+    if (m.status === "live") {
+      acts.push(m.hidden ? `<button class="btn sm teal" onclick="mgAct('showMeetup',${j(m.id)})">▶ Resume</button>` : `<button class="btn sm gold" onclick="mgAct('hideMeetup',${j(m.id)})">⏸ Pause</button>`);
+      acts.push(m.official ? `<button class="btn sm" onclick="dtEditMeetup(${j(m.id)})">✏️ Edit</button>` : `<button class="btn sm gold" onclick="mgAct('requestMeetupChanges',${j(m.id)})">✏️ Ask for changes</button>`);
+      acts.push(`<button class="btn sm" onclick="dtCopyMeetLink(${j(m.id)})">🔗 Link</button>`, `<button class="btn sm red" onclick="mgAct('cancelMeetup',${j(m.id)})">Cancel &amp; refund</button>`);
+    }
+    if (m.status === "review") acts.push(`<button class="btn sm teal" onclick="mgAct('payMeetupHost',${j(m.id)})">It happened: pay host</button>`, `<button class="btn sm red" onclick="mgAct('noShow',${j(m.id)})">Refund buyers</button>`);
+    if (m.status === "paying") acts.push(`<button class="btn sm teal" onclick="mgAct('payMeetupHost',${j(m.id)})">Pay now</button>`, `<button class="btn sm gold" onclick="mgAct('holdMeetupPayout',${j(m.id)})">✋ Hold</button>`);
+    const why = m.status === "review" ? (m.lastReport ? `Buyer report: ${h(m.lastReport)}` : "Nobody was checked in.") : m.status === "paying" ? `Host gets paid ${h(dtWhenText(dtMs(m.payoutAt)))}` : "";
+    return `<div class="item" style="flex-wrap:wrap">${ava({ name: m.hostName, photo: m.hostPhoto })}<div class="who"><b>${h(m.title)} ${pill}</b><span>${m.official ? "Whisper+Me" : "by " + h(m.hostName)} · ${h(m.venueName)}, ${h(m.city || "")} · ${h(dtWhenText(dtMs(m.startsAt)))} · ${usd(m.price)} a spot · ${Number(m.sold || 0)} of ${Number(m.spots || 0)} sold${m.checkedIn ? " · " + m.checkedIn + " checked in" : ""}${m.official ? "" : " · deposit " + h((m.hostDeposit || {}).status || "–")}</span>${why ? `<span style="color:var(--gold)">${why}</span>` : ""}${m.changesNote ? `<span style="color:var(--gold)">Your note: ${h(m.changesNote)}</span>` : ""}</div>
       <div class="acts"><button class="btn sm" onclick="mgDetails(${j(m.id)})">Details</button>${acts.join("")}</div></div>`;
-  }).join("") : `<div class="empty">${mgF === "todo" ? "Nothing to review. 🎉" : "No M&Gs here yet."}</div>`;
+  }).join("") : `<div class="empty">${mgF === "todo" ? "Nothing needs you. 🎉" : "No M&Gs here yet."}</div>`;
 }
 async function mgDetails(id) {
   const m = (DT.meetups || []).find(x => x.id === id) || {};
-  let p = {};
+  let p = {}, g = { guests: [], reports: [] };
   try { const d = await firebase.firestore().doc(`meetups/${id}/private/info`).get(); p = d.exists ? d.data() : {}; } catch (e) { p = { error: e.message }; }
+  if (m.sold || m.reported) { try { g = await dtCall("meetupGuests", { id }); } catch (e) { g.error = e.message; } }
   const v = p.venue || {}, c = p.contact || {};
   const tel = x => x ? `<a href="tel:${h(String(x).replace(/[^0-9+]/g, ""))}">${h(x)}</a>` : "–";
-  openModal(`<h3>${h(m.title)}</h3><p class="help" style="margin:0 0 10px">by ${h(m.hostName)} · ${h(dtWhenText(dtMs(m.startsAt)))} · ${(MG_ST[m.status] || ["", m.status])[1]}</p>
+  const dayOf = Math.abs(dtMs(m.startsAt) - Date.now()) < 12 * 3600000 && m.status === "live";
+  openModal(`<h3>${h(m.title)}</h3><p class="help" style="margin:0 0 10px">${m.official ? "Whisper+Me M&amp;G" : "by " + h(m.hostName)} · ${h(dtWhenText(dtMs(m.startsAt)))} · ${(MG_ST[m.status] || ["", m.status])[1]}</p>
     ${m.imageURL ? `<img src="${h(m.imageURL)}" alt="" style="width:100%;max-height:200px;object-fit:cover;border-radius:12px;margin-bottom:10px">` : ""}
     <table>
       <tr><td style="color:var(--muted)">About</td><td>${h(m.about || "–")}</td></tr>
       <tr><td style="color:var(--muted)">Included</td><td>${h((m.items || []).join(", ") || "–")}</td></tr>
-      <tr><td style="color:var(--muted)">Price · spots</td><td>$${(m.price / 100).toFixed(2)} · ${m.spots} (${m.sold || 0} sold)</td></tr>
-      <tr><td style="color:var(--muted)">Place</td><td><b>${h(v.name || m.venueName)}</b><br>${h(v.address || "")}, ${h(v.city || m.city || "")}<br>📞 ${tel(v.phone)}<br><a href="https://maps.google.com/?q=${encodeURIComponent((v.name || "") + ", " + (v.address || "") + ", " + (v.city || ""))}" target="_blank" rel="noopener">Open in Maps ↗</a> · ${v.source === "osm" ? "picked from the venue search" : "typed in by the host"}</td></tr>
-      <tr><td style="color:var(--muted)">Host contact</td><td>✉️ ${c.email ? `<a href="mailto:${h(c.email)}">${h(c.email)}</a>` : "–"}<br>📞 ${tel(c.phone)}</td></tr>
-      <tr><td style="color:var(--muted)">Host deposit</td><td>${h((m.hostDeposit || {}).status || "–")} · $${(((m.hostDeposit || {}).amount || 0) / 100).toFixed(2)}</td></tr>
+      <tr><td style="color:var(--muted)">Price · spots</td><td>${usd(m.price)} · ${m.spots} (${m.sold || 0} sold${m.checkedIn ? ", " + m.checkedIn + " checked in" : ""})</td></tr>
+      <tr><td style="color:var(--muted)">Place</td><td><b>${h(v.name || m.venueName)}</b><br>${h(v.address || "")}, ${h(v.city || m.city || "")}<br>📞 ${tel(v.phone)}<br><a href="https://maps.google.com/?q=${encodeURIComponent((v.name || "") + ", " + (v.address || "") + ", " + (v.city || ""))}" target="_blank" rel="noopener">Open in Maps ↗</a> · ${v.source === "osm" ? "picked from the venue search" : "typed in"}</td></tr>
+      ${m.official ? "" : `<tr><td style="color:var(--muted)">Host contact</td><td>✉️ ${c.email ? `<a href="mailto:${h(c.email)}">${h(c.email)}</a>` : "–"}<br>📞 ${tel(c.phone)}</td></tr>
+      <tr><td style="color:var(--muted)">Host deposit</td><td>${h((m.hostDeposit || {}).status || "–")} · ${usd((m.hostDeposit || {}).amount)}</td></tr>`}
+      ${m.status === "paying" ? `<tr><td style="color:var(--muted)">Payout</td><td>${h(dtWhenText(dtMs(m.payoutAt)))}</td></tr>` : ""}
     </table>${p.error ? `<p class="help">${h(p.error)}</p>` : ""}
+    ${(g.reports || []).length ? `<h4 style="margin:14px 0 6px;color:var(--red)">Reports</h4>${g.reports.map(r => `<p class="help" style="margin:0 0 6px"><b>${h(r.reason)}</b>${r.detail ? ": " + h(r.detail) : ""}</p>`).join("")}` : ""}
+    ${(g.guests || []).length ? `<h4 style="margin:14px 0 6px">Guest list (${g.guests.length})</h4><div class="list">${g.guests.map(x => `<div class="item" style="padding:6px 10px"><div class="who"><b>${x.here ? "✅ " : ""}${h(x.name)}</b><span>${h(x.code)}${x.status === "refunded" ? " · refunded" : ""}${x.reported ? " · reported a problem" : ""}</span></div></div>`).join("")}</div>` : ""}
+    ${g.error ? `<p class="help">${h(g.error)}</p>` : ""}
+    ${dayOf ? `<h4 style="margin:14px 0 6px">Check in a guest</h4><div class="row"><input class="in grow" id="mg-ci" placeholder="MG-XXXXX" style="text-transform:uppercase"><button class="btn main" onclick="mgCheckIn(${j(id)})">Check in</button></div><p class="help" id="mg-ci-out" style="margin:6px 0 0"></p>` : ""}
     <div class="acts"><button class="btn" onclick="closeModal()">Close</button></div>`);
+}
+async function mgCheckIn(id) {
+  let code = ($("mg-ci").value || "").trim().toUpperCase(); if (!code) return;
+  if (code.indexOf("MG-") !== 0) code = "MG-" + code;
+  try { const r = (await firebase.functions().httpsCallable("checkInGuest")({ meetupId: id, code })).data; $("mg-ci-out").textContent = (r.already ? "Already checked in: " : "✅ Checked in: ") + r.guest; $("mg-ci").value = ""; }
+  catch (e) { $("mg-ci-out").textContent = e.message; }
 }
 async function mgAct(action, id) {
   const m = (DT.meetups || []).find(x => x.id === id) || {};
-  let extra = {}, msg = "";
+  let extra = {};
   if (action === "approveMeetup") { if (!await dialog({ title: "Approve “" + (m.title || "") + "”?", body: "It goes on sale for everyone right away and the host is notified.", ok: "Approve" })) return; }
   else if (action === "requestMeetupChanges" || action === "rejectMeetup") {
     const note = await dialog({ title: action === "rejectMeetup" ? "Reject “" + (m.title || "") + "”?" : "What should the host change?", body: action === "rejectMeetup" ? "Tell the host why. Their deposit is returned, and anyone who bought is refunded." : "The host sees this note and can edit their M&G. It's hidden from buyers until you approve it again.", input: { placeholder: action === "rejectMeetup" ? "Reason" : "e.g. Add the venue's real phone number" }, ok: action === "rejectMeetup" ? "Reject" : "Send to host", danger: action === "rejectMeetup" });
@@ -1722,9 +1706,13 @@ async function mgAct(action, id) {
     if (action === "requestMeetupChanges" && !String(note).trim()) { toast("Write what needs to change", true); return; }
     extra.reason = String(note).trim();
   }
-  else if (action === "cancelMeetup") { if (!await dialog({ title: "Cancel “" + (m.title || "") + "”?", body: "Every buyer (" + (m.sold || 0) + ") is refunded in full and the host's deposit is returned.", ok: "Cancel & refund", danger: true })) return; extra.reason = "Canceled by Whisper+Me."; }
-  else if (action === "noShow") { if (!await dialog({ title: "Host didn't show up?", body: "Every buyer (" + (m.sold || 0) + ") is refunded, the host's deposit is kept and they get a strike.", ok: "Refund buyers", danger: true })) return; action = "cancelMeetup"; extra = { reason: "The host didn't show up.", data: { keepDeposit: true } }; }
-  else if (action === "payMeetupHost") { if (!await dialog({ title: "Pay the host?", body: "Only if you confirmed the M&G happened. The host gets their share of " + (m.sold || 0) + " spot(s) and their deposit back.", ok: "Pay host" })) return; }
+  else if (action === "cancelMeetup") { if (!await dialog({ title: "Cancel “" + (m.title || "") + "”?", body: "Every buyer (" + (m.sold || 0) + ") is refunded in full" + (m.official ? "." : " and the host's deposit is returned."), ok: "Cancel & refund", danger: true })) return; extra.reason = "Canceled by Whisper+Me."; }
+  else if (action === "noShow") { if (!await dialog({ title: "Refund the buyers?", body: "Every buyer (" + (m.sold || 0) + ") is refunded. Because the M&G didn't happen as promised, the host's deposit is kept and they get a strike.", ok: "Refund buyers", danger: true })) return; action = "cancelMeetup"; extra = { reason: "It didn't happen as promised.", data: { keepDeposit: true } }; }
+  else if (action === "payMeetupHost") { if (!await dialog({ title: m.status === "paying" ? "Pay the host now?" : "Pay the host?", body: (m.status === "paying" ? "Skips the rest of the waiting time. " : "Only if you confirmed the M&G happened. ") + "The host gets their share of " + (m.sold || 0) + " spot(s) and their deposit back.", ok: "Pay host" })) return; }
+  else if (action === "holdMeetupPayout") {
+    const note = await dialog({ title: "Hold the host's payout?", body: "It moves to Needs you, where you can pay the host or refund the buyers.", input: { placeholder: "Why? (for your notes)" }, ok: "Hold" });
+    if (note === null || note === undefined) return; extra.reason = String(note).trim();
+  }
   await safely(() => dtCall(action, Object.assign({ id }, extra)), null, "Couldn't update").then(r => { if (r) { toast(r.message || "Done"); logAct(`${action} · ${m.title || id}`); } });
 }
 function dtCopyMeetLink(id) {
@@ -1732,34 +1720,13 @@ function dtCopyMeetLink(id) {
   if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(() => toast("Share link copied: " + url), () => dialog({ title: "Share link", input: { value: url }, ok: "Done" }));
   else dialog({ title: "Share link", input: { value: url }, ok: "Done" });
 }
-function dtCopyLink(id) {
-  const url = "https://whisperplusme.com/d/" + encodeURIComponent(id);
-  const done = () => toast("Share link copied: " + url);
-  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done, () => dialog({ title: "Share link", input: { value: url }, ok: "Done" }));
-  else dialog({ title: "Share link", input: { value: url }, ok: "Done" });
-}
-async function dtTicketAct(act, id) {
-  const t = DT.tickets.find(x => x.id === id) || {};
-  if (act === "end") {
-    if (!await dialog({ title: "Stop selling “" + (t.title || "") + "”?", body: "Bookings already made still happen. Nobody new can book it.", ok: "Stop selling", danger: true })) return;
-    await safely(() => dtCall("updateTicket", { id, data: { status: "ended" } }), "Stopped selling " + (t.title || id), "Couldn't update"); return;
-  }
-  if (act === "sell") { await safely(() => dtCall("updateTicket", { id, data: { status: "live" } }), "Selling again: " + (t.title || id), "Couldn't update"); return; }
-  await safely(() => dtCall(act, { id }), (act === "hideTicket" ? "Paused " : "Resumed ") + (t.title || id), "Couldn't update");
-}
-async function dtQty(id) {
-  const t = DT.tickets.find(x => x.id === id) || {};
-  const v = await dialog({ title: "How many can be sold in total?", body: (t.sold || 0) + " sold and " + (t.held || 0) + " pending so far.", input: { type: "number", value: t.quantity || 1 }, ok: "Save" });
-  if (v === null || v === undefined) return;
-  await safely(() => dtCall("updateTicket", { id, data: { quantity: Number(v) } }), "Updated amount for " + (t.title || id), "Couldn't update");
-}
 async function dtSaveReward() {
-  const n = Math.round(Number($("dt-reward").value)), hf = Math.round(Number($("dt-hostfee").value));
-  if (!(n >= 0 && n <= 20)) { toast("Use a number from 0 to 20", true); return; }
-  if (!(hf >= 0 && hf <= 50)) { toast("Meet & greet fee: 0 to 50%", true); return; }
-  const DEF = { hostFee: 10, fee: 10, depositCents: 500, splitWindowHours: 24, minAge: 21, strikesForSuspension: 2, suspensionDays: 3, lateCancelHours: 48, rescheduleCutoffHours: 48, requireIdVerify: false, openRequests: true, autoApproveVenues: false };
-  const data = Object.assign({}, DEF, DT.settings, { stoodUpRewardCoins: n, hostFee: hf });
-  await safely(() => dtCall("saveSettings", { data }), `Saved: ${n} coin${n === 1 ? "" : "s"} stood-up reward, ${hf}% meet & greet fee`, "Couldn't save");
+  const hf = Math.round(Number($("dt-hostfee").value)), days = Math.round(Number($("dt-paydays").value));
+  if (!(hf >= 0 && hf <= 50)) { toast("Site fee: 0 to 50%", true); return; }
+  if (!(days >= 1 && days <= 10)) { toast("Pay hosts after 1 to 10 days", true); return; }
+  const DEF = { hostFee: 10, fee: 10, depositCents: 500, splitWindowHours: 24, minAge: 21, stoodUpRewardCoins: 1, strikesForSuspension: 2, suspensionDays: 3, lateCancelHours: 48, rescheduleCutoffHours: 48, requireIdVerify: false, openRequests: true, autoApproveVenues: false };
+  const data = Object.assign({}, DEF, DT.settings, { hostFee: hf, hostPayoutHours: days * 24 });
+  await safely(() => dtCall("saveSettings", { data }), `Saved: ${hf}% site fee, hosts paid ${days} day${days === 1 ? "" : "s"} after`, "Couldn't save");
 }
 
 /* ───────── activity log ───────── */
