@@ -649,7 +649,7 @@ function deviceContent(type, i){
 
   if(type === "phone"){
     var pList = Object.entries(window.allUsers||{}).filter(function(e){
-      return e[0] !== (currentUser ? currentUser.uid : "");
+      return e[0] !== (currentUser ? currentUser.uid : "") && !(window.__myBlocks||{})[e[0]];
     });
     var pIdx = window.__phoneIdx || 0;
     if(pIdx >= pList.length) pIdx = 0;
@@ -1181,7 +1181,7 @@ window.__phoneIdx = 0;
 
 window.phoneNav = function(dir){
   var pList = Object.entries(window.allUsers||{}).filter(function(e){
-    return e[0] !== (currentUser ? currentUser.uid : "");
+    return e[0] !== (currentUser ? currentUser.uid : "") && !(window.__myBlocks||{})[e[0]];
   });
   if(!pList.length) return;
   window.__phoneIdx = ((window.__phoneIdx||0) + dir + pList.length) % pList.length;
@@ -2115,7 +2115,8 @@ window.endCall = async function(callId){
   window.visualTimerStarted = false;
   window.callSecondsRemaining = 180;
 
-  try{ await firebase.database().ref("calls/" + callId).update({ status:"ended", endedAt:Date.now() }); }catch(e){}
+  Ring.stop();
+  try{ await firebase.database().ref("calls/" + callId).update({ status:"ended", endedAt:Date.now(), endedBy:(firebase.auth().currentUser || {}).uid || null }); }catch(e){}
 
   /* completeCallPayout is a Cloud Function that:
      - verifies call duration
@@ -2210,13 +2211,67 @@ window.startCallFromBtn = async function(btn){
 ═══════════════════════════════════════════ */
 var __incomingCallListenerUid = null;
 
+/* ═══════════════════════════════════════════
+   RINGTONE (made with Web Audio, no sound file needed)
+   Plays a phone ring + vibration while a call is ringing in the open app.
+═══════════════════════════════════════════ */
+var Ring = (function(){
+  var ctx = null, timer = null, stopAt = 0;
+  function audio(){
+    try{ if(!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)(); if(ctx.state === "suspended") ctx.resume(); }catch(e){ ctx = null; }
+    return ctx;
+  }
+  /* Browsers only allow sound after the person has tapped the page once. */
+  ["pointerdown","keydown","touchstart"].forEach(function(ev){ document.addEventListener(ev, function(){ audio(); }, { once:true, passive:true }); });
+  function burst(){
+    var c = audio(); if(!c) return;
+    var t = c.currentTime;
+    [[0, 0.4], [0.6, 1.0]].forEach(function(seg){       /* two short rings, like a phone */
+      [440, 480].forEach(function(f){
+        var o = c.createOscillator(), g = c.createGain();
+        o.frequency.value = f; o.type = "sine";
+        g.gain.setValueAtTime(0, t + seg[0]);
+        g.gain.linearRampToValueAtTime(0.18, t + seg[0] + 0.02);
+        g.gain.setValueAtTime(0.18, t + seg[1] - 0.03);
+        g.gain.linearRampToValueAtTime(0, t + seg[1]);
+        o.connect(g); g.connect(c.destination); o.start(t + seg[0]); o.stop(t + seg[1] + 0.05);
+      });
+    });
+    try{ if(navigator.vibrate) navigator.vibrate([400, 200, 400]); }catch(e){}
+  }
+  return {
+    start: function(maxMs){
+      if(timer) return;
+      stopAt = Date.now() + (maxMs || 45000);
+      burst();
+      timer = setInterval(function(){ if(Date.now() > stopAt) return Ring.stop(); burst(); }, 3000);
+    },
+    stop: function(){ clearInterval(timer); timer = null; try{ if(navigator.vibrate) navigator.vibrate(0); }catch(e){} },
+    test: function(){ burst(); }
+  };
+})();
+window.Ring = Ring;
+
 function handleIncomingCallSnap(snap){
   var call   = snap.val();
   var callId = snap.key;
   if(!call) return;
 
-  /* Respect calls disabled toggle */
-  if(window.me && window.me.callsEnabled === false){
+  /* The call stopped ringing (answered, declined, caller hung up, timed out). */
+  if(call.status !== "ringing" && window.__activeCallId === callId){
+    Ring.stop();
+    if(call.status === "ended" && !call.answeredAt && !agoraJoined && !agoraJoining){
+      window.__activeCallId = null;
+      (window.__endedCalls = window.__endedCalls || {})[callId] = true;
+      clearPersistedCall();
+      clearPhoneCallUI();
+      if(call.endedBy !== (firebase.auth().currentUser || {}).uid){ showToast("📞 Missed call from " + (call.callerName || "someone"), "warn", 6000); }
+    }
+    return;
+  }
+
+  /* Respect calls disabled toggle, and people you blocked */
+  if((window.me && window.me.callsEnabled === false) || (call.status === "ringing" && (window.__myBlocks||{})[call.from])){
     firebase.database().ref("calls/" + snap.key)
       .update({ status:"ended", endedAt:Date.now(), endReason:"unavailable" });
     return;
@@ -2234,13 +2289,15 @@ function handleIncomingCallSnap(snap){
 
   window.__activeCallId = callId;
 
-  /* Browser notification for background tabs */
-  if(typeof Notification !== "undefined" && Notification.permission === "granted"){
+  /* Ring in the open app. A tab in the background also gets the push alert
+     (same tag as the push, so they never show twice). */
+  Ring.start(Math.max(5000, 45000 - (Date.now() - (call.createdAt || Date.now()))));
+  if(document.hidden && typeof Notification !== "undefined" && Notification.permission === "granted" && !window.__fcmReady){
     try{
-      new Notification("📞 Incoming call!", {
-        body: (call.callerName || "Someone") + " is calling you on Whisper+Me",
-        icon: "/favicon.ico",
-        tag:  "incoming-call-" + callId,
+      new Notification("📞 " + (call.callerName || "Someone") + " is calling", {
+        body: "Tap to answer on Whisper+Me",
+        icon: "/icon-192.png",
+        tag:  "call-" + callId,
         requireInteraction: true
       });
     }catch(e){}
@@ -2259,6 +2316,7 @@ function handleIncomingCallSnap(snap){
     if(!acc || !user) return;
 
     acc.onclick = async function(){
+      Ring.stop();
       acc.disabled = true;
       try {
         var tok = await user.getIdToken(true);
@@ -2279,7 +2337,10 @@ function handleIncomingCallSnap(snap){
       await joinVoiceChannel(callId, callerUser);
     };
 
-    if(rej) rej.onclick = async function(){ await window.endCall(callId); };
+    if(rej) rej.onclick = async function(){ Ring.stop(); await window.endCall(callId); };
+    /* Opened by tapping "Answer" on the phone's call alert */
+    var auto = new URLSearchParams(window.__initialSearch || "").get("answer");
+    if(auto && auto === callId && !window.__autoAnswered){ window.__autoAnswered = true; setTimeout(function(){ if(!acc.disabled) acc.click(); }, 400); }
   }, 80);
 }
 
@@ -2302,6 +2363,26 @@ function attachIncomingCallListener(uid){
     Notification.requestPermission().catch(function(){});
   }
 }
+
+/* Answer / Decline tapped on the phone's call alert while the app is open */
+if(navigator.serviceWorker){
+  navigator.serviceWorker.addEventListener("message", function(e){
+    var d = e.data || {};
+    if(!d.callId || d.callId !== window.__activeCallId) return;
+    if(d.type === "decline_call"){ window.endCall(d.callId); }
+    if(d.type === "answer_call"){ var b = document.getElementById("phone-accept-btn"); if(b && !b.disabled) b.click(); }
+  });
+}
+
+/* People this member blocked (Profile card → Block): no calls, hidden from lists */
+window.__myBlocks = {};
+firebase.auth().onAuthStateChanged(function(user){
+  if(window.__blocksRef){ try{ window.__blocksRef.off(); }catch(e){} window.__blocksRef = null; }
+  window.__myBlocks = {};
+  if(!user || user.isAnonymous) return;
+  window.__blocksRef = firebase.database().ref("blocks/" + user.uid);
+  window.__blocksRef.on("value", function(s){ window.__myBlocks = s.val() || {}; }, function(){});
+});
 
 /* Attach as soon as auth is ready — works even after refresh */
 firebase.auth().onAuthStateChanged(function(user){
@@ -2400,7 +2481,7 @@ window.renderProfileCards = function(){
 
   var users  = Object.entries(window.allUsers||{});
   var myUid  = currentUser.uid;
-  var others = users.filter(function(e){ return e[0] !== myUid; });
+  var others = users.filter(function(e){ return e[0] !== myUid && !(window.__myBlocks||{})[e[0]]; });
 
   /* If allUsers not yet loaded from Firebase, wait and retry */
   if(!window.__usersListenerAttached || (users.length === 0 && !window.__allUsersLoaded)){

@@ -12,7 +12,19 @@ Branch `social-upgrade`. This rebuild turns the front door, the profile, and the
 | **Admin** (`/admin.html`) | One long page of tables, browser pop-ups | MergeChat-style layout: top emoji tabs (🏁 Start here · 📡 Live now · 👥 People · 💰 Money · 🎬 Landing page · 📢 Announce · 💬 Rooms · 🛡️ Safety · ⭐ M&G · 🧾 Activity), "What do you want to do?" tiles, a "Needs your attention" list, "At a glance" numbers, and a "How the site fits together" map. Simple/Full layout switch. Every confirmation is an in-page dialog. The activity log is saved, so it survives a refresh. |
 | **Landing page manager** (new, Admin → 🎬) | none | Upload videos or pictures (or paste links), reorder, remove, shuffle, seconds per picture, darkness slider, sound-button switch, headline and subline, phone/computer preview, then **🚀 Publish**. |
 
-## 💞 Connect Me, held deposits, credit instead of refunds (latest)
+## 📞 Calls ring the phone even when the app is closed (latest)
+
+- **Server rings, not the browser.** `callRing` (nights) fires the moment a call is created and pushes to **every** device the member turned alerts on for, re-ringing 4× every 9 s while the call is still ringing. `callStopRing` takes the alert down when the call is answered/declined/ended and leaves a **"Missed call from …"** alert if they never picked up.
+- **Old function retired.** `notifyIncomingCall` (default codebase) is gone — delete it once with
+  `firebase functions:delete notifyIncomingCall --region us-central1 --force` so phones don't get two alerts.
+- **Every device counts.** `fcmTokens/{uid}/devices/*` keeps a token per phone/laptop; dead tokens are removed automatically.
+- **Lock-screen alert:** Answer / Decline buttons, long vibration, stays up until handled. Tapping Answer with the app closed opens it and picks up.
+- **In-app ringtone** (Web Audio) — the old `ring.mp3` was a broken file.
+- **Profile → Calls → 📞 Test my ringer:** sends a real test call in 8 s so members can lock the phone and check.
+- **iPhone:** web alerts only work after **Share → Add to Home Screen** (iOS 16.4+); the Calls tab now says so.
+- **Block & Report** on every member card: blocked people can't ring you and disappear from your lists; reports land in admin → 🛡️ Safety → 🚩 Member reports (Ban / Dismiss).
+
+## 💞 Connect Me, held deposits, credit instead of refunds
 
 **Host deposits are never sent back automatically.** A host pays it once (one spot's price, or $5 for a 1-spot M&G). It stays on their account and covers all their future M&Gs; a bigger M&G only charges the difference. Part of it is kept only on a late cancel or no-show. If someone stops hosting, Admin can refund what's left on request (that's the only time a refund fee happens).
 
@@ -30,7 +42,7 @@ Branch `social-upgrade`. This rebuild turns the front door, the profile, and the
 - **Who's going** on each package shows every order, who accepted, and who checked in (and how).
 - Packages aren't refundable once bought. If you cancel one, buyers get credit.
 
-## 💸 Purchase to payout (latest)
+## 💸 Purchase to payout
 
 **M&G stands for Meet & Greet**, and the M&G screen, "How M&G works" box and host pitch now say so.
 
@@ -52,7 +64,7 @@ Branch `social-upgrade`. This rebuild turns the front door, the profile, and the
 4. 3 days after the start: the host's 90% goes to their earnings and their deposit is refunded.
 5. At $50+, **Pay now** (or the Monday auto-payout) sends it to their bank.
 
-## ⭐ M&G: one simple flow (latest)
+## ⭐ M&G: one simple flow
 
 Everything on the M&G screen is now an **M&G sold per person**. The old "for 2 / group of 4" venue tickets, split payments, card holds, invites, the $5 account deposit, strikes for buyers and reschedules are gone from the screen (bookings already made with them still work and show under "Earlier bookings").
 

@@ -23,6 +23,7 @@
 const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onValueCreated, onValueUpdated } = require("firebase-functions/v2/database");
 const { setGlobalOptions, logger } = require("firebase-functions/v2");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
@@ -117,13 +118,33 @@ function checkCanDate(m, s) {
   }
 }
 
+/* ---------- push notifications: every device a member turned alerts on for ----------
+   fcmTokens/{uid} = { token (latest device), devices: { <key>: { token, updatedAt } } } */
+async function deviceTokens(uid) {
+  const v = (await rtdb.ref(`fcmTokens/${uid}`).once("value")).val() || {};
+  const list = Object.entries(v.devices || {}).map(([k, d]) => ({ key: k, token: d && d.token })).filter(d => d.token);
+  if (v.token && !list.some(d => d.token === v.token)) list.push({ key: null, token: v.token });
+  return list;
+}
+const DEAD_TOKEN = /registration-token-not-registered|invalid-registration-token|requested entity was not found/i;
+/** Sends to every device; forgets devices whose alerts were turned off. Returns how many got it. */
+async function sendToDevices(uid, msg) {
+  let ok = 0;
+  for (const d of await deviceTokens(uid)) {
+    try { await admin.messaging().send({ ...msg, token: d.token }); ok++; }
+    catch (e) {
+      if (DEAD_TOKEN.test(`${e.code || ""} ${e.message || ""}`)) {
+        if (d.key) await rtdb.ref(`fcmTokens/${uid}/devices/${d.key}`).set(null);
+        else await rtdb.ref(`fcmTokens/${uid}/token`).set(null);
+      } else logger.warn("push failed", uid, e.message);
+    }
+  }
+  return ok;
+}
 async function push(uid, title, body, link) {
   try {
-    const token = (await rtdb.ref(`fcmTokens/${uid}/token`).once("value")).val();
-    if (!token) return;
     const url = link || `${APP_URL}/?dates=1`;
-    await admin.messaging().send({
-      token,
+    await sendToDevices(uid, {
       notification: { title, body },
       data: { type: "dates", url },
       webpush: { fcmOptions: { link: url }, notification: { icon: `${APP_URL}/favicon-32.png` } }
@@ -2013,6 +2034,68 @@ async function connectHousekeeping(s) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   CALL ALERTS: ring the member's phone even when the app is closed
+   - A data-only push goes to every device they turned alerts on for.
+     The service worker (public/firebase-messaging-sw.js) shows it with
+     Answer / Decline, a long vibration, and stays up until they act.
+   - It re-rings every 9 seconds (4 times) while the call is still ringing.
+   - When the call stops ringing, the alert is taken down; if they never
+     answered it and didn't decline, they get "Missed call from …".
+   (Replaces notifyIncomingCall in the default functions codebase.)
+═══════════════════════════════════════════════════════════════ */
+const RING_EVERY_MS = 9000, RINGS = 4;
+const sleep = ms => new Promise(r => setTimeout(r, process.env.DATES_TEST ? 0 : ms));
+function callAlert(callId, call, n, extra = {}) {
+  const name = String(call.callerName || "Someone").slice(0, 40);
+  return {
+    data: { type: "incoming_call", callId, from: String(call.from || ""), callerName: name, callerPhoto: String(call.callerPhoto || "").slice(0, 500),
+      price: String(call.price || 1), title: `📞 ${name} is calling`, body: "Tap to answer on Whisper+Me", url: APP_URL, ring: String(n), ...extra },
+    webpush: { headers: { Urgency: "high", TTL: "45" }, fcmOptions: { link: APP_URL } }
+  };
+}
+async function ringFlow(callId, call) {
+  if (!call || call.status !== "ringing" || !call.to) return 0;
+  if (call.from && (await rtdb.ref(`blocks/${call.to}/${call.from}`).once("value")).val()) return 0; // they blocked the caller
+  let sent = 0;
+  for (let n = 0; n < RINGS; n++) {
+    if (n) {
+      await sleep(RING_EVERY_MS);
+      const st = (await rtdb.ref(`calls/${callId}/status`).once("value")).val();
+      if (st !== "ringing") break;
+    }
+    const ok = await sendToDevices(call.to, callAlert(callId, call, n));
+    if (!ok) break; // no device has alerts on
+    sent++;
+  }
+  return sent;
+}
+exports.callRing = onValueCreated({ ref: "/calls/{callId}", region: "us-central1", timeoutSeconds: 60, memory: "256MiB" }, async event => {
+  await ringFlow(event.params.callId, event.data.val());
+});
+async function stopRingFlow(callId, before, after, call) {
+  if (before !== "ringing" || after === "ringing" || !call || !call.to) return null;
+  const missed = after === "ended" && !call.answeredAt && call.endedBy !== call.to && call.endReason !== "unavailable";
+  await sendToDevices(call.to, { data: { type: "call_ended", callId, missed: missed ? "1" : "", callerName: String(call.callerName || "Someone").slice(0, 40), url: APP_URL },
+    webpush: { headers: { Urgency: "high", TTL: "600" } } });
+  return missed;
+}
+exports.callStopRing = onValueUpdated({ ref: "/calls/{callId}/status", region: "us-central1", memory: "256MiB" }, async event => {
+  const id = event.params.callId;
+  const call = (await rtdb.ref(`calls/${id}`).once("value")).val();
+  await stopRingFlow(id, event.data.before.val(), event.data.after.val(), call);
+});
+/** "Test my ringer": waits a few seconds (time to lock the phone), then sends a test call alert to all their devices. */
+exports.testRing = onCall({ timeoutSeconds: 30 }, async req => {
+  const uid = requireUser(req);
+  const n = (await deviceTokens(uid)).length;
+  if (!n) fail("failed-precondition", "Call alerts aren't on for this device yet. Tap Turn on first, then try again.");
+  await sleep(Math.min(15, Math.max(0, Number(req.data?.delay ?? 8))) * 1000);
+  const ok = await sendToDevices(uid, callAlert(`test-${Date.now()}`, { callerName: "Whisper+Me test call", callerPhoto: `${APP_URL}/icon-192.png`, from: "test" }, 0, { test: "1" }));
+  if (!ok) fail("failed-precondition", "We couldn't reach this device. Tap Turn on again to refresh it.");
+  return { devices: ok, message: `Test call sent to ${ok} device${ok === 1 ? "" : "s"}.` };
+});
+
+/* ═══════════════════════════════════════════════════════════════
    PAYOUTS: creators' and hosts' earnings → their bank
    Everything people earn (calls, member rooms, M&Gs) adds up in
    users/{uid}/earnings (dollars). Paying out sends a Stripe transfer to
@@ -2182,5 +2265,5 @@ exports.chatPrune = onSchedule({ schedule: "every 30 minutes", memory: "512MiB" 
 
 // Test hooks (only when running the local test script; never part of a deploy).
 if (process.env.DATES_TEST) {
-  module.exports.__test = { setStripe: s => { _stripe = s; }, handleStripeEvent, housekeeping, settleDate, getSettings, CATEGORIES, landingStats, chatPrune, dateOGPage, meetupOGPage, payAllReady, connectInviteToken: async orderId => ((await coRef(orderId).get()).data()?.seats || []).map(x => x.token) };
+  module.exports.__test = { setStripe: s => { _stripe = s; }, handleStripeEvent, housekeeping, settleDate, getSettings, CATEGORIES, landingStats, chatPrune, dateOGPage, meetupOGPage, payAllReady, ringFlow, stopRingFlow, connectInviteToken: async orderId => ((await coRef(orderId).get()).data()?.seats || []).map(x => x.token) };
 }

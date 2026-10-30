@@ -667,6 +667,43 @@ async function test(name, fn) {
     assert.deepStrictEqual([b4.done, S.sessions.length - n0, doc("credits/romeo").balance, doc("connectOrders/" + b4.orderId).seats.length], [true, 0, 1000, 2]);
   });
 
+  await test("Call alerts: ring every device, re-ring while ringing, stop + missed call, drop dead devices, test ring", async () => {
+    const pushes = require("firebase-admin").__pushes;
+    const fa = require("firebase-admin");
+    rtdb.fcmTokens = { bob: { token: "tok-laptop", devices: { phone: { token: "tok-phone" }, old: { token: "tok-dead" } } } };
+    const realSend = fa.messaging().send;
+    // a token the browser has thrown away
+    const msgMod = fa.messaging;
+    fa.messaging = () => ({ send: async m => { if (m.token === "tok-dead") { const e = new Error("Requested entity was not found."); e.code = "messaging/registration-token-not-registered"; throw e; } pushes.push(m); return "ok"; } });
+    rtdb.calls = { c1: { from: "amy", to: "bob", callerName: "Amy", status: "ringing", createdAt: Date.now() } };
+    const p0 = pushes.length;
+    const rings = await T.ringFlow("c1", rtdb.calls.c1);
+    const sent = pushes.slice(p0);
+    assert.strictEqual(rings, 4, "re-rings 4 times while still ringing");
+    assert.deepStrictEqual([...new Set(sent.map(m => m.token))].sort(), ["tok-laptop", "tok-phone"], "both live devices ring");
+    assert.ok(sent.every(m => !m.notification && m.data.type === "incoming_call" && m.webpush.headers.Urgency === "high"), "data-only, high priority");
+    assert.ok(!rtdb.fcmTokens.bob.devices.old, "dead device forgotten");
+    rtdb.calls.c2 = { from: "amy", to: "bob", callerName: "Amy", status: "ringing", createdAt: Date.now() };
+    const p1 = pushes.length;
+    setTimeout(() => {}, 0);
+    rtdb.calls.c2.status = "ended"; // caller hung up right away
+    assert.strictEqual(await T.ringFlow("c2", { ...rtdb.calls.c2, status: "ringing" }), 1, "stops re-ringing once it's not ringing");
+    const missed = await T.stopRingFlow("c2", "ringing", "ended", rtdb.calls.c2);
+    assert.strictEqual(missed, true);
+    const end = pushes.slice(p1).find(m => m.data.type === "call_ended");
+    assert.deepStrictEqual([end.data.callId, end.data.missed], ["c2", "1"]);
+    rtdb.blocks = { bob: { amy: true } };
+    assert.strictEqual(await T.ringFlow("cb", { from: "amy", to: "bob", status: "ringing" }), 0, "a blocked caller never rings");
+    delete rtdb.blocks;
+    rtdb.calls.c3 = { from: "amy", to: "bob", callerName: "Amy", status: "ended", endedBy: "bob" };
+    assert.strictEqual(await T.stopRingFlow("c3", "ringing", "ended", rtdb.calls.c3), false, "declined isn't missed");
+    assert.strictEqual(await T.stopRingFlow("c4", "ringing", "connecting", { to: "bob", answeredAt: 1 }), false, "answered: just take the alert down");
+    const t = await call("testRing", "bob", { delay: 0 });
+    assert.strictEqual(t.devices, 2);
+    await assert.rejects(call("testRing", "nobody", { delay: 0 }), /aren't on for this device/);
+    fa.messaging = msgMod;
+  });
+
   await test("Landing counter and chat cleanup keep the site fast", async () => {
     const rt = require("firebase-admin").__rtdb;
     rt.presence = { a: { room: "general" }, b: { room: "general" }, c: { room: "x" } };

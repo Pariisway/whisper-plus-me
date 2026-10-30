@@ -285,6 +285,22 @@
         }
       },
       ".read": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'"
+    },
+    "blocks": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid && auth.token.firebase.sign_in_provider !== 'anonymous'",
+        "$other": {
+          ".validate": "newData.isBoolean() || !newData.exists()"
+        }
+      }
+    },
+    "userReports": {
+      ".read": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
+      "$rid": {
+        ".write": "auth != null && ((!data.exists() && newData.child('by').val() === auth.uid && auth.token.firebase.sign_in_provider !== 'anonymous') || auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2')",
+        ".validate": "newData.hasChildren(['by','about','reason','ts']) || !newData.exists()"
+      }
     }
   }
 }

@@ -17,9 +17,11 @@
   function money(n) { return "$" + Number(n || 0).toFixed(2).replace(/\.00$/, ""); }
   function initial(name) { return esc(String(name || "?").trim().charAt(0).toUpperCase() || "?"); }
   function pushState() {
-    if (typeof Notification === "undefined") return "unsupported";
+    if (typeof Notification === "undefined") return isIOS() && !isInstalled() ? "ios-install" : "unsupported";
     return Notification.permission; // granted | denied | default
   }
+  function isIOS() { return /iPhone|iPad|iPod/i.test(navigator.userAgent || "") || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1); }
+  function isInstalled() { return (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true; }
 
   /* ---------- styles ---------- */
   var css = "\
@@ -111,7 +113,7 @@
 .pm-meta span{background:#1a1729;border-radius:999px;padding:6px 12px;font-size:12.5px;color:#d8d2ee}\
 .pm-links{display:flex;justify-content:center;gap:8px;margin:12px 0 0}\
 .pm-links a{width:40px;height:40px;border-radius:50%;background:#1a1729;display:flex;align-items:center;justify-content:center;text-decoration:none;font-size:18px}\
-.pm-actions{display:flex;flex-direction:column;gap:8px;padding:16px 18px 0}\
+.pm-actions{display:flex;flex-direction:column;gap:8px;padding:16px 18px 0}.pm-safety{display:flex;gap:8px;justify-content:center;margin-top:4px}.pm-safety button{background:none;border:1px solid rgba(255,255,255,.14);color:#a59cc4;border-radius:999px;padding:6px 14px;font-size:12.5px;cursor:pointer;min-height:34px}\
 .pm-actions button{width:100%;min-height:50px;border-radius:999px;font-size:15px;font-weight:800;cursor:pointer;border:0;margin:0}\
 .pm-call{background:linear-gradient(90deg,#7b2ff7,#00e3ae);color:#fff}\
 .pm-date{background:#d6b16b;color:#1a1308}\
@@ -204,7 +206,8 @@
     var push;
     if (ps === "granted") push = "<b>🔔 Call alerts are on</b><div class='pf-muted'>Your phone rings even when the app is closed.</div>";
     else if (ps === "denied") push = "<b>🔕 Call alerts are blocked</b><div class='pf-muted'>Allow notifications for whisperplusme.com in your browser or phone settings.</div>";
-    else if (ps === "unsupported") push = "<b>🔕 Call alerts</b><div class='pf-muted'>This browser can't do alerts. Add the site to your home screen, or use Chrome.</div>";
+    else if (ps === "ios-install") push = "<b>📲 One step for iPhone call alerts</b><div class='pf-muted'>iPhones only ring for web apps on the Home Screen. In Safari tap <b>Share</b> → <b>Add to Home Screen</b>, open Whisper+Me from that icon, then come back here and tap Turn on.</div>";
+    else if (ps === "unsupported") push = "<b>🔕 Call alerts</b><div class='pf-muted'>This browser can't do alerts. Use Chrome, or add the site to your home screen.</div>";
     else push = "<b>🔕 Call alerts are off</b><div class='pf-muted'>Turn on so your phone rings when someone calls.</div>";
     return "<div class='pf-card pf-toggle'><div><b>📞 Let people call me</b><div class='pf-muted'>" + (on ? "You're open to calls right now." : "Nobody can call you right now.") + "</div></div>"
       + "<button class='pf-switch" + (on ? " on" : "") + "' role='switch' aria-checked='" + on + "' aria-label='Let people call me' onclick='toggleCallsEnabled()'></button></div>"
@@ -214,7 +217,10 @@
         }).join("") + "</div>"
       + "<div class='pf-muted' style='margin-bottom:16px'>" + (price ? "You earn <b style='color:#fff'>$" + price * 2 + "</b> from every call." : "Tap a price. Starting at 1–2 coins helps new people find you.") + "</div>"
       + "<div class='pf-card pf-toggle'><div>" + push + "</div>"
-      + (ps === "default" ? "<button class='pf-btn' style='flex:none' onclick='enableCallNotifications()'>Turn on</button>" : "") + "</div>";
+      + (ps === "default" ? "<button class='pf-btn' style='flex:none' onclick='enableCallNotifications()'>Turn on</button>" : "") + "</div>"
+      + (ps === "granted" ? "<div class='pf-card'><b>📞 Test my ringer</b><div class='pf-muted' style='margin:4px 0 10px'>We'll call this device in 8 seconds. Lock your phone or close the app to see what a real call looks like. Also check your phone isn't on Do Not Disturb or silent.</div>"
+        + "<div class='pf-row'><button class='pf-btn' onclick='Profile.testRing(this)'>Send a test call</button><button class='pf-btn' onclick='Ring.test()'>🔊 Hear the in-app ring</button></div>"
+        + "<div class='pf-muted' style='margin-top:8px'>Not ringing? Tap <a href='#' onclick='enableCallNotifications();return false' style='color:#00e3ae'>refresh this device</a>.</div></div>" : "");
   }
 
   function paneMore() {
@@ -392,7 +398,8 @@
             : "<div class='pm-off'>📵 Not taking calls right now</div>")
           + (window.Dates && window.Dates.askOut ? "<button class='pm-date' onclick=\"Profile.askOut(" + jsAttr(uid) + ")\">⭐ Invite to an M&G</button>" : "")
           + "<button class='pm-sec' onclick=\"shareProfile(" + jsAttr(uid) + ")\">🔗 Share</button>"
-          + (mod ? "<button class='pm-warn' onclick=\"removeUserFromRoom(" + jsAttr(uid) + "," + jsAttr(u.name || "this user") + ")\">🚫 Remove from this room</button>" : "");
+          + (mod ? "<button class='pm-warn' onclick=\"removeUserFromRoom(" + jsAttr(uid) + "," + jsAttr(u.name || "this user") + ")\">🚫 Remove from this room</button>" : "")
+          + "<div class='pm-safety'><button onclick=\"Profile.block(" + jsAttr(uid) + ")\">" + (Profile.isBlocked(uid) ? "✅ Unblock" : "🚫 Block") + "</button><button onclick=\"Profile.report(" + jsAttr(uid) + ")\">🚩 Report</button></div>";
         if (guest) actions = "<button class='pm-call' onclick=\"promptGuestUpgrade('Calling members')\">📞 Sign up free to call</button>" + "<button class='pm-sec' onclick=\"shareProfile(" + jsAttr(uid) + ")\">🔗 Share</button>";
       }
       body.innerHTML = "<div class='pm'>"
@@ -407,6 +414,41 @@
         + "<div class='pm-actions'>" + actions + "</div>"
         + "</div>";
       modal.style.display = "flex";
+    },
+    /* ---------- block & report ---------- */
+    isBlocked: function (uid) { return !!(window.__myBlocks || {})[uid]; },
+    block: function (uid) {
+      var me2 = firebase.auth().currentUser; if (!me2 || me2.isAnonymous) return;
+      var u = (window.allUsers || {})[uid] || {}, on = !Profile.isBlocked(uid);
+      if (on && !confirm("Block " + (u.name || "this member") + "? They won't be able to call you, and you won't see them in your lists.")) return;
+      firebase.database().ref("blocks/" + me2.uid + "/" + uid).set(on ? true : null).then(function () {
+        showToast(on ? "Blocked. They can't call you." : "Unblocked.", "success"); closeProfileModal(); if (typeof render === "function") render();
+      }, function (e) { showToast(e.message, "error"); });
+    },
+    report: function (uid) {
+      var me2 = firebase.auth().currentUser; if (!me2 || me2.isAnonymous) return;
+      var u = (window.allUsers || {})[uid] || {};
+      var body = document.getElementById("profileModalBody");
+      body.innerHTML = "<div class='pm' style='padding:22px;text-align:left'><button class='pm-close' onclick='closeProfileModal()' aria-label='Close'>✕</button>"
+        + "<div class='pm-name' style='text-align:left;margin:0 0 10px'>🚩 Report " + esc(u.name || "this member") + "</div>"
+        + "<select id='rp-why' class='pf-input' style='width:100%;padding:11px;border-radius:10px;background:#0b0b16;color:#fff;border:1px solid rgba(255,255,255,.15);margin-bottom:8px'><option>Harassment or threats</option><option>Sexual or explicit content</option><option>Scam or asking for money</option><option>Under 18</option><option>Fake profile</option><option>Didn't show up / M&G problem</option><option>Something else</option></select>"
+        + "<textarea id='rp-text' maxlength='1000' rows='4' placeholder='What happened? (optional)' style='width:100%;padding:11px;border-radius:10px;background:#0b0b16;color:#fff;border:1px solid rgba(255,255,255,.15)'></textarea>"
+        + "<label style='display:flex;gap:8px;margin:10px 0;font-size:13px;color:#ccc'><input type='checkbox' id='rp-block' checked> Also block them</label>"
+        + "<button class='pm-call' id='rp-go'>Send report</button><div class='pf-muted' style='margin-top:8px'>Only Whisper+Me sees reports. If you're in danger, call 911.</div></div>";
+      document.getElementById("rp-go").onclick = function () {
+        var b = this; b.disabled = true;
+        firebase.database().ref("userReports").push({ by: me2.uid, about: uid, aboutName: String(u.name || "").slice(0, 60), reason: document.getElementById("rp-why").value, detail: document.getElementById("rp-text").value.slice(0, 1000), ts: Date.now(), status: "open" })
+          .then(function () { if (document.getElementById("rp-block").checked) return firebase.database().ref("blocks/" + me2.uid + "/" + uid).set(true); })
+          .then(function () { showToast("Report sent. Thank you.", "success"); closeProfileModal(); if (typeof render === "function") render(); }, function (e) { b.disabled = false; showToast(e.message, "error"); });
+      };
+    },
+    testRing: function (btn) {
+      var old = btn.textContent; btn.disabled = true; btn.textContent = "Calling in 8 seconds…";
+      var go = function () {
+        firebase.functions().httpsCallable("testRing")({ delay: 8 }).then(function (r) { showToast((r.data && r.data.message) || "Test call sent", "success"); }, function (e) { showToast(e.message || "Couldn't send the test call", "error"); })
+          .then(function () { btn.disabled = false; btn.textContent = old; });
+      };
+      if (window.__fcmReady || !window.enableCallNotifications) go(); else Promise.resolve(window.enableCallNotifications()).then(go);
     },
     askOut: function (uid) {
       closeProfileModal();

@@ -529,7 +529,12 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
 <!-- ══════════ SAFETY ══════════ -->
 <div class="page" id="p-safety">
   <h1 class="page-title">🛡️ Safety</h1>
-  <p class="page-sub">Moderators, blocks and message cleanup.</p>
+  <p class="page-sub">Member reports, moderators, blocks and message cleanup.</p>
+  <section class="card" id="sec-reports">
+    <h2>🚩 Member reports <span class="right"><button class="btn sm" onclick="loadReports()">↻</button></span></h2>
+    <p class="help">When a member taps <b>Report</b> on someone's profile it lands here. Look into it, then ban or dismiss.</p>
+    <div id="report-list" class="list"><div class="empty">Loading…</div></div>
+  </section>
   <section class="card" id="sec-msgs">
     <h2>🧹 Recent messages</h2>
     <p class="help">Read the latest messages in any room and remove anything that breaks the rules.</p>
@@ -792,7 +797,7 @@ const LOADERS = {
   landing: () => ldLoad(false),
   announce: () => loadBanners(),
   rooms: () => loadPresets(),
-  safety: () => { loadSafety(); loadMicLog(); loadOrg(); },
+  safety: () => { loadReports(); loadSafety(); loadMicLog(); loadOrg(); },
   log: () => listenLog(),
   dates: () => dtLoad(),
   connect: () => cmLoad()
@@ -1466,6 +1471,23 @@ function fillRoomSelect() {
 }
 
 /* ───────── safety ───────── */
+async function loadReports() {
+  let rows = [];
+  try { (await db.ref("userReports").orderByChild("ts").limitToLast(100).once("value")).forEach(s => { rows.push(Object.assign({ id: s.key }, s.val())); }); }
+  catch (e) { $("report-list").innerHTML = `<div class="empty">Couldn't load reports: ${h(e.message)}</div>`; return; }
+  rows.reverse();
+  const open = rows.filter(r => r.status !== "dismissed" && r.status !== "done");
+  const nb = document.querySelector('nav button[data-tab="safety"]');
+  if (nb) nb.dataset.reports = open.length;
+  $("report-list").innerHTML = open.length ? open.map(r => {
+    const u = S.users[r.about] || {};
+    return `<div class="item">${ava(u)}<div class="who"><b>${h(u.name || r.aboutName || r.about)} ${u.banned ? `<span class="pill bad">Banned</span>` : ""}</b>
+      <span>${h(r.reason || "")} · reported by ${h(nm(r.by, "a member"))} · ${ago(r.ts)}</span>${r.detail ? `<span style="white-space:pre-wrap">“${h(String(r.detail).slice(0, 400))}”</span>` : ""}</div>
+      <div class="acts">${u.banned ? "" : `<button class="btn sm red" onclick="reportBan(${j(r.id)},${j(r.about)})">🚫 Ban</button>`}<button class="btn sm" onclick="reportDone(${j(r.id)})">Dismiss</button></div></div>`;
+  }).join("") : `<div class="empty">No open reports. 🎉</div>`;
+}
+async function reportDone(id) { await safely(() => db.ref("userReports/" + id).update({ status: "dismissed", closedAt: Date.now() }), "Report dismissed"); loadReports(); }
+async function reportBan(id, uid) { await ban(uid, true); await db.ref("userReports/" + id).update({ status: "done", closedAt: Date.now() }).catch(() => {}); loadReports(); }
 async function loadSafety() {
   if (!S.presets.length) await loadPresets();
   try {

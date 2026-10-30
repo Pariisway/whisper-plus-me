@@ -975,67 +975,10 @@ exports.adminSendPushNotification = onRequest(
 );
 
 /* ═══════════════════════════════════════════
-   Notify a user when they receive an incoming call
+   Incoming-call alerts moved to the "nights" codebase (callRing,
+   callStopRing, testRing in functions-nights/index.js): they ring every
+   device, re-ring while the call is ringing and send missed-call alerts.
 ═══════════════════════════════════════════ */
-exports.notifyIncomingCall = onValueCreated(
-  { ref: "/calls/{callId}", region: "us-central1" },
-  async (event) => {
-    const call   = event.data.val();
-    const callId = event.params.callId;
-    if (!call || call.status !== "ringing") return;
-
-    const tokenSnap = await db.ref("fcmTokens/" + call.to + "/token").once("value");
-    const token = tokenSnap.val();
-    if (!token) { console.log("No FCM token for", call.to); return; }
-
-    const { getMessaging } = require("firebase-admin/messaging");
-    const fcm = getMessaging();
-
-    try {
-      const resp = await fcm.send({
-        token,
-        data: {
-          type:        "incoming_call",
-          callId,
-          from:        call.from,
-          callerName:  call.callerName  || "Someone",
-          callerPhoto: call.callerPhoto || "",
-          price:       String(call.price || 1),
-          url:         "https://whisperplusme.com"
-        },
-        notification: {
-          title: "📞 Incoming call",
-          body:  (call.callerName || "Someone") + " is calling you"
-        },
-        webpush: {
-          headers: {
-            /* real-time — don't let this get throttled/delayed like a
-               normal notification, and don't let it outlive the ~3min
-               ring window */
-            Urgency: "high",
-            TTL: "180"
-          },
-          notification: {
-            icon:              call.callerPhoto || "https://whisperplusme.com/favicon-32.png",
-            badge:             "https://whisperplusme.com/favicon-32.png",
-            requireInteraction: true,
-            tag:               "call-" + callId, /* replaces itself, never stacks */
-            actions: [
-              { action: "answer",  title: "Answer"  },
-              { action: "decline", title: "Decline" }
-            ]
-          },
-          fcmOptions: { link: "https://whisperplusme.com" }
-        }
-      });
-      console.log("Call notif sent:", resp);
-    } catch (e) {
-      /* a stale/unregistered token is expected occasionally — not an error
-         worth crashing over */
-      console.warn("Call notif failed for", call.to, ":", e.message);
-    }
-  }
-);
 
 /* ═══════════════════════════════════════════
    Notify all members when a new room opens

@@ -248,7 +248,10 @@
       var token = await messaging.getToken({ vapidKey: 'BCaelZTsvNYH2cBYTL9K07gQ3KVPVVc-Qooki6ddwOBLuy0IhTCJSkX_GJoE_6EaGErli-8vV7PHlAFPbgtLsp0' });
       if(token){
         var uid = firebase.auth().currentUser && firebase.auth().currentUser.uid;
-        if(uid) await firebase.database().ref('fcmTokens/' + uid).set({ token: token, updatedAt: Date.now() });
+        /* One entry per device, so a call rings the phone AND the laptop. */
+        var key = token.replace(/[.#$\[\]\/]/g, '_').slice(-60);
+        if(uid) await firebase.database().ref('fcmTokens/' + uid).update({ token: token, updatedAt: Date.now(), ['devices/' + key]: { token: token, updatedAt: Date.now(), ua: (navigator.userAgent || '').slice(0, 120) } });
+        window.__fcmReady = true;
       }
       return 'granted';
     } catch(e){ console.warn('FCM init failed:', e.message); return 'error'; }
