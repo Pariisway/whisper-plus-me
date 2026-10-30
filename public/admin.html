@@ -97,6 +97,24 @@ body.simple [data-adv]{display:none!important}
 .stat b{display:block;font-size:26px;font-weight:900;letter-spacing:-.02em}
 .stat span{font-size:12.5px;color:var(--muted)}
 .stat.teal b{color:var(--teal)} .stat.gold b{color:var(--gold)} .stat.purple b{color:#b48cff}
+#sec-sales{--s1:#3987e5;--s2:#d95926;--s3:#199e70}
+.stat small{display:block;font-size:12px;font-weight:700;margin-top:2px}.stat small.up{color:var(--teal)}.stat small.down{color:#ff8a80}
+.sl-chart{position:relative;margin-top:14px}
+.sl-chart svg{display:block;width:100%;height:auto;overflow:visible}
+.sl-chart .ax{fill:var(--dim);font-size:11px}
+.sl-chart .grid{stroke:var(--line);stroke-width:1}
+.sl-chart .hit{fill:transparent;cursor:crosshair}
+.sl-chart .hit:hover,.sl-chart .hit.on{fill:rgba(255,255,255,.05)}
+.sl-tip{position:absolute;pointer-events:none;background:#211d33;border:1px solid var(--line2);border-radius:10px;padding:8px 10px;font-size:12.5px;line-height:1.5;min-width:150px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:3}
+.sl-tip b{display:block;color:#fff;margin-bottom:2px}
+.sl-tip i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px;vertical-align:0}
+.sl-tip .r{display:flex;justify-content:space-between;gap:12px;color:var(--muted)}.sl-tip .r span:last-child{color:var(--text);font-variant-numeric:tabular-nums}
+.sl-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.sl-legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.sl-tops{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-top:18px}
+.sl-tops h3{font-size:14px;margin:0 0 8px}
+.sl-tops .item{padding:8px 10px}
+.who .inl,.who .inl *{display:inline!important}
 .flow{display:flex;align-items:stretch;gap:8px;flex-wrap:wrap}
 .flow .step{flex:1;min-width:130px;background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:12px}
 .flow .step b{display:block;font-size:14px}
@@ -338,6 +356,19 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
 <div class="page" id="p-money">
   <h1 class="page-title">💰 Money</h1>
   <p class="page-sub">What came in, what you kept, and who's owed.</p>
+  <section class="card" id="sec-sales">
+    <h2>📈 Sales <span class="right"><div class="seg" id="sl-range"><button data-v="w" class="on" onclick="slRange('w')">8 weeks</button><button data-v="m" onclick="slRange('m')">6 months</button></div></span></h2>
+    <div class="stats" id="sl-kpis"><div class="stat"><b>–</b><span>Loading…</span></div></div>
+    <div class="sl-chart" id="sl-chart"><div class="empty">Loading…</div></div>
+    <div class="row" style="justify-content:space-between;margin-top:6px"><div class="sl-legend" id="sl-legend"></div><button class="btn sm" onclick="slTable()" id="sl-tbtn">Show as table</button></div>
+    <div id="sl-table" class="tbl" hidden></div>
+    <div class="sl-tops">
+      <div><h3>⭐ Top M&amp;G hosts</h3><div id="sl-hosts" class="list"></div></div>
+      <div><h3>💞 Top Connect Me places</h3><div id="sl-places" class="list"></div></div>
+      <div><h3>📞 Top call earners</h3><div id="sl-callers" class="list"></div></div>
+    </div>
+    <p class="help" style="margin:12px 0 0"><b>Sales</b> is money members paid (coins, M&amp;G spots, Connect Me packages). <b>Your cut</b> is what the site keeps after creators and hosts are paid and card fees come out: $1 per coin spent on calls and rooms, your M&amp;G fee, and Connect Me minus card fees.</p>
+  </section>
   <section class="card">
     <div class="stats">
       <div class="stat gold"><b id="m-gross">–</b><span>Collected from coin sales</span></div>
@@ -599,6 +630,7 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
       </div>
       <div class="field"><span>Cover picture <em>(optional)</em></span>
         <div class="row"><label class="btn" style="cursor:pointer">🖼️ Choose picture<input type="file" accept="image/*" hidden onchange="dtPic(this)"></label><button class="btn sm red" id="dt-pic-x" onclick="dtPicClear()" hidden>Remove</button></div></div>
+<label class="row" style="gap:8px;align-items:flex-start;margin:4px 0 12px;font-size:14px;cursor:pointer;flex-wrap:nowrap"><input type="checkbox" id="dt-id" style="margin-top:4px;width:auto;flex:none" onchange="dtPreview()"> <span style="flex:1;min-width:0">🪪 <b>21+ with ID at the door</b> (bar, lounge, drinks). Buyers confirm they'll bring a photo ID; whoever checks people in looks at it.</span></label>
       <button class="btn main block" id="dt-post" onclick="dtPost()">🚀 Post it. Everyone sees it right away</button>
       <button class="btn block" id="dt-cancel-edit" onclick="dtCancelEdit()" style="margin-top:8px" hidden>Cancel editing</button>
       <p class="help" id="dt-status" style="margin:10px 0 0"></p>
@@ -614,6 +646,13 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
     <h2>🎟️ Old venue tickets</h2>
     <p class="help">The old "for 2 / group of 4" tickets don't show on the M&amp;G screen anymore. Bookings already made still happen. Tap <b>Repost as M&amp;G</b> to sell one again per person (add the address and phone), then <b>Stop selling</b> the old one.</p>
     <div id="dt-tickets" class="list"></div>
+  </section>
+
+  <section class="card" id="sec-reviews">
+    <h2>⭐ Ratings &amp; reviews <span class="right"><button class="btn sm" onclick="loadRatings()">↻</button></span></h2>
+    <p class="help">After an M&amp;G guests rate the host; after a Connect Me everyone rates the night and the place. Stars show on profiles and packages. <b>Comments are only shown to you.</b> Remove a rating if it's unfair or abusive.</p>
+    <div class="row" style="margin-bottom:10px"><div class="seg" id="rv-f"><button data-v="all" class="on" onclick="rvFilter('all')">All</button><button data-v="low" onclick="rvFilter('low')">1–2★</button><button data-v="mg" onclick="rvFilter('mg')">M&amp;G</button><button data-v="cm" onclick="rvFilter('cm')">Connect Me</button></div></div>
+    <div id="rv-list" class="list"><div class="empty">Loading…</div></div>
   </section>
 
   <section class="card" id="sec-dtrules">
@@ -673,14 +712,21 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
       </div>
       <div class="field"><span>Cover picture <em>(optional)</em></span>
         <div class="row"><label class="btn" style="cursor:pointer">🖼️ Choose picture<input type="file" accept="image/*" hidden onchange="cmPic(this)"></label><button class="btn sm red" id="cm-pic-x" onclick="cmPicClear()" hidden>Remove</button></div></div>
+<label class="row" style="gap:8px;align-items:flex-start;margin:4px 0 12px;font-size:14px;cursor:pointer;flex-wrap:nowrap"><input type="checkbox" id="cm-id" style="margin-top:4px;width:auto;flex:none" onchange="cmPreview()"> <span style="flex:1;min-width:0">🪪 <b>21+ with ID at the door</b> (bar, lounge, drinks). Buyers confirm they'll bring a photo ID; whoever checks people in looks at it.</span></label>
       <button class="btn main block" id="cm-post" onclick="cmPost()">🚀 Post it</button>
       <button class="btn block" id="cm-cancel-edit" onclick="cmReset()" style="margin-top:8px" hidden>Cancel editing</button>
       <p class="help" id="cm-status" style="margin:10px 0 0"></p>
     </section>
     <section class="card"><h2>Preview</h2><div id="cm-card"></div></section>
   </div>
+  <section class="card" id="sec-cmvenues">
+    <h2>🏆 Best-rated places <span class="right"><button class="btn sm" onclick="loadRatings()">↻</button></span></h2>
+    <p class="help">From people who went. Post more packages at the top places; talk to (or drop) the low ones.</p>
+    <div id="cm-venues" class="list"><div class="empty">Loading…</div></div>
+  </section>
 </div>
 
+<!-- (Connect Me best places is filled by loadRatings) -->
 <!-- ══════════ ACTIVITY ══════════ -->
 <div class="page" id="p-log">
   <h1 class="page-title">🧾 Activity</h1>
@@ -793,14 +839,14 @@ function start() {
 
 /* ───────── navigation ───────── */
 const LOADERS = {
-  money: () => { loadMoney(); loadCoinPurchases(); loadCallLedger(); loadRoomLedger(); loadStripeAccounts(); loadAutoPay(); },
+  money: () => { loadSales(); loadMoney(); loadCoinPurchases(); loadCallLedger(); loadRoomLedger(); loadStripeAccounts(); loadAutoPay(); },
   landing: () => ldLoad(false),
   announce: () => loadBanners(),
   rooms: () => loadPresets(),
   safety: () => { loadReports(); loadSafety(); loadMicLog(); loadOrg(); },
   log: () => listenLog(),
-  dates: () => dtLoad(),
-  connect: () => cmLoad()
+  dates: () => { dtLoad(); loadRatings(); },
+  connect: () => { cmLoad(); loadRatings(); }
 };
 const loaded = {};
 function go(tab, focusId) {
@@ -1039,6 +1085,102 @@ async function loadAutoPay() {
   try { await dtSdk(); const d = await firebase.firestore().doc("settings/platform").get(); $("auto-pay").checked = !!(d.exists && d.data().autoPayouts); } catch (e) {}
 }
 function table(head, rows, foot) { return rows.length ? `<table><thead><tr>${head.map(x => `<th>${x}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table>${foot || ""}` : `<div class="empty">Nothing yet.</div>`; }
+/* ───────── 📈 sales charts ───────── */
+const SL = { range: "w", data: null, table: false };
+const SL_SERIES = [["coins", "Coins", "var(--s1)"], ["mg", "M&G spots", "var(--s2)"], ["cm", "Connect Me", "var(--s3)"]];
+function slBuckets(range) {
+  const out = [], now = new Date();
+  if (range === "w") {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate()); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); // this Monday
+    for (let i = 7; i >= 0; i--) { const s = new Date(d); s.setDate(d.getDate() - 7 * i); const e = new Date(s); e.setDate(s.getDate() + 7); out.push({ s: s.getTime(), e: e.getTime(), label: s.toLocaleDateString("en-US", { month: "short", day: "numeric" }), long: "Week of " + s.toLocaleDateString("en-US", { month: "long", day: "numeric" }) }); }
+  } else {
+    for (let i = 5; i >= 0; i--) { const s = new Date(now.getFullYear(), now.getMonth() - i, 1), e = new Date(now.getFullYear(), now.getMonth() - i + 1, 1); out.push({ s: s.getTime(), e: e.getTime(), label: s.toLocaleDateString("en-US", { month: "short" }), long: s.toLocaleDateString("en-US", { month: "long", year: "numeric" }) }); }
+  }
+  out.forEach(b => { b.coins = 0; b.mg = 0; b.cm = 0; b.cut = 0; b.total = 0; });
+  return out;
+}
+async function loadSales() {
+  const since = Date.now() - 200 * 864e5;
+  try {
+    const [cp, cl, rl] = await Promise.all([db.ref("coinPurchases").once("value"), db.ref("callLedger").orderByChild("ts").startAt(since).once("value"), db.ref("memberRoomLedger").once("value")]);
+    const coins = [], calls = [], rooms = [];
+    const walk = (v, f) => { if (!v || typeof v !== "object") return; if (v.ts && (v.amountUsd != null || v.earnedUsd != null || v.platformUsd != null)) { f(v); return; } Object.values(v).forEach(x => walk(x, f)); };
+    walk(cp.val(), v => { if (v.ts >= since) coins.push(v); });
+    walk(cl.val(), v => { if (v.ts >= since) calls.push(v); });
+    walk(rl.val(), v => { if (v.ts >= since) rooms.push(v); });
+    let mg = [], cm = [];
+    try { await dtSdk(); const r = await dtCall("salesReport", { data: { since } }); mg = r.mg || []; cm = r.cm || []; } catch (e) { console.warn("salesReport", e.message); }
+    SL.data = { coins, calls, rooms, mg, cm };
+    if (!RV.venues.length) await loadRatings();
+  } catch (e) { $("sl-chart").innerHTML = `<div class="empty">Couldn't load sales: ${h(e.message)}</div>`; return; }
+  slDraw();
+}
+function slRange(r) { SL.range = r; document.querySelectorAll("#sl-range button").forEach(b => b.classList.toggle("on", b.dataset.v === r)); slDraw(); }
+function slTable() { SL.table = !SL.table; $("sl-table").hidden = !SL.table; $("sl-tbtn").textContent = SL.table ? "Hide table" : "Show as table"; }
+function slDraw() {
+  if (!SL.data || !$("sl-chart")) return;
+  const B = slBuckets(SL.range), D = SL.data, find = t => B.find(b => t >= b.s && t < b.e);
+  D.coins.forEach(v => { const b = find(v.ts); if (b) b.coins += Number(v.amountUsd || 0); });
+  D.mg.forEach(v => { const b = find(v.at); if (b) { b.mg += v.amount / 100; b.cut += (v.site - v.fee) / 100; } });
+  D.cm.forEach(v => { const b = find(v.at); if (b) { b.cm += v.amount / 100; b.cut += (v.amount - v.fee) / 100; } });
+  D.calls.forEach(v => { const b = find(v.ts); if (b) b.cut += Number(v.platformUsd || 0); });
+  D.rooms.forEach(v => { const b = find(v.ts); if (b) b.cut += Math.max(0, Number(v.coins || 0) * 3 - Number(v.earnedUsd || 0)); });
+  B.forEach(b => { b.total = b.coins + b.mg + b.cm; });
+  const word = SL.range === "w" ? "week" : "month", cur = B[B.length - 1], prev = B[B.length - 2];
+  const sum = k => B.reduce((a, b) => a + b[k], 0), best = B.reduce((a, b) => (b.total > a.total ? b : a), B[0]);
+  const chg = prev && prev.total ? Math.round((cur.total - prev.total) / prev.total * 100) : null;
+  $("sl-kpis").innerHTML = `<div class="stat gold"><b>${money(cur.total)}</b><span>Sales this ${word}</span>${chg == null ? "" : `<small class="${chg >= 0 ? "up" : "down"}">${chg >= 0 ? "▲" : "▼"} ${Math.abs(chg)}% vs last ${word}</small>`}</div>`
+    + `<div class="stat teal"><b>${money(cur.cut)}</b><span>Your cut this ${word}</span></div>`
+    + `<div class="stat"><b>${money(sum("total"))}</b><span>Sales, last ${B.length} ${word}s</span></div>`
+    + `<div class="stat purple"><b>${money(sum("cut"))}</b><span>Your cut, last ${B.length} ${word}s</span></div>`;
+  // stacked bars
+  const W = 640, H = 230, L = 46, R = 6, T = 10, Bm = 26, iw = W - L - R, ih = H - T - Bm;
+  const max = Math.max(10, ...B.map(b => b.total)), step = [5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000, 25000, 50000].find(x => max / x <= 4) || Math.ceil(max / 4);
+  const top = Math.ceil(max / step) * step, y = v => T + ih - v / top * ih, slot = iw / B.length, bw = Math.min(46, slot * 0.56);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Sales by ${word}, stacked by coins, M&G spots and Connect Me">`;
+  for (let v = 0; v <= top; v += step) svg += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text class="ax" x="${L - 6}" y="${y(v) + 4}" text-anchor="end">$${v >= 1000 ? (v / 1000) + "k" : v}</text>`;
+  B.forEach((b, i) => {
+    const x = L + slot * i + (slot - bw) / 2; let base = 0;
+    const parts = SL_SERIES.filter(([k]) => b[k] > 0);
+    parts.forEach(([k, , col], pi) => {
+      const y0 = y(base), y1 = y(base + b[k]), gap = pi < parts.length - 1 ? 2 : 0, last = pi === parts.length - 1;
+      const hgt = Math.max(0, y0 - y1 - (pi ? 2 : 0));
+      const yy = y1;
+      if (hgt > 0) svg += last ? `<path d="M${x},${yy + hgt} V${yy + Math.min(4, hgt)} Q${x},${yy} ${x + 4},${yy} H${x + bw - 4} Q${x + bw},${yy} ${x + bw},${yy + Math.min(4, hgt)} V${yy + hgt} Z" fill="${col}"/>` : `<rect x="${x}" y="${yy}" width="${bw}" height="${hgt}" fill="${col}"/>`;
+      base += b[k];
+    });
+    svg += `<text class="ax" x="${L + slot * i + slot / 2}" y="${H - 8}" text-anchor="middle">${h(b.label)}</text>`;
+    svg += `<rect class="hit" data-i="${i}" x="${L + slot * i}" y="${T}" width="${slot}" height="${ih}" rx="6"/>`;
+  });
+  svg += `</svg><div class="sl-tip" id="sl-tip" hidden></div>`;
+  $("sl-chart").innerHTML = svg;
+  $("sl-legend").innerHTML = SL_SERIES.map(([, n, c]) => `<span><i style="background:${c}"></i>${n}</span>`).join("");
+  const tip = $("sl-tip"), box = $("sl-chart");
+  box.querySelectorAll(".hit").forEach(r => {
+    const show = () => {
+      const b = B[+r.dataset.i];
+      box.querySelectorAll(".hit").forEach(x => x.classList.toggle("on", x === r));
+      tip.innerHTML = `<b>${h(b.long)}</b>` + SL_SERIES.map(([k, n, c]) => `<div class="r"><span><i style="background:${c}"></i>${n}</span><span>${money(b[k])}</span></div>`).join("")
+        + `<div class="r" style="border-top:1px solid var(--line2);margin-top:4px;padding-top:4px"><span>Sales</span><span>${money(b.total)}</span></div><div class="r"><span>Your cut</span><span style="color:var(--teal)">${money(b.cut)}</span></div>`;
+      tip.hidden = false;
+      const br = box.getBoundingClientRect(), rr = r.getBoundingClientRect();
+      let left = rr.left - br.left + rr.width / 2 - tip.offsetWidth / 2; left = Math.max(0, Math.min(br.width - tip.offsetWidth, left));
+      tip.style.left = left + "px"; tip.style.top = "0px";
+    };
+    r.addEventListener("mouseenter", show); r.addEventListener("click", show); r.addEventListener("focus", show);
+  });
+  box.onmouseleave = () => { tip.hidden = true; box.querySelectorAll(".hit").forEach(x => x.classList.remove("on")); };
+  $("sl-table").innerHTML = table([word[0].toUpperCase() + word.slice(1), "Coins", "M&amp;G", "Connect Me", "Sales", "Your cut"], B.slice().reverse().map(b => `<tr><td>${h(b.long)}</td><td class="num">${money(b.coins)}</td><td class="num">${money(b.mg)}</td><td class="num">${money(b.cm)}</td><td class="num"><b>${money(b.total)}</b></td><td class="num">${money(b.cut)}</td></tr>`));
+  // leaderboards for the same period
+  const start = B[0].s, rank = (rows, key, val) => { const m = {}; rows.forEach(r => { const k = key(r); if (!k) return; m[k] = m[k] || { k, v: 0, n: 0, r }; m[k].v += val(r); m[k].n++; }); return Object.values(m).sort((a, b) => b.v - a.v).slice(0, 5); };
+  const star = (avg, n) => n ? ` · <i class="inl" style="font-style:normal;color:#ffc94d">★ ${Number(avg).toFixed(1)}</i> (${n})` : "";
+  const hosts = rank(D.mg.filter(v => v.at >= start && v.hostUid), v => v.hostUid, v => v.amount / 100);
+  $("sl-hosts").innerHTML = hosts.length ? hosts.map((x, i) => { const u = S.users[x.k] || {}; return `<div class="item">${ava(u, 32)}<div class="who"><b>${i + 1}. ${h(u.name || x.r.hostName)}</b><span>${money(x.v)} · ${x.n} order${x.n === 1 ? "" : "s"}${star(u.rating && u.rating.avg, u.rating && u.rating.n)}</span></div></div>`; }).join("") : `<div class="empty">No member-hosted M&amp;G sales yet.</div>`;
+  const places = rank(D.cm.filter(v => v.at >= start), v => (v.venueName || "") + "|" + (v.city || ""), v => v.amount / 100);
+  $("sl-places").innerHTML = places.length ? places.map((x, i) => { const v = (RV.venues || []).find(z => z.name === x.r.venueName) || {}; return `<div class="item"><div class="who"><b>${i + 1}. ${h(x.r.venueName)}</b><span>${money(x.v)} · ${x.n} package${x.n === 1 ? "" : "s"}${star(v.avg, v.n)}</span></div></div>`; }).join("") : `<div class="empty">No Connect Me sales yet.</div>`;
+  const callers = rank(D.calls.filter(v => v.ts >= start && v.to), v => v.to, v => Number(v.earnedUsd || 0));
+  $("sl-callers").innerHTML = callers.length ? callers.map((x, i) => { const u = S.users[x.k] || {}; return `<div class="item">${ava(u, 32)}<div class="who"><b>${i + 1}. ${h(u.name || "Member")}</b><span>${money(x.v)} earned · ${x.n} call${x.n === 1 ? "" : "s"}</span></div></div>`; }).join("") : `<div class="empty">No paid calls yet.</div>`;
+}
 async function loadCoinPurchases() {
   try {
     const data = (await db.ref("coinPurchases").once("value")).val() || {};
@@ -1580,6 +1722,28 @@ async function dtSdk() {
   if (!firebase.functions) await loadScript("https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js");
   if (!firebase.firestore || !firebase.functions) throw new Error("M&G tools couldn't load. Check your connection and refresh.");
 }
+/* ───────── ratings & reviews ───────── */
+const RV = { list: [], venues: [], f: "all" };
+async function loadRatings() {
+  try { await dtSdk(); const r = await dtCall("ratings", { data: { limit: 150 } }); RV.list = r.ratings || []; RV.venues = r.venues || []; }
+  catch (e) { if ($("rv-list")) $("rv-list").innerHTML = `<div class="empty">Couldn't load ratings: ${h(e.message)}</div>`; return; }
+  rvDraw();
+  const vs = RV.venues.filter(v => v.n > 0);
+  if ($("cm-venues")) $("cm-venues").innerHTML = vs.length ? vs.sort((a, b) => b.avg - a.avg || b.n - a.n).map(v => `<div class="item"><div class="who"><b>${h(v.name)}</b><span>${h(v.city || "")}</span></div><div class="acts"><b style="color:${v.avg >= 4 ? "var(--teal)" : v.avg < 3 ? "#ff8a80" : "#ffc94d"}">★ ${v.avg.toFixed(1)}</b>&nbsp;<span class="help" style="margin:0">${v.n} rating${v.n === 1 ? "" : "s"}</span></div></div>`).join("") : `<div class="empty">No ratings yet. They come in after each Connect Me night.</div>`;
+}
+function rvFilter(f) { RV.f = f; document.querySelectorAll("#rv-f button").forEach(b => b.classList.toggle("on", b.dataset.v === f)); rvDraw(); }
+function rvDraw() {
+  if (!$("rv-list")) return;
+  const rows = RV.list.filter(r => RV.f === "all" || (RV.f === "low" ? r.stars <= 2 : r.kind === RV.f));
+  const st = n => "<span class='inl'>" + "★".repeat(n) + "<i style='opacity:.25;font-style:normal'>" + "★".repeat(5 - n) + "</i></span>";
+  $("rv-list").innerHTML = rows.length ? rows.map(r => `<div class="item"><div class="who"><b><span class="inl" style="color:#ffc94d;letter-spacing:1px">${st(r.stars)}</span> ${h(r.kind === "cm" ? "💞 " + (r.subjectName || "") : "⭐ " + (r.subjectName || ""))}</b>
+    <span>${h(r.title || "")} · by ${h(r.byName || "a member")} · ${ago(r.at)}</span>${r.text ? `<span style="white-space:pre-wrap;color:var(--text)">“${h(r.text)}”</span>` : ""}</div>
+    <div class="acts"><button class="btn sm red" onclick="rvRemove(${j(r.id)})">Remove</button></div></div>`).join("") : `<div class="empty">${RV.list.length ? "Nothing here." : "No ratings yet. Guests are asked to rate after each M&G and Connect Me."}</div>`;
+}
+async function rvRemove(id) {
+  if (!await dialog({ title: "Remove this rating?", body: "Its stars come off the host's or place's average. This can't be undone.", ok: "Remove", danger: true })) return;
+  const r = await safely(() => dtCall("removeRating", { id }), "Rating removed"); if (r) loadRatings();
+}
 async function dtCall(action, extra) { const r = await firebase.functions().httpsCallable("nightsAdminAction")(Object.assign({ action }, extra || {})); return r.data || {}; }
 async function dtLoad() {
   $("dt-cat").innerHTML = DT_CATS.map(c => `<button data-v="${c[0]}" onclick="dtCat('${c[0]}')">${c[1]} ${c[0]}</button>`).join("");
@@ -1660,13 +1824,13 @@ function dtPickVenue(i) {
 }
 function dtFormData() {
   const ms = $("dt-when").value ? new Date($("dt-when").value).getTime() : 0;
-  return { title: $("dt-title").value.trim(), about: $("dt-note").value.trim(), category: DT.cat, items: DT.items.slice(), startsAt: ms, price: Number($("dt-price").value), spots: Number($("dt-qty").value),
+  return { title: $("dt-title").value.trim(), about: $("dt-note").value.trim(), category: DT.cat, items: DT.items.slice(), startsAt: ms, price: Number($("dt-price").value), spots: Number($("dt-qty").value), idCheck: $("dt-id").checked,
     venue: Object.assign({}, DT.venue, { name: $("dt-vname").value.trim(), address: $("dt-vaddr").value.trim(), city: $("dt-vcity").value.trim(), phone: $("dt-vphone").value.trim() }) };
 }
 function dtResetForm() {
   DT.editing = null; DT.keepImage = ""; DT.venue = { source: "other" };
   ["dt-title", "dt-note", "dt-price", "dt-vq", "dt-vname", "dt-vaddr", "dt-vcity", "dt-vphone"].forEach(k => { $(k).value = ""; });
-  $("dt-qty").value = 20; $("dt-vres").innerHTML = ""; DT.items = []; dtPicClear(); dtItems();
+  $("dt-qty").value = 20; $("dt-id").checked = false; $("dt-vres").innerHTML = ""; DT.items = []; dtPicClear(); dtItems();
   $("dt-cancel-edit").hidden = true; $("dt-form-title").textContent = "➕ Post a Whisper+Me M&G"; $("dt-post").textContent = "🚀 Post it. Everyone sees it right away";
 }
 function dtCancelEdit() { dtResetForm(); $("dt-status").textContent = ""; }
@@ -1695,7 +1859,7 @@ function dtEditMeetup(id) {
     dtResetForm(); DT.editing = id; DT.venue = Object.assign({ source: "other" }, v);
     $("dt-title").value = m.title || ""; $("dt-note").value = m.about || ""; dtCat(m.category || "Other");
     $("dt-vq").value = v.name || m.venueName || ""; $("dt-vname").value = v.name || m.venueName || ""; $("dt-vaddr").value = v.address || ""; $("dt-vcity").value = v.city || m.city || ""; $("dt-vphone").value = v.phone || "";
-    $("dt-price").value = (Number(m.price || 0) / 100).toFixed(2).replace(/\.00$/, ""); $("dt-qty").value = m.spots || 1;
+    $("dt-price").value = (Number(m.price || 0) / 100).toFixed(2).replace(/\.00$/, ""); $("dt-qty").value = m.spots || 1; $("dt-id").checked = !!m.idCheck;
     const d = new Date(dtMs(m.startsAt)); $("dt-when").value = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
     DT.items = (m.items || []).slice(); DT.picUrl = m.imageURL || ""; DT.keepImage = m.imageURL || ""; $("dt-pic-x").hidden = !DT.picUrl; dtItems();
     $("dt-form-title").textContent = "✏️ Edit M&G"; $("dt-post").textContent = "💾 Save changes"; $("dt-cancel-edit").hidden = false;
@@ -1873,11 +2037,11 @@ function cmPickVenue(i) {
 }
 function cmReset() {
   CM.editing = null; CM.items = []; CM.venue = { source: "other" }; cmPicClear();
-  ["cm-title", "cm-about", "cm-price", "cm-vq", "cm-vname", "cm-vaddr", "cm-vcity", "cm-vphone"].forEach(k => { $(k).value = ""; }); $("cm-qty").value = 5; cmSize(2); cmItems();
+  ["cm-title", "cm-about", "cm-price", "cm-vq", "cm-vname", "cm-vaddr", "cm-vcity", "cm-vphone"].forEach(k => { $(k).value = ""; }); $("cm-qty").value = 5; $("cm-id").checked = false; cmSize(2); cmItems();
   $("cm-form-title").textContent = "➕ Post a package"; $("cm-post").textContent = "🚀 Post it"; $("cm-cancel-edit").hidden = true; $("cm-status").textContent = "";
 }
 async function cmPost() {
-  const d = { title: $("cm-title").value.trim(), about: $("cm-about").value.trim(), category: CM.cat, items: CM.items.slice(), size: CM.size, price: Number($("cm-price").value), quantity: Number($("cm-qty").value),
+  const d = { title: $("cm-title").value.trim(), about: $("cm-about").value.trim(), category: CM.cat, items: CM.items.slice(), size: CM.size, price: Number($("cm-price").value), quantity: Number($("cm-qty").value), idCheck: $("cm-id").checked,
     startsAt: $("cm-when").value ? new Date($("cm-when").value).getTime() : 0, venue: Object.assign({}, CM.venue, { name: $("cm-vname").value.trim(), address: $("cm-vaddr").value.trim(), city: $("cm-vcity").value.trim(), phone: $("cm-vphone").value.trim() }) };
   const miss = !d.title ? "Give it a name" : !d.venue.name || !d.venue.address || !d.venue.city ? "Add the place's name, street address and city" : !d.venue.phone ? "Add the place's phone number" : !(d.price >= 5) ? "Price must be at least $5" : !d.startsAt ? "Pick a date and time" : !(d.quantity >= 1) ? "How many can be sold?" : "";
   if (miss) { toast(miss, true); return; }
@@ -1893,7 +2057,7 @@ function cmEdit(id) {
     cmReset(); CM.editing = id; CM.venue = Object.assign({ source: "other" }, v);
     $("cm-title").value = c.title || ""; $("cm-about").value = c.about || ""; cmCat(c.category || "Other"); cmSize(c.size || 2);
     $("cm-vq").value = $("cm-vname").value = v.name || c.venueName || ""; $("cm-vaddr").value = v.address || ""; $("cm-vcity").value = v.city || c.city || ""; $("cm-vphone").value = v.phone || "";
-    $("cm-price").value = c.price / 100; $("cm-qty").value = c.quantity;
+    $("cm-price").value = c.price / 100; $("cm-qty").value = c.quantity; $("cm-id").checked = !!c.idCheck;
     const dd = new Date(dtMs(c.startsAt)); $("cm-when").value = new Date(dd.getTime() - dd.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
     CM.items = (c.items || []).slice(); CM.picUrl = c.imageURL || ""; CM.keepImage = c.imageURL || ""; $("cm-pic-x").hidden = !CM.picUrl; cmItems();
     $("cm-form-title").textContent = "✏️ Edit package"; $("cm-post").textContent = "💾 Save changes"; $("cm-cancel-edit").hidden = false;
@@ -1925,7 +2089,7 @@ async function cmOrders(id) {
 }
 async function cmCheckIn() {
   const code = ($("cm-code").value || "").trim(); if (!code) return;
-  try { await dtSdk(); const r = await dtCall("connectCheckIn", { data: { code } }); $("cm-code-out").innerHTML = h(r.message) + " · " + h(r.title) + "<br>" + r.party.map(x => (x.here ? "✅ " : "⬜ ") + h(x.name)).join(" &nbsp; ") + (r.allHere ? "<br><b>Everyone's here.</b>" : ""); $("cm-code").value = ""; logAct("Connect Me check-in " + r.guest); }
+  try { await dtSdk(); const r = await dtCall("connectCheckIn", { data: { code } }); $("cm-code-out").innerHTML = h(r.message) + " · " + h(r.title) + (r.idCheck ? "<br><b style='color:#ffba49'>🪪 21+: make sure the staff checked their photo ID.</b>" : "") + "<br>" + r.party.map(x => (x.here ? "✅ " : "⬜ ") + h(x.name)).join(" &nbsp; ") + (r.allHere ? "<br><b>Everyone's here.</b>" : ""); $("cm-code").value = ""; logAct("Connect Me check-in " + r.guest); }
   catch (e) { $("cm-code-out").textContent = e.message; }
 }
 async function cmAct(action, id) {

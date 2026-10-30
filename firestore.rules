@@ -101,6 +101,9 @@ service cloud.firestore {
     match /connectInvites/{t} { allow read, write: if false; }
     match /connectCodes/{c} { allow read, write: if false; }
     match /credits/{uid} { allow read: if isAdmin() || (signedIn() && me() == uid); allow write: if false; }
+    // Ratings: stars are copied onto profiles/packages by Cloud Functions; comments are for the admin only.
+    match /ratings/{id} { allow read: if isAdmin(); allow write: if false; }
+    match /connectVenues/{k} { allow read: if isAdmin(); allow write: if false; }
 
     match /reports/{rid} {
       allow create: if signedIn()

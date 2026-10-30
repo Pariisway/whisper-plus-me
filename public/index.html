@@ -223,6 +223,7 @@
 <script src="app.js" defer></script>
 <script src="dates.js" defer></script>
 <script src="profile.js" defer></script>
+<script src="install.js" defer></script>
 
 <!-- ── Firebase Cloud Messaging ── -->
 <script>
@@ -252,12 +253,33 @@
         var key = token.replace(/[.#$\[\]\/]/g, '_').slice(-60);
         if(uid) await firebase.database().ref('fcmTokens/' + uid).update({ token: token, updatedAt: Date.now(), ['devices/' + key]: { token: token, updatedAt: Date.now(), ua: (navigator.userAgent || '').slice(0, 120) } });
         window.__fcmReady = true;
+        window.__fcmKey = key; window.__fcmToken = token; window.__fcmUid = uid;
       }
       return 'granted';
     } catch(e){ console.warn('FCM init failed:', e.message); return 'error'; }
   }
 
   firebase.auth().onAuthStateChanged(function(user){ if(user) initFCM(); });
+
+  /* Logging out stops this device ringing for that account. The entry has to be
+     removed BEFORE sign-out, while we still have permission to delete it. */
+  (function(){
+    var auth = firebase.auth(), realSignOut = auth.signOut.bind(auth);
+    auth.signOut = function(){
+      var u = auth.currentUser, key = window.__fcmKey, tok = window.__fcmToken;
+      window.__fcmReady = false;
+      if(!u || !key || window.__fcmUid !== u.uid) return realSignOut();
+      var ref = firebase.database().ref('fcmTokens/' + u.uid);
+      var cleanup = ref.once('value').then(function(s){
+        var v = s.val() || {}, upd = {};
+        upd['devices/' + key] = null;
+        if(v.token === tok) upd.token = null;
+        return ref.update(upd);
+      }).catch(function(){});
+      var timeout = new Promise(function(r){ setTimeout(r, 2500); }); /* never hold up logging out */
+      return Promise.race([cleanup, timeout]).then(function(){ window.__fcmKey = window.__fcmToken = window.__fcmUid = null; return realSignOut(); });
+    };
+  })();
 
   /* Manual trigger for the "Enable" button in Settings — same flow as the
      passive auto-request on login, but with visible feedback, for anyone

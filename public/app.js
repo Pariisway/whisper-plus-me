@@ -3884,6 +3884,9 @@ window.addEventListener("pagehide", function(){
 
   /* Same idea for a shared profile link (?openProfile=uid), set by the
      profileOG redirect after someone taps a share link. */
+  /* Tapping a "Missed call" alert opens the call log (?calls=1) */
+  if(params.get("calls") === "1"){ window.__openCallLog = true; active = 3; }
+
   var deepProfile = (params.get("openProfile") || "").replace(/[^a-zA-Z0-9]/g, "");
   if(deepProfile) window.__deepLinkProfile = deepProfile;
 

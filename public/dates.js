@@ -58,6 +58,14 @@
     var old = btn.innerHTML; btn.disabled = true; btn.innerHTML = "…";
     return p.then(function (v) { btn.disabled = false; btn.innerHTML = old; return v; }, function (e) { btn.disabled = false; btn.innerHTML = old; throw e; });
   }
+  function stars(avg, n) { return n ? "<span class='dt-stars' title='" + avg + " out of 5 from " + n + " rating" + (n === 1 ? "" : "s") + "'>★ " + Number(avg).toFixed(1) + " <small>(" + n + ")</small></span>" : ""; }
+  function hostStars(m) { if (m.official) return ""; var r = ((window.allUsers || {})[m.hostUid] || {}).rating; return r && r.n ? stars(r.avg, r.n) : ""; }
+  function idOkBox(id) { return "<label class='dt-check dt-idok'><input type='checkbox' id='" + id + "'> <span>🪪 <b>21+, ID checked at the door.</b> I'll bring a valid photo ID. Without one I can be turned away, and the spot isn't refunded.</span></label>"; }
+  function starRow(kind, id, mine) {
+    return "<div class='dt-rate'><span>" + (mine ? "You rated it" : "How was it?") + "</span><span class='dt-starbtns' role='group' aria-label='Rate 1 to 5 stars'>" + [1, 2, 3, 4, 5].map(function (n) {
+      return "<button class='" + (n <= mine ? "on" : "") + "' aria-label='" + n + " star" + (n === 1 ? "" : "s") + "' onclick=\"Dates.rate('" + kind + "','" + id + "'," + n + ")\">★</button>";
+    }).join("") + "</span></div>";
+  }
   function left(m) { return Math.max(0, (m.spots || 0) - (m.sold || 0) - (m.held || 0)); }
   function hostLabel(m) { return m.official ? "Whisper+Me" : m.hostName; }
   function shareLink(id) { return "https://whisperplusme.com/m/" + encodeURIComponent(id); }
@@ -158,6 +166,16 @@
 .dt-check a{color:#b9a4ff}\
 .dt-in{width:100%;padding:11px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.14);background:#0b0b16;color:#fff;font-size:14px}\
 .dt-err{color:#ff8a80;font-size:13px}\
+.dt-stars{color:#ffc94d;font-weight:800;white-space:nowrap}.dt-stars small{color:#9a8fb5;font-weight:600}\
+.dt-idb{display:inline-block;background:rgba(255,186,73,.16);color:#ffba49;border-radius:999px;padding:2px 8px;font-size:10.5px;font-weight:800;margin-top:4px;white-space:nowrap}\
+.dt-idok input{flex:none;width:auto}\
+.dt-idok{background:rgba(255,186,73,.08);border:1px solid rgba(255,186,73,.35);border-radius:12px;padding:10px 12px}\
+.dt-rate{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;padding:10px 12px;border-radius:12px;background:rgba(255,201,77,.08);border:1px solid rgba(255,201,77,.25)}\
+.dt-rate span{font-size:13px;color:#ddd}\
+.dt-starbtns{display:flex;gap:2px}\
+.dt-starbtns button{background:none;border:0;padding:2px 3px;font-size:24px;line-height:1;color:#5d5675;cursor:pointer;min-height:36px;min-width:32px}\
+.dt-starbtns button.on{color:#ffc94d}\
+.dt-starbig button{font-size:38px;min-width:48px;min-height:52px}\
 ";
   var styleEl = document.createElement("style"); styleEl.textContent = css; document.head.appendChild(styleEl);
 
@@ -263,8 +281,8 @@
       + "<div class='k'><span>" + top + "</span>" + badge + "</div>"
       + "<b>" + esc(m.title) + "</b></div>"
       + "<div class='dt-body'><div class='v'>" + avatar({ name: hostLabel(m), photo: m.hostPhoto }, 32)
-      + "<div class='t'><div>" + (m.official ? "Hosted by Whisper+Me" : "with " + esc(m.hostName)) + "</div><div>" + esc(when(m.startsAt)) + "</div><div>📍 " + esc(m.venueName) + (m.city ? ", " + esc(m.city.split(",")[0]) : "") + "</div></div></div>"
-      + "<div class='dt-price'><b>" + money(m.price) + "</b><small>per person</small>" + (sold >= 3 ? "<small class='dt-going'>🔥 " + sold + " going</small>" : "") + "</div></div></button>";
+      + "<div class='t'><div>" + (m.official ? "Hosted by Whisper+Me" : "with " + esc(m.hostName)) + (hostStars(m) ? " · " + hostStars(m) : "") + "</div><div>" + esc(when(m.startsAt)) + "</div><div>📍 " + esc(m.venueName) + (m.city ? ", " + esc(m.city.split(",")[0]) : "") + "</div></div></div>"
+      + "<div class='dt-price'><b>" + money(m.price) + "</b><small>per person</small>" + (sold >= 3 ? "<small class='dt-going'>🔥 " + sold + " going</small>" : "") + (m.idCheck ? "<span class='dt-idb'>🪪 21+ ID</span>" : "") + "</div></div></button>";
   }
   function phoneInner() {
     var u = anyUser();
@@ -293,8 +311,8 @@
       + "<div class='dt-poster' style='background:" + grad(c.hue != null ? c.hue : hue(c.title)) + "'>" + (c.imageURL ? "<img src='" + esc(c.imageURL) + "' alt=''>" : "")
       + "<div class='k'><span>💞 " + (CAT_ICON[c.category] || "") + " " + esc(c.category || "Night out") + "</span>" + (l <= 3 ? "<span class='dt-hot'>" + l + " left</span>" : "<span>For " + c.size + "</span>") + "</div>"
       + "<b>" + esc(c.title) + "</b></div>"
-      + "<div class='dt-body'><div class='v'><div class='t'><div>📍 " + esc(c.venueName) + (c.city ? ", " + esc(c.city.split(",")[0]) : "") + "</div><div>" + esc(when(c.startsAt)) + "</div><div>" + esc((c.items || []).slice(0, 2).join(" · ")) + "</div></div></div>"
-      + "<div class='dt-price'><b>" + money(c.price) + "</b><small>for " + c.size + "</small></div></div></button>";
+      + "<div class='dt-body'><div class='v'><div class='t'><div>📍 " + esc(c.venueName) + (c.city ? ", " + esc(c.city.split(",")[0]) : "") + (c.venueRating && c.venueRating.n ? " · " + stars(c.venueRating.avg, c.venueRating.n) : "") + "</div><div>" + esc(when(c.startsAt)) + "</div><div>" + esc((c.items || []).slice(0, 2).join(" · ")) + "</div></div></div>"
+      + "<div class='dt-price'><b>" + money(c.price) + "</b><small>for " + c.size + "</small>" + (c.idCheck ? "<span class='dt-idb'>🪪 21+ ID</span>" : "") + "</div></div></button>";
   }
   function connectHow() {
     return "<div class='dt-box' style='border-color:rgba(224,69,123,.4)'><h3>How Connect Me works</h3><p>Night-out packages at real places, for a set day and time. You buy it, then bring who you want.</p><ol class='dt-steps'>"
@@ -322,6 +340,8 @@
       + (live && o.address ? "<div class='dt-rules'>📍 <b>" + esc(o.venueName) + "</b><br>" + esc(o.address) + ", " + esc(o.city) + (o.venuePhone ? "<br>📞 <a href='tel:" + esc(String(o.venuePhone).replace(/[^0-9+]/g, "")) + "' style='color:#00e3ae'>" + esc(o.venuePhone) + "</a>" : "") + "<br><a href='" + maps + "' target='_blank' rel='noopener' style='color:#00e3ae'>Open in Maps</a></div>" : "")
       + (o.buyer || seats ? "<div style='margin-top:8px'><div class='lbl' style='font-size:11px;color:#9a8fb5;font-weight:800;letter-spacing:.08em'>WHO'S GOING</div>" + seats + "</div>" : "")
       + (live && o.code ? "<div style='text-align:center;margin-top:10px'><div class='dt-code' style='color:#ff8fb3'>" + esc(o.code) + "</div><div style='font-size:12px;color:#9a8fb5'>Your code. Show it if the staff asks.</div></div>" : "")
+      + (live && o.idCheck ? "<div class='dt-rules' style='margin-top:8px'>🪪 <b>21+:</b> everyone brings a valid photo ID. It's checked at the door.</div>" : "")
+      + (o.canRate ? starRow("cm", o.id, o.myStars || 0) : "")
       + (live ? "<div class='dt-actions' style='margin-top:10px'>" + (hereOpen && !o.here ? "<button class='dt-btn teal' onclick=\"Dates.imHere('" + o.id + "',this)\">📍 I'm here</button>" : !o.here ? "<span style='font-size:12px;color:#9a8fb5'>“I'm here” opens an hour before.</span>" : "") + "</div>" : "")
       + "</div>";
   }
@@ -342,6 +362,8 @@
       + "<p style='margin:6px 0'>" + (m.official ? "Whisper+Me M&G" : "with " + esc(m.hostName)) + " · " + esc(when(m.startsAt)) + "</p>"
       + (m.address && m.status !== "canceled" ? "<div class='dt-rules'>📍 <b>" + esc(m.venueName) + "</b><br>" + esc(m.address) + ", " + esc(m.city) + (m.venuePhone ? "<br>📞 <a href='tel:" + esc(String(m.venuePhone).replace(/[^0-9+]/g, "")) + "' style='color:#00e3ae'>" + esc(m.venuePhone) + "</a>" : "") + "<br><a href='" + maps + "' target='_blank' rel='noopener' style='color:#00e3ae'>Open in Maps</a></div>" : "")
       + (m.status === "live" && m.code ? "<div style='text-align:center;margin-top:10px'><div class='dt-code'>" + esc(m.code) + "</div><div style='font-size:12px;color:#9a8fb5'>" + ((m.qty || 1) > 1 ? "<b style='color:#fff'>Good for " + m.qty + " people.</b> " : "") + "Show this code to " + esc(hostLabel(m)) + " when you get there.</div></div>" : "")
+      + (m.status === "live" && m.idCheck ? "<div class='dt-rules' style='margin-top:8px'>🪪 <b>21+:</b> bring a valid photo ID" + ((m.qty || 1) > 1 ? " (everyone in your group)" : "") + ". It's checked at the door.</div>" : "")
+      + (m.canRate ? starRow("mg", m.id, m.myStars || 0) : "")
       + "<div class='dt-actions' style='margin-top:10px'>"
       + (m.status === "live" ? "<button class='dt-btn ghost' onclick=\"Dates.shareMeetup('" + m.id + "')\">↗ Bring a friend</button>" : "")
       + (m.canReport && !m.reported ? "<button class='dt-btn ghost' onclick=\"Dates.reportMeetup('" + m.id + "')\">Report a problem</button>" : "")
@@ -373,6 +395,8 @@
     return "<div class='dt-box'><div class='dt-row'><h3 style='margin:0'>" + esc(m.title) + "</h3><span class='dt-pill " + st[0] + "'>" + (m.hidden && m.status === "live" ? "Paused" : st[1]) + "</span></div>"
       + "<p style='margin:6px 0 0'>" + esc(m.venueName) + (m.address ? ", " + esc(m.address) : "") + "<br>" + esc(when(m.startsAt)) + " · " + money(m.price) + " a spot · <b>" + (m.sold || 0) + " of " + m.spots + "</b> sold</p>"
       + "<div class='dt-next'>" + hostNext(m) + "</div>"
+      + (m.ratings ? "<p style='margin:6px 0 0;font-size:13px'>Guests rated it " + stars(m.rating, m.ratings) + "</p>" : "")
+      + (m.idCheck && ["live", "pending", "changes"].indexOf(m.status) > -1 ? "<p style='margin:6px 0 0;font-size:12.5px;color:#ffba49'>🪪 21+: check each guest's photo ID at the door.</p>" : "")
       + (m.status === "changes" && m.changesNote ? "<div class='dt-warn'><b>What to change:</b> " + esc(m.changesNote) + "</div>" : "")
       + (guests.length ? "<div class='dt-guests'>" + guests.map(function (g) { return "<span class='dt-g" + (g.here ? " here" : "") + "'>" + (g.here ? "✓ " : "") + esc(g.name) + "</span>"; }).join("") + "</div>" : "")
       + "<div class='dt-actions'>"
@@ -422,6 +446,13 @@
 
   function openPending() {
     if (typeof active === "undefined" || active !== 4) return;
+    var rt = null; try { rt = sessionStorage.getItem("wpmRate"); } catch (e) {}
+    if (rt && me() && S.loadedMine) {
+      try { sessionStorage.removeItem("wpmRate"); } catch (e) {}
+      var parts = rt.split(":");
+      setTimeout(function () { Dates.rate(parts[0] === "cm" ? "cm" : "mg", parts[1]); }, 50);
+      return;
+    }
     var tok = null; try { tok = sessionStorage.getItem("wpmConnect"); } catch (e) {}
     if (tok && anyUser()) { try { sessionStorage.removeItem("wpmConnect"); } catch (e) {} S.mode = "cm"; setTimeout(function () { refresh(); Dates.openInvite(tok); }, 50); return; }
     if (!S.meetups.length) return;
@@ -480,7 +511,9 @@
         + (c.about ? "<p style='margin:0;line-height:1.55;font-size:14px'>" + esc(c.about) + "</p>" : "")
         + ((c.items || []).length ? "<div><div class='lbl'>Included</div><div style='font-size:14px;line-height:1.6'>" + c.items.map(function (i) { return "✓ " + esc(i); }).join("<br>") + "</div></div>" : "")
         + "<div class='dt-rules'><b>How it works:</b> buy it, then invite who you're bringing: pick a member here, or send them a link (they join free to accept). The address and everyone's code show up right after. At the place, each of you taps <b>“I'm here.”</b></div>"
+        + (c.venueRating && c.venueRating.n ? "<div style='font-size:13px'>People rated " + esc(c.venueName) + " " + stars(c.venueRating.avg, c.venueRating.n) + "</div>" : "")
         + (needYear ? birthYearField("cmYear") : "")
+        + (c.idCheck && !S.anon ? idOkBox("cmIdOk") : "")
         + (S.credit > 0 && !S.anon ? "<div class='dt-rules' style='color:#00e3ae'>💳 Your " + money(S.credit) + " credit is used first.</div>" : "")
         + "<div id='cmErr' class='dt-err'></div><button class='dt-btn big' id='cmBuy' style='background:linear-gradient(90deg,#7b2ff7,#e0457b)'>" + (S.anon ? "Sign up free to get it" : "Get it · " + money(c.price)) + "</button>"
         + "<p class='dt-fine'>Paid packages aren't refundable. If the place or Whisper+Me cancels, you get all your money back. By buying you agree to the <a href='/terms.html' target='_blank' rel='noopener'>terms</a>.</p>");
@@ -488,6 +521,7 @@
         if (S.anon) { if (window.promptGuestUpgrade) window.promptGuestUpgrade("Connect Me"); return; }
         var data = { dealId: c.id };
         if (needYear) { data.birthYear = +($i("cmYear") || {}).value; if (!data.birthYear) { $i("cmErr").textContent = "Pick your birth year first."; return; } }
+        if (c.idCheck) { if (!$i("cmIdOk").checked) { $i("cmErr").textContent = "This one is 21+ with ID at the door. Tick the ID box to continue."; return; } data.idOk = true; }
         busy(this, fn("buyConnect", data)).then(function (r) { if (r.done) { closeModal(); toast(r.message); loadMine(); } else location.href = r.url; }, function (e) { $i("cmErr").textContent = e.message; });
       };
     },
@@ -501,12 +535,13 @@
           + (v.mine ? "<div class='dt-rules'>You already accepted. Your code and the address are under 💞 Connect Me.</div>"
             : v.taken ? "<div class='dt-warn'>Someone already accepted this invite.</div>"
             : v.forSomeoneElse ? "<div class='dt-warn'>This invite was sent to someone else.</div>"
-            : (needYear ? birthYearField("ivYear") : "") + "<div id='ivErr' class='dt-err'></div><button class='dt-btn big' id='ivGo' style='background:linear-gradient(90deg,#7b2ff7,#e0457b)'>" + (S.anon ? "Sign up free to accept" : "Accept 💞") + "</button><p class='dt-fine'>Free to accept. 21+ only. You'll get the address and your own code.</p>"));
+            : (needYear ? birthYearField("ivYear") : "") + (v.idCheck && !S.anon ? idOkBox("ivIdOk") : "") + "<div id='ivErr' class='dt-err'></div><button class='dt-btn big' id='ivGo' style='background:linear-gradient(90deg,#7b2ff7,#e0457b)'>" + (S.anon ? "Sign up free to accept" : "Accept 💞") + "</button><p class='dt-fine'>Free to accept. 21+ only. You'll get the address and your own code.</p>"));
         var b = $i("ivGo");
         if (b) b.onclick = function () {
           if (S.anon) { try { sessionStorage.setItem("wpmConnect", token); } catch (e) {} if (window.promptGuestUpgrade) window.promptGuestUpgrade("Accepting a Connect Me invite"); return; }
           var data = { token: token };
           if (needYear) { data.birthYear = +($i("ivYear") || {}).value; if (!data.birthYear) { $i("ivErr").textContent = "Pick your birth year first."; return; } }
+          if (v.idCheck) { if (!$i("ivIdOk").checked) { $i("ivErr").textContent = "This one is 21+ with ID at the door. Tick the ID box to accept."; return; } data.idOk = true; }
           busy(b, fn("acceptConnect", data)).then(function (r) { closeModal(); toast(r.message); S.mode = "cm"; loadMine(); }, function (e) { $i("ivErr").textContent = e.message; });
         };
       }, function (e) { toast(e.message, "error"); });
@@ -568,7 +603,7 @@
       var needYear = !S.anon && S.member === null;
       openModal("<div style='margin:-18px -18px 0;border-radius:14px 14px 0 0;overflow:hidden'><div class='dt-poster' style='height:150px;background:" + grad(m.hue != null ? m.hue : hue(m.title)) + "'>"
         + (m.imageURL ? "<img src='" + esc(m.imageURL) + "' alt=''>" : "") + "<div class='k'><span>" + (m.official ? "⭐ Whisper+Me pick" : (CAT_ICON[m.category] || "⭐") + " " + esc(m.category || "M&G")) + "</span>" + (l <= 5 ? "<span class='dt-hot'>" + l + " left</span>" : "") + "</div><b style='font-size:23px'>" + esc(m.title) + "</b></div></div>"
-        + "<div class='dt-row' style='justify-content:flex-start;gap:10px;flex-wrap:nowrap'>" + avatar({ name: hostLabel(m), photo: m.hostPhoto }, 46) + "<div><b>" + (m.official ? "Hosted by Whisper+Me" : "with " + esc(m.hostName)) + "</b><br><small style='color:#9a8fb5'>" + esc(when(m.startsAt)) + "<br>📍 " + esc(m.venueName) + (m.city ? ", " + esc(m.city) : "") + "</small></div></div>"
+        + "<div class='dt-row' style='justify-content:flex-start;gap:10px;flex-wrap:nowrap'>" + avatar({ name: hostLabel(m), photo: m.hostPhoto }, 46) + "<div><b>" + (m.official ? "Hosted by Whisper+Me" : "with " + esc(m.hostName)) + "</b>" + (hostStars(m) ? " " + hostStars(m) : "") + "<br><small style='color:#9a8fb5'>" + esc(when(m.startsAt)) + "<br>📍 " + esc(m.venueName) + (m.city ? ", " + esc(m.city) : "") + "</small></div></div>"
         + "<div class='dt-facts'><div><b>" + money(m.price) + "</b>per person</div><div><b>" + l + "</b>spot" + (l === 1 ? "" : "s") + " left</div>" + ((m.sold || 0) >= 1 ? "<div><b>" + m.sold + "</b>going</div>" : "") + "</div>"
         + (m.about ? "<p style='margin:0;line-height:1.55;font-size:14px'>" + esc(m.about) + "</p>" : "")
         + ((m.items || []).length ? "<div><div class='lbl'>Included</div><div style='font-size:14px;line-height:1.6'>" + m.items.map(function (i) { return "✓ " + esc(i); }).join("<br>") + "</div></div>" : "")
@@ -578,6 +613,7 @@
           : (needYear ? birthYearField("dtMgYear") : "")
             + (S.anon || l < 2 ? "" : "<div class='dt-row' style='flex-wrap:nowrap'><div><div class='lbl' style='margin:0'>How many spots?</div><small style='color:#9a8fb5'>You + friends, one code for the group</small></div>"
               + "<div class='dt-qty'><button class='dt-btn ghost' id='dtQm' aria-label='One less'>−</button><b id='dtQn'>1</b><button class='dt-btn ghost' id='dtQp' aria-label='One more'>+</button></div></div>")
+            + (m.idCheck && !S.anon ? idOkBox("dtMgIdOk") : "")
             + (S.credit > 0 ? "<div class='dt-rules' style='color:#00e3ae'>💳 Your " + money(S.credit) + " credit is used first.</div>" : "")
             + "<div id='dtMgErr' class='dt-err'></div>"
             + "<button class='dt-btn big' id='dtMgBuy'>" + (S.anon ? "Sign up free to get a spot" : "Get my spot · " + money(m.price)) + "</button>"
@@ -591,7 +627,29 @@
         if (S.anon) { try { sessionStorage.setItem("wpmMeetup", m.id); } catch (e) {} if (window.promptGuestUpgrade) window.promptGuestUpgrade("Getting a spot at an M&G"); return; }
         var data = { meetupId: m.id, qty: qty };
         if (needYear) { data.birthYear = +($i("dtMgYear") || {}).value; if (!data.birthYear) { $i("dtMgErr").textContent = "Pick your birth year first."; return; } }
+        if (m.idCheck) { if (!$i("dtMgIdOk").checked) { $i("dtMgErr").textContent = "This one is 21+ with ID at the door. Tick the ID box to continue."; return; } data.idOk = true; }
         busy(b, fn("buyMeetupSpot", data)).then(function (r) { if (r.done) { closeModal(); toast(r.message); loadMine(); setTimeout(Dates.showTickets, 1500); } else location.href = r.url; }, function (e) { $i("dtMgErr").textContent = e.message; });
+      };
+    },
+    /* ⭐ Rate an M&G (the host) or a Connect Me (the night and the place). Stars are public; the comment only goes to Whisper+Me. */
+    rate: function (kind, id, pre) {
+      if (!me()) return;
+      var it = kind === "cm" ? S.myCon.filter(function (x) { return x.id === id; })[0] : S.mine.filter(function (x) { return x.id === id && !x.host; })[0];
+      var title = it ? it.title : "it", n = pre || (it && it.myStars) || 0;
+      var who = kind === "cm" ? "the night and " + esc(it ? it.venueName : "the place") : it && !it.official ? esc(it.hostName) + " as a host" : "the night";
+      openModal("<h3>⭐ How was " + esc(title) + "?</h3><p style='margin:0;color:#b3abcf;font-size:13px'>Rate " + who + ".</p>"
+        + "<div class='dt-starbtns dt-starbig' id='rtStars' role='group' aria-label='Rate 1 to 5 stars' style='justify-content:center'>" + [1, 2, 3, 4, 5].map(function (k) { return "<button data-n='" + k + "' aria-label='" + k + " star" + (k === 1 ? "" : "s") + "'>★</button>"; }).join("") + "</div>"
+        + "<div id='rtWord' style='text-align:center;font-weight:800;min-height:20px'></div>"
+        + "<textarea class='dt-in' id='rtText' rows='3' maxlength='600' placeholder='Anything we should know? (optional)'></textarea>"
+        + "<p class='dt-fine' style='margin:0'>Only Whisper+Me sees your comment. Your stars count toward the " + (kind === "cm" ? "place's" : "host's") + " rating.</p>"
+        + "<div id='rtErr' class='dt-err'></div><button class='dt-btn big' id='rtGo'>Send rating</button>");
+      var words = ["", "Bad", "Not great", "OK", "Good", "Amazing!"];
+      var set = function (k) { n = k; document.querySelectorAll("#rtStars button").forEach(function (b) { b.classList.toggle("on", +b.getAttribute("data-n") <= k); }); $i("rtWord").textContent = words[k] || ""; };
+      document.querySelectorAll("#rtStars button").forEach(function (b) { b.onclick = function () { set(+b.getAttribute("data-n")); }; });
+      set(n);
+      $i("rtGo").onclick = function () {
+        if (!n) { $i("rtErr").textContent = "Tap 1 to 5 stars."; return; }
+        busy(this, fn("rateEvent", { kind: kind, id: id, stars: n, text: $i("rtText").value })).then(function (r) { closeModal(); toast(r.message); loadMine(); }, function (e) { $i("rtErr").textContent = e.message; });
       };
     },
     showTickets: function () {
@@ -689,6 +747,7 @@
         + "<div class='dt-row' style='gap:10px;flex-wrap:nowrap'>" + (locked ? "" : "<div style='flex:1'><div class='lbl'>Price per person ($)</div><input class='dt-in' id='mgPrice' type='number' min='5' step='1' inputmode='numeric' value='" + (ed ? ed.price / 100 : "") + "' placeholder='45'></div>")
         + "<div style='width:110px'><div class='lbl'>Spots</div><input class='dt-in' id='mgSpots' type='number' min='1' max='500' inputmode='numeric' value='" + (ed ? ed.spots : 10) + "'></div></div>"
         + "<div class='dt-rules' id='mgMath'></div>"
+        + "<label class='dt-check'><input type='checkbox' id='mgIdCheck'" + (ed && ed.idCheck ? " checked" : "") + (locked ? " disabled" : "") + "> <span>🪪 <b>21+ with ID at the door</b> (a bar, lounge, or drinks are the main thing). Buyers confirm they'll bring a photo ID, and you check it when they arrive.</span></label>"
         + "<h4>4 · HOW WE REACH YOU</h4>"
         + "<div class='dt-row' style='gap:6px;flex-wrap:nowrap'><input class='dt-in' id='mgEmail' type='email' placeholder='Email' value='" + esc(c.email || u.email || "") + "'><input class='dt-in' id='mgPhone' type='tel' placeholder='Your phone' value='" + esc(c.phone || "") + "'></div>"
         + "<p style='margin:-8px 0 0;font-size:12px;color:#9a8fb5'>Only Whisper+Me sees these, to confirm details or ask for changes.</p>"
@@ -716,7 +775,7 @@
         var venue = locked ? v : { name: $i("mgVname").value, address: $i("mgVaddr").value, city: $i("mgVcity").value, phone: $i("mgVphone").value, source: HF.venue.source || "other", osmId: HF.venue.osmId || "", lat: HF.venue.lat, lon: HF.venue.lon };
         var startsAt = locked ? ed.startsAt : ($i("mgWhen").value ? new Date($i("mgWhen").value).getTime() : 0);
         var data = { title: $i("mgTitle").value, about: $i("mgAbout").value, category: $i("mgCat").value, items: $i("mgItems").value, venue: venue, startsAt: startsAt,
-          price: locked ? ed.price / 100 : +$i("mgPrice").value, spots: +$i("mgSpots").value, contact: { email: $i("mgEmail").value, phone: $i("mgPhone").value }, imageURL: HF.img || "" };
+          price: locked ? ed.price / 100 : +$i("mgPrice").value, spots: +$i("mgSpots").value, contact: { email: $i("mgEmail").value, phone: $i("mgPhone").value }, imageURL: HF.img || "", idCheck: $i("mgIdCheck").checked };
         if (needYear) { data.birthYear = +$i("mgYear").value; if (!data.birthYear) { err.textContent = "Pick your birth year."; return; } }
         var f = $i("mgImg").files[0];
         var up = f ? (f.size > 5 * 1024 * 1024 ? Promise.reject(new Error("The picture is over 5 MB.")) : firebase.storage().ref("nights/ticketImages/" + S.uid + "/" + Date.now()).put(f, { contentType: f.type }).then(function (r) { return r.ref.getDownloadURL(); })) : Promise.resolve(HF.img || "");
@@ -736,6 +795,7 @@
     checkInGuest: function (id) {
       var m = findM(id) || {};
       openModal("<h3>✅ Check in guests</h3><p style='margin:0;color:#b3abcf'>Ask each guest for the code on their phone (it starts with MG-) and type it here. Checking guests in is how you get paid.</p>"
+        + (m.idCheck ? "<div class='dt-warn'>🪪 <b>21+ event:</b> look at each guest's photo ID before you check them in. The name should match and they must be 21 or older. No ID, no entry.</div>" : "")
         + "<input class='dt-in' id='mgCode' placeholder='MG-XXXXX' autocomplete='off' style='text-transform:uppercase;font-size:20px;letter-spacing:.1em'><div id='mgCiOut' class='dt-err'></div>"
         + "<button class='dt-btn big teal' id='mgCi'>Check in</button>"
         + ((m.guests || []).length ? "<div><div class='lbl'>Guest list</div><div class='dt-guests' id='mgGl'>" + m.guests.map(function (g) { return "<span class='dt-g" + (g.here ? " here" : "") + "'>" + (g.here ? "✓ " : "") + esc(g.name) + "</span>"; }).join("") + "</div></div>" : ""));
@@ -743,7 +803,7 @@
         var code = $i("mgCode").value.trim().toUpperCase(), out = $i("mgCiOut");
         if (!code) return;
         busy($i("mgCi"), fn("checkInGuest", { meetupId: id, code: code.indexOf("MG-") === 0 ? code : "MG-" + code })).then(function (r) {
-          out.style.color = "#00e3ae"; out.textContent = (r.already ? "Already checked in: " : "✅ Checked in: ") + r.guest; $i("mgCode").value = ""; $i("mgCode").focus(); loadMine();
+          out.style.color = "#00e3ae"; out.textContent = (r.already ? "Already checked in: " : "✅ Checked in: ") + r.guest + (r.idCheck && !r.already ? " · 🪪 ID checked?" : ""); $i("mgCode").value = ""; $i("mgCode").focus(); loadMine();
         }, function (e) { out.style.color = ""; out.textContent = e.message; });
       };
       $i("mgCi").onclick = go;
@@ -791,6 +851,8 @@
   if (sharedMeetup) { try { sessionStorage.setItem("wpmMeetup", sharedMeetup); } catch (e) {} }
   var sharedConnect = (params.get("connect") || "").replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 20);
   if (sharedConnect) { try { sessionStorage.setItem("wpmConnect", sharedConnect); } catch (e) {} if (!back) back = "1"; }
+  var rateLink = (params.get("rate") || "").replace(/[^A-Za-z0-9:_-]/g, "").slice(0, 80);
+  if (/^(mg|cm):/.test(rateLink)) { try { sessionStorage.setItem("wpmRate", rateLink); } catch (e) {} if (!back) back = "1"; }
   if (back) {
     var msgs = { connect: "Booked! 💞 Now invite who you're bringing: a member, or send them a link.", meetup: "You're in! The address and your code are under 🎟️ My tickets.", hostdeposit: "Deposit received. We'll review your M&G (usually within a day) and let you know when it's live.", seat: "Payment received.", back: "Checkout wasn't finished. Nothing was charged." };
     history.replaceState(null, "", location.pathname);

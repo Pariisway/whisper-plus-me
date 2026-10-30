@@ -54,7 +54,7 @@ messaging.onBackgroundMessage(function(payload){
         icon: "/icon-192.png",
         badge: "/favicon-32.png",
         tag: "missed-" + data.callId,
-        data: { url: data.url || "https://whisperplusme.com", type: "missed_call" }
+        data: { url: "https://whisperplusme.com/?calls=1", type: "missed_call" }
       });
     });
   }

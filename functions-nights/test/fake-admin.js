@@ -79,6 +79,7 @@ class Query {
         const x = f.split(".").reduce((o, k) => (o == null ? o : o[k]), d);
         if (op === "==") return valOf(x) === valOf(v);
         if (op === "<") return valOf(x) < valOf(v);
+        if (op === ">=") return valOf(x) >= valOf(v);
         if (op === "array-contains") return Array.isArray(x) && x.includes(v);
         if (op === "in") return v.includes(valOf(x));
         throw new Error("op " + op);

@@ -12,7 +12,17 @@ Branch `social-upgrade`. This rebuild turns the front door, the profile, and the
 | **Admin** (`/admin.html`) | One long page of tables, browser pop-ups | MergeChat-style layout: top emoji tabs (🏁 Start here · 📡 Live now · 👥 People · 💰 Money · 🎬 Landing page · 📢 Announce · 💬 Rooms · 🛡️ Safety · ⭐ M&G · 🧾 Activity), "What do you want to do?" tiles, a "Needs your attention" list, "At a glance" numbers, and a "How the site fits together" map. Simple/Full layout switch. Every confirmation is an in-page dialog. The activity log is saved, so it survives a refresh. |
 | **Landing page manager** (new, Admin → 🎬) | none | Upload videos or pictures (or paste links), reorder, remove, shuffle, seconds per picture, darkness slider, sound-button switch, headline and subline, phone/computer preview, then **🚀 Publish**. |
 
-## 📞 Calls ring the phone even when the app is closed (latest)
+## 🕘 Call log, Home Screen app, emails, ratings, 21+ ID, sales charts (latest)
+
+- **Call log** (Profile → 📞 Calls): every call in and out with Missed / Declined / No answer, length, coins spent or earned, and a 📞 call-back button. A red number on the Calls tab shows new missed calls, and tapping a "Missed call" alert opens the log (`/?calls=1`).
+- **Add to Home Screen** (`public/install.js`): members are invited about 25 seconds in (then at most every 10 days). Android/desktop get the browser's one-tap Install, iPhone gets a picture guide (Share → Add to Home Screen), and Instagram/Facebook browsers on iPhone are told to open Safari first. Also in Profile → More and the Calls tab. `users/{uid}/appInstalled` records who has it.
+- **Logging out stops that phone ringing**, and a phone that switches accounts is moved to the new account (`fcmClaim`, `fcmOwners/`).
+- **Emails** (from whisper.me.support@gmail.com, `GMAIL_APP_PASSWORD` secret): M&G ticket receipt with code + calendar invite, host "spot sold", deposit receipt, "you're live" with share link, Connect Me booking with invite links, invite accepted, a reminder the day before (guests and host checklist), host payout notice, "you got paid", and credit added. Gmail allows about 500 a day.
+- **Ratings ⭐**: after an M&G guests rate the host; after a Connect Me everyone rates the night and the place (push "How was it?" when it ends). Stars show on member cards, M&G cards and packages; comments go only to you (Admin → ⭐ M&G → Ratings & reviews, with Remove). Admin → 💞 Connect Me → Best-rated places.
+- **21+ ID at the door**: tick it when posting an M&G or Connect Me. Buyers and invited guests must confirm they'll bring a photo ID, cards show "🪪 21+ ID", emails and tickets remind them, and check-in reminds the host/admin to look at it.
+- **📈 Sales** (Admin → 💰 Money): sales by week or month (coins, M&G, Connect Me), your cut, change vs last week, table view, and top hosts, places and call earners.
+
+## 📞 Calls ring the phone even when the app is closed
 
 - **Server rings, not the browser.** `callRing` (nights) fires the moment a call is created and pushes to **every** device the member turned alerts on for, re-ringing 4× every 9 s while the call is still ringing. `callStopRing` takes the alert down when the call is answered/declined/ended and leaves a **"Missed call from …"** alert if they never picked up.
 - **Old function retired.** `notifyIncomingCall` (default codebase) is gone — delete it once with

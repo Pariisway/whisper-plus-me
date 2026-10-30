@@ -667,6 +667,88 @@ async function test(name, fn) {
     assert.deepStrictEqual([b4.done, S.sessions.length - n0, doc("credits/romeo").balance, doc("connectOrders/" + b4.orderId).seats.length], [true, 0, 1000, 2]);
   });
 
+  await test("Emails: ticket receipt with code + calendar invite, host notices, one day-before reminder, payout, credit", async () => {
+    const M = T.sentMail; M.length = 0;
+    seedPeople("mia", "hoste", "zed"); rtdb.users.mia.email = "mia@x.com"; rtdb.users.hoste.email = "host@x.com"; rtdb.users.zed.email = "zed@x.com";
+    await call("datesJoin", "hoste", { birthYear: 1990 });
+    const mg = await call("createMeetup", "hoste", mgData({ title: "Wings night", price: 25, spots: 4, startsAt: Date.now() + 50 * H }));
+    await completeLastCheckout("hoste");
+    assert.ok(M.some(m => m.to === "host@x.com" && /Deposit received/.test(m.subject)), "deposit receipt");
+    await admin({ action: "approveMeetup", id: mg.id });
+    assert.ok(M.some(m => m.to === "host@x.com" && /You're live/.test(m.subject) && m.parts.button[1].endsWith("/m/" + mg.id)), "live + share link");
+    await call("buyMeetupSpot", "mia", { meetupId: mg.id, qty: 2, birthYear: 1992 }); await completeLastCheckout("mia");
+    const rc = M.find(m => m.to === "mia@x.com" && /You're in/.test(m.subject));
+    assert.ok(rc && /^MG-/.test(rc.parts.code) && rc.parts.cal && /BEGIN:VCALENDAR/.test(rc.parts.cal.ics), "receipt has the code and a calendar invite");
+    assert.ok(rc.parts.rows.some(r => r[0] === "Where" && /123 Main St/.test(r[1])), "receipt has the private address");
+    assert.ok(M.some(m => m.to === "host@x.com" && /2 spots sold/.test(m.subject)), "host told");
+    const html = T.emailHTML({ heading: "<b>x</b>", rows: [["a", "<script>"]] });
+    assert.ok(!html.includes("<script>") && html.includes("&lt;b&gt;"), "email is escaped");
+    // reminders: not yet (50h away), then once inside 24h, never twice
+    await T.housekeeping(); assert.ok(!M.some(m => /Tomorrow/.test(m.subject)));
+    advanceHours(30); await T.housekeeping(); await T.housekeeping();
+    assert.strictEqual(M.filter(m => m.to === "mia@x.com" && /Tomorrow: Wings night/.test(m.subject)).length, 1, "one reminder");
+    assert.ok(M.some(m => m.to === "host@x.com" && /hosting Wings night/.test(m.subject)), "host checklist");
+    // canceled → credit email
+    await admin({ action: "cancelMeetup", id: mg.id, reason: "Venue closed." });
+    assert.ok(M.some(m => m.to === "mia@x.com" && /credit added/.test(m.subject)), "credit email");
+    // payout email
+    rtdb.users.zed.earnings = 64; rtdb.users.zed.stripeAccountId = "acct_Z";
+    await admin({ action: "payCreator", id: "zed" });
+    assert.ok(M.some(m => m.to === "zed@x.com" && /You got paid \$64/.test(m.subject)));
+    // nobody without an email address gets anything (and nothing breaks)
+    assert.ok(M.every(m => /@/.test(m.to)));
+  });
+
+  await test("21+ ID check and ratings: confirm ID to buy, host sees ID reminder at check-in; rate host and venue once; admin can remove", async () => {
+    seedPeople("barhost", "bev", "cole", "dana");
+    await call("datesJoin", "barhost", { birthYear: 1985 });
+    const mg = await call("createMeetup", "barhost", mgData({ title: "Bar crawl", price: 15, spots: 5, idCheck: true, startsAt: Date.now() + 30 * H }));
+    await completeLastCheckout("barhost"); await admin({ action: "approveMeetup", id: mg.id });
+    assert.strictEqual(doc("meetups/" + mg.id).idCheck, true);
+    await assert.rejects(call("buyMeetupSpot", "bev", { meetupId: mg.id, birthYear: 1995 }), /21\+ with ID/);
+    await call("buyMeetupSpot", "bev", { meetupId: mg.id, birthYear: 1995, idOk: true }); await completeLastCheckout("bev");
+    assert.ok(doc(`meetups/${mg.id}/spots/bev`).idOkAt, "agreement recorded");
+    const t = (await call("myMeetups", "bev")).meetups.find(x => x.id === mg.id && !x.host);
+    assert.ok(t.idCheck && !t.canRate, "can't rate before it happens");
+    await assert.rejects(call("rateEvent", "bev", { kind: "mg", id: mg.id, stars: 5 }), /end of the night/);
+    advanceHours(30);
+    const ci = await call("checkInGuest", "barhost", { code: t.code });
+    assert.strictEqual(ci.idCheck, true, "host is reminded to check ID");
+    advanceHours(2);
+    await call("rateEvent", "bev", { kind: "mg", id: mg.id, stars: 4, text: "Fun night" });
+    await call("rateEvent", "bev", { kind: "mg", id: mg.id, stars: 5, text: "Changed my mind, great" }); // re-rating replaces
+    assert.deepStrictEqual([rtdb.users.barhost.rating.n, rtdb.users.barhost.rating.avg], [1, 5]);
+    assert.deepStrictEqual(doc("meetups/" + mg.id).rating, { sum: 5, n: 1 });
+    assert.strictEqual((await call("myMeetups", "bev")).meetups.find(x => x.id === mg.id && !x.host).myStars, 5);
+    await assert.rejects(call("rateEvent", "cole", { kind: "mg", id: mg.id, stars: 1 }), /had a spot/);
+    await assert.rejects(call("rateEvent", "barhost", { kind: "mg", id: mg.id, stars: 5 }), /had a spot/, "hosts can't rate themselves");
+    // Connect Me: 21+ package, the invitee confirms ID too, both rate the place
+    const venue = { name: "Hop House", address: "9 Oak St", city: "Edwardsville, IL", phone: "618-555-0111", source: "other" };
+    const deal = await admin({ action: "postConnect", data: { title: "Beer flight for 2", category: "Other", items: ["Flights"], venue, startsAt: Date.now() + 26 * H, price: 30, size: 2, quantity: 3, idCheck: true } });
+    await assert.rejects(call("buyConnect", "cole", { dealId: deal.id, birthYear: 1990 }), /photo ID/);
+    const b = await call("buyConnect", "cole", { dealId: deal.id, birthYear: 1990, idOk: true }); await completeLastCheckout("cole");
+    const tok = (await call("myConnects", "cole")).connects.find(x => x.id === b.orderId).seats[1].link.split("connect=")[1];
+    assert.strictEqual((await F.connectInvite.run({ data: { token: tok }, auth: null, rawRequest: {} })).idCheck, true);
+    await assert.rejects(call("acceptConnect", "dana", { token: tok, birthYear: 1994 }), /photo ID/);
+    await call("acceptConnect", "dana", { token: tok, birthYear: 1994, idOk: true });
+    advanceHours(28);
+    await call("rateEvent", "cole", { kind: "cm", id: b.orderId, stars: 5 });
+    await call("rateEvent", "dana", { kind: "cm", id: b.orderId, stars: 2, text: "Slow service" });
+    const vk = doc("ratings/cm_" + b.orderId + "_dana").venueKey;
+    assert.deepStrictEqual([doc("connectVenues/" + vk).n, doc("connectVenues/" + vk).sum], [2, 7]);
+    const d2 = await admin({ action: "postConnect", data: { title: "Trivia for 2", category: "Other", items: ["Trivia"], venue, startsAt: Date.now() + 50 * H, price: 20, size: 2, quantity: 2 } });
+    assert.deepStrictEqual(doc("connects/" + d2.id).venueRating, { avg: 3.5, n: 2 }, "new packages at the place show its rating");
+    const list = await admin({ action: "ratings" });
+    assert.ok(list.ratings.some(r => r.text === "Slow service") && list.venues.some(v => v.name === "Hop House" && v.avg === 3.5));
+    const rep = await admin({ action: "salesReport", data: { since: Date.now() - 30 * 86400000 } });
+    assert.ok(rep.mg.some(x => x.title === "Bar crawl" && x.amount === 1500 && x.site === 150 && x.hostName === "BARHOST"), "M&G sale with the site's 10%");
+    assert.ok(rep.cm.some(x => x.title === "Beer flight for 2" && x.amount === 3000));
+    await admin({ action: "removeRating", id: "cm_" + b.orderId + "_dana" });
+    assert.deepStrictEqual(doc("connects/" + d2.id).venueRating, { avg: 5, n: 1 });
+    await admin({ action: "removeRating", id: "mg_" + mg.id + "_bev" });
+    assert.ok(!rtdb.users.barhost.rating, "host back to no rating");
+  });
+
   await test("Call alerts: ring every device, re-ring while ringing, stop + missed call, drop dead devices, test ring", async () => {
     const pushes = require("firebase-admin").__pushes;
     const fa = require("firebase-admin");
@@ -702,6 +784,16 @@ async function test(name, fn) {
     assert.strictEqual(t.devices, 2);
     await assert.rejects(call("testRing", "nobody", { delay: 0 }), /aren't on for this device/);
     fa.messaging = msgMod;
+    // a shared phone: Amy used it, then Bob logs in on it → only Bob's calls ring it
+    rtdb.fcmTokens = { amy: { token: "tok-shared", devices: { shared: { token: "tok-shared" }, laptop: { token: "tok-amy" } } } };
+    assert.strictEqual(await T.claimDevice("amy", "shared", { token: "tok-shared" }), null);
+    rtdb.fcmTokens.bob = { token: "tok-shared", devices: { shared: { token: "tok-shared" } } };
+    assert.strictEqual(await T.claimDevice("bob", "shared", { token: "tok-shared" }), "amy");
+    assert.ok(!rtdb.fcmTokens.amy.devices.shared && !rtdb.fcmTokens.amy.token, "taken off Amy");
+    assert.ok(rtdb.fcmTokens.amy.devices.laptop, "Amy's own laptop still rings");
+    assert.strictEqual(rtdb.fcmOwners.shared, "bob");
+    await T.claimDevice("bob", "shared", null); // Bob logs out
+    assert.ok(!rtdb.fcmOwners || !rtdb.fcmOwners.shared);
   });
 
   await test("Landing counter and chat cleanup keep the site fast", async () => {

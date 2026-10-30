@@ -59,6 +59,10 @@
         "callsEnabled": {
           ".write": "auth != null && auth.uid === $uid && auth.token.firebase.sign_in_provider !== 'anonymous'",
           ".validate": "newData.isBoolean()"
+        },
+        "appInstalled": {
+          ".write": "auth != null && auth.uid === $uid && auth.token.firebase.sign_in_provider !== 'anonymous'",
+          ".validate": "newData.isNumber()"
         }
       }
     },
@@ -141,7 +145,10 @@
     },
     "callLedger": {
       ".read": "auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
-      ".write": false
+      ".write": false,
+      ".indexOn": [
+        "ts"
+      ]
     },
     "coinPurchases": {
       "$uid": {

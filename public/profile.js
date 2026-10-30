@@ -7,7 +7,7 @@
 (function () {
   "use strict";
   var ADMIN_UID = "v6aIXY12MDY9ci1wWJmCiLOAKoG2";
-  var tab = "profile";
+  var tab = window.__openCallLog ? "calls" : "profile";
   var dirty = false;
   var uploading = false;
 
@@ -120,6 +120,24 @@
 .pm-sec{background:#1a1729!important;color:#fff;border:1px solid rgba(255,255,255,.1)!important}\
 .pm-warn{background:rgba(229,57,53,.15)!important;color:#ff8a8a}\
 .pm-off{font-size:13px;color:#8f89a8;padding:8px 0}\
+.pl-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}\
+.pl-head b{font-size:15px}\
+.pl-f{display:flex;gap:6px}\
+.pl-f button{background:#1a1729;border:1px solid rgba(255,255,255,.1);color:#c9c3e0;border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:700;cursor:pointer;min-height:32px;margin:0;width:auto}\
+.pl-f button.on{background:#fff;color:#111}\
+.pl-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid rgba(255,255,255,.06)}\
+.pl-row:first-of-type{border-top:0}\
+.pl-ava{flex:none;width:42px;height:42px;border-radius:50%;object-fit:cover;background:#221d38;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;cursor:pointer}\
+.pl-mid{flex:1;min-width:0}\
+.pl-name{font-weight:700;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}\
+.pl-sub{font-size:12.5px;color:#8f89a8;margin-top:2px}\
+.pl-sub .miss{color:#ff7a7a;font-weight:700}\
+.pl-sub .ok{color:#00e3ae;font-weight:700}\
+.pl-right{flex:none;text-align:right;font-size:12px;color:#8f89a8}\
+.pl-right b{display:block;font-size:13px;color:#fff}\
+.pl-cb{flex:none;width:40px;height:40px;min-height:0;border-radius:50%;border:0;background:rgba(0,227,174,.14);color:#00e3ae;font-size:17px;cursor:pointer;padding:0;margin:0}\
+.pl-more{width:100%;margin-top:8px}\
+.pf-tab i{display:inline-block;min-width:18px;height:18px;line-height:18px;border-radius:9px;background:#ff4d6d;color:#fff;font-style:normal;font-size:11px;margin-left:4px;padding:0 5px}\
 @media (max-width:420px){.pf-chips{grid-template-columns:repeat(2,1fr)}.pf-tab{font-size:12px}}\
 ";
   var st = document.createElement("style"); st.textContent = css; document.head.appendChild(st);
@@ -198,6 +216,99 @@
       + "</div>";
   }
 
+  /* ---------- call log (Profile → Calls) ---------- */
+  var log = { uid: "", rows: null, at: 0, loading: false, all: false, missedOnly: false, err: "" };
+  function seenKey() { return "wpmCallLogSeen_" + myUid(); }
+  function lsGet(k) { try { return Number(localStorage.getItem(k) || 0); } catch (e) { return 0; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, String(v)); } catch (e) {} }
+  function callKind(c, uid) {
+    var out = c.from === uid;
+    if (c.status === "ringing" || c.status === "connecting") return c.answeredAt ? "live" : "ringing";
+    if (out) return c.answeredAt ? "out" : "noanswer";
+    if (c.answeredAt) return "in";
+    return c.endedBy === uid ? "declined" : "missed";
+  }
+  function unseenMissed() {
+    if (!log.rows || log.uid !== myUid()) return 0;
+    var seen = lsGet(seenKey()), uid = myUid();
+    return log.rows.filter(function (c) { return callKind(c, uid) === "missed" && (c.createdAt || 0) > seen; }).length;
+  }
+  function loadLog(force) {
+    var uid = myUid();
+    if (!uid || (typeof isGuest === "function" && isGuest()) || log.loading) return;
+    if (!force && log.uid === uid && log.rows && Date.now() - log.at < 20000) return;
+    log.loading = true;
+    var ref = firebase.database().ref("calls");
+    Promise.all([
+      ref.orderByChild("from").equalTo(uid).limitToLast(60).once("value"),
+      ref.orderByChild("to").equalTo(uid).limitToLast(60).once("value")
+    ]).then(function (snaps) {
+      var rows = {};
+      snaps.forEach(function (s) { s.forEach(function (c) { var v = c.val(); if (v && v.createdAt) rows[c.key] = Object.assign({ id: c.key }, v); }); });
+      log.rows = Object.keys(rows).map(function (k) { return rows[k]; }).sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); }).slice(0, 100);
+      log.uid = uid; log.at = Date.now(); log.err = "";
+    }, function (e) { log.err = e.message || "Couldn't load your calls"; log.rows = log.rows || []; log.uid = uid; })
+      .then(function () {
+        log.loading = false;
+        if (typeof active !== "undefined" && active === 3 && document.getElementById("pf")) {
+          if (tab === "calls") lsSet(seenKey(), Date.now());
+          if (window.Profile) window.Profile.refresh();
+        }
+      });
+  }
+  function dur(c) {
+    if (!c.answeredAt) return "";
+    var s = Math.max(0, Math.round(((c.endedAt || Date.now()) - c.answeredAt) / 1000));
+    return s >= 3600 ? Math.floor(s / 3600) + "h " + Math.floor(s % 3600 / 60) + "m" : Math.floor(s / 60) + ":" + ("0" + s % 60).slice(-2);
+  }
+  function when(t) {
+    var d = new Date(t), now = new Date();
+    var time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    var day = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    if (t >= day) return time;
+    if (t >= day - 864e5) return "Yesterday " + time;
+    if (t >= day - 6 * 864e5) return d.toLocaleDateString([], { weekday: "short" }) + " " + time;
+    return d.toLocaleDateString([], { month: "short", day: "numeric", year: d.getFullYear() === now.getFullYear() ? undefined : "numeric" });
+  }
+  var KIND = {
+    out: ["↗", "Outgoing", ""], noanswer: ["↗", "No answer", ""], "in": ["↙", "Incoming", ""],
+    declined: ["↙", "Declined", ""], missed: ["✕", "Missed", "miss"], ringing: ["📞", "Ringing now", "ok"], live: ["🎙", "On the call", "ok"]
+  };
+  function logRow(c, uid) {
+    var k = callKind(c, uid), other = c.from === uid ? c.to : c.from;
+    var u = (window.allUsers || {})[other] || {};
+    var name = u.name || (c.from === uid ? "Member" : c.callerName) || "Member";
+    var photo = u.photo || (c.from !== uid ? c.callerPhoto : "");
+    var price = Number(c.price || 1), kk = KIND[k];
+    var right = k === "out" ? "<b>−" + price + "🪙</b>" + dur(c) : k === "in" ? "<b style='color:#00e3ae'>+" + money(price * 2) + "</b>" + dur(c) : "";
+    var canCall = other && (window.allUsers || {})[other] && !(window.__myBlocks || {})[other] && u.callsEnabled !== false && k !== "ringing" && k !== "live";
+    var open = "onclick=\"Profile.showMember(" + jsAttr(other) + ")\"";
+    return "<div class='pl-row'>"
+      + (photo ? "<img class='pl-ava' src='" + esc(photo) + "' alt='' " + open + ">" : "<div class='pl-ava' " + open + ">" + initial(name) + "</div>")
+      + "<div class='pl-mid'><div class='pl-name' " + open + ">" + esc(name) + "</div>"
+      + "<div class='pl-sub'><span class='" + kk[2] + "'>" + kk[0] + " " + kk[1] + "</span> · " + esc(when(c.createdAt)) + "</div></div>"
+      + (right ? "<div class='pl-right'>" + right + "</div>" : "")
+      + (canCall ? "<button class='pl-cb' data-uid='" + esc(other) + "' aria-label='Call " + esc(name) + " back' title='Call back' onclick='startCallFromBtn(this)'>📞</button>" : "")
+      + "</div>";
+  }
+  function logCard() {
+    var uid = myUid();
+    if (typeof isGuest === "function" && isGuest()) return "";
+    loadLog(false);
+    var head = "<div class='pl-head'><b>🕘 Call log</b><div class='pl-f'>"
+      + "<button class='" + (log.missedOnly ? "" : "on") + "' onclick='Profile.logFilter(false)'>All</button>"
+      + "<button class='" + (log.missedOnly ? "on" : "") + "' onclick='Profile.logFilter(true)'>Missed</button>"
+      + "<button onclick='Profile.logRefresh()' aria-label='Refresh' title='Refresh'>↻</button></div></div>";
+    if (!log.rows || log.uid !== uid) return "<div class='pf-card' id='pf-log'>" + head + "<div class='pf-muted'>Loading your calls…</div></div>";
+    var rows = log.rows.filter(function (c) { return !log.missedOnly || callKind(c, uid) === "missed"; });
+    var shown = log.all ? rows : rows.slice(0, 6);
+    var body = rows.length ? shown.map(function (c) { return logRow(c, uid); }).join("")
+      : "<div class='pf-muted'>" + (log.err ? esc(log.err) : log.missedOnly ? "No missed calls. 🎉" : "No calls yet. When you call someone or someone calls you, it shows up here.") + "</div>";
+    return "<div class='pf-card' id='pf-log'>" + head + body
+      + (rows.length > shown.length ? "<button class='pf-btn pl-more' onclick='Profile.logAll()'>Show all " + rows.length + " calls</button>" : "")
+      + "</div>";
+  }
+
   function paneCalls() {
     var m = me();
     var on = m.callsEnabled !== false;
@@ -206,10 +317,12 @@
     var push;
     if (ps === "granted") push = "<b>🔔 Call alerts are on</b><div class='pf-muted'>Your phone rings even when the app is closed.</div>";
     else if (ps === "denied") push = "<b>🔕 Call alerts are blocked</b><div class='pf-muted'>Allow notifications for whisperplusme.com in your browser or phone settings.</div>";
-    else if (ps === "ios-install") push = "<b>📲 One step for iPhone call alerts</b><div class='pf-muted'>iPhones only ring for web apps on the Home Screen. In Safari tap <b>Share</b> → <b>Add to Home Screen</b>, open Whisper+Me from that icon, then come back here and tap Turn on.</div>";
+    else if (ps === "ios-install") push = "<b>📲 One step for iPhone call alerts</b><div class='pf-muted'>iPhones only ring for web apps on the Home Screen. In Safari tap <b>Share</b> → <b>Add to Home Screen</b>, open Whisper+Me from that icon, then come back here and tap Turn on.</div>"
+      + (window.Install ? "<button class='pf-btn' style='margin-top:10px' onclick='Install.show()'>📲 Show me how</button>" : "");
     else if (ps === "unsupported") push = "<b>🔕 Call alerts</b><div class='pf-muted'>This browser can't do alerts. Use Chrome, or add the site to your home screen.</div>";
     else push = "<b>🔕 Call alerts are off</b><div class='pf-muted'>Turn on so your phone rings when someone calls.</div>";
-    return "<div class='pf-card pf-toggle'><div><b>📞 Let people call me</b><div class='pf-muted'>" + (on ? "You're open to calls right now." : "Nobody can call you right now.") + "</div></div>"
+    return logCard()
+      + "<div class='pf-card pf-toggle'><div><b>📞 Let people call me</b><div class='pf-muted'>" + (on ? "You're open to calls right now." : "Nobody can call you right now.") + "</div></div>"
       + "<button class='pf-switch" + (on ? " on" : "") + "' role='switch' aria-checked='" + on + "' aria-label='Let people call me' onclick='toggleCallsEnabled()'></button></div>"
       + "<div class='pf-label'>Your price per call</div>"
       + "<div class='pf-prices'>" + [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(function (n) {
@@ -230,6 +343,7 @@
       + "<button onclick='showInfoModal(\"earn\")'>💰 Earn money &amp; grow your audience</button>"
       + "<button onclick='showInfoModal(\"setup\")'>🪄 Profile tips</button>"
       + "<button onclick='setActive(4)'>⭐ My M&G</button>"
+      + (window.Install && !window.Install.isInstalled() ? "<button onclick='Install.show()'>📲 Add Whisper+Me to my Home Screen</button>" : "")
       + "<button onclick=\"showEmbedCode(" + jsAttr(uid) + ",'profile')\">🧩 Put my profile on my website</button>"
       + "</div>"
       + "<div class='pf-card'><div class='pf-label' style='margin-top:0'>Message support</div>"
@@ -245,7 +359,9 @@
     var m = me(), uid = myUid();
     var s = steps(), done = s.filter(function (x) { return x.done; }).length, next = s.filter(function (x) { return !x.done; })[0];
     var on = m.callsEnabled !== false;
-    var tabs = [["profile", "✏️ Profile"], ["wallet", "🪙 Wallet"], ["calls", "📞 Calls"], ["more", "⋯ More"]];
+    loadLog(false);
+    var missed = tab === "calls" ? 0 : unseenMissed();
+    var tabs = [["profile", "✏️ Profile"], ["wallet", "🪙 Wallet"], ["calls", "📞 Calls" + (missed ? "<i aria-label='" + missed + " missed'>" + missed + "</i>" : "")], ["more", "⋯ More"]];
     var pane = tab === "wallet" ? paneWallet() : tab === "calls" ? paneCalls() : tab === "more" ? paneMore() : paneProfile();
     return "<div class='pf' id='pf'>"
       + "<input type='file' id='photoInput' accept='image/*' hidden onchange='Profile.pickPhoto(this)'>"
@@ -305,7 +421,15 @@
   var P = {
     phoneHTML: phoneHTML,
     panelHTML: panelHTML,
-    tab: function (t, focusId) { tab = t; dirty = false; rerenderPanel(focusId); },
+    tab: function (t, focusId) {
+      if (t === "calls") { lsSet(seenKey(), Date.now()); if (tab !== "calls") loadLog(true); }
+      tab = t; dirty = false; rerenderPanel(focusId);
+    },
+    logFilter: function (missed) { log.missedOnly = !!missed; rerenderPanel(); },
+    logAll: function () { log.all = true; rerenderPanel(); },
+    logRefresh: function () { loadLog(true); },
+    openLog: function () { if (typeof setActive === "function") setActive(3); P.tab("calls"); },
+    missedCount: function () { return unseenMissed(); },
     dirty: function () { dirty = true; },
     next: function () { var n = steps().filter(function (x) { return !x.done; })[0]; if (n) n.go(); },
     refresh: function () {
@@ -409,7 +533,8 @@
         + "<div class='pm-name'>" + esc(u.name || "Member") + "</div>"
         + (u.online ? "<div class='pm-on'><span class='pf-dot'></span>Online now</div>" : "")
         + (u.bio ? "<div class='pm-bio'>" + esc(u.bio) + "</div>" : "")
-        + "<div class='pm-meta'><span>📞 " + (u.calls || 0) + " call" + ((u.calls || 0) === 1 ? "" : "s") + "</span><span>🪙 " + price + " per call</span></div>"
+        + "<div class='pm-meta'><span>📞 " + (u.calls || 0) + " call" + ((u.calls || 0) === 1 ? "" : "s") + "</span><span>🪙 " + price + " per call</span>"
+        + (u.rating && u.rating.n ? "<span title='Rating from M&G guests'><b style='color:#ffc94d'>★ " + Number(u.rating.avg).toFixed(1) + "</b> host · " + u.rating.n + " rating" + (u.rating.n === 1 ? "" : "s") + "</span>" : "") + "</div>"
         + (links ? "<div class='pm-links'>" + links + "</div>" : "")
         + "<div class='pm-actions'>" + actions + "</div>"
         + "</div>";
