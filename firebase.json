@@ -79,7 +79,7 @@
     "rewrites": [
       {
         "source": "/u/**",
-        "function": "profileOG"
+        "function": "profilePage"
       },
       {
         "source": "/live",
@@ -132,6 +132,10 @@
       {
         "source": "/m/**",
         "function": "meetupOG"
+      },
+      {
+        "source": "/s/**",
+        "function": "shareImage"
       },
       {
         "source": "**",

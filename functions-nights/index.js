@@ -2419,7 +2419,7 @@ const sleep = ms => new Promise(r => setTimeout(r, process.env.DATES_TEST ? 0 : 
 function callAlert(callId, call, n, extra = {}) {
   const name = String(call.callerName || "Someone").slice(0, 40);
   return {
-    data: { type: "incoming_call", callId, from: String(call.from || ""), callerName: name, callerPhoto: String(call.callerPhoto || "").slice(0, 500),
+    data: { type: "incoming_call", callId, callerUid: String(call.from || ""), // never "from": FCM rejects that key callerName: name, callerPhoto: String(call.callerPhoto || "").slice(0, 500),
       price: String(call.price || 1), title: `📞 ${name} is calling`, body: "Tap to answer on Whisper+Me", url: APP_URL, ring: String(n), ...extra },
     webpush: { headers: { Urgency: "high", TTL: "45" }, fcmOptions: { link: APP_URL } }
   };
@@ -2587,29 +2587,17 @@ async function dateOGPage(ticketId) {
 <p><a href="${htmlEsc(appUrl)}" style="color:#00e3ae">Open ${htmlEsc(title)} on Whisper+Me</a></p>
 <script>location.replace(${JSON.stringify(appUrl)});</script></body></html>`;
 }
-async function meetupOGPage(meetupId) {
-  const id = String(meetupId || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
-  const x = id ? (await mtRef(id).get()).data() : null;
-  const live = x && x.status === "live" && !x.hidden && ms(x.startsAt) > Date.now();
-  const url = `${APP_URL}/m/${id}`;
-  const appUrl = `${APP_URL}/?dates=1${live ? "&meetup=" + id : ""}`;
-  const when = x ? new Date(ms(x.startsAt)).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" }) : "";
-  const left = x ? Math.max(0, x.spots - x.sold - x.held) : 0;
-  const title = x ? `${x.title} · with ${x.hostName}` : "Meet & greets on Whisper+Me";
-  const desc = !x ? "Meet the people you follow, in person, at real venues."
-    : live ? `${when} at ${x.venueName}${x.city ? ", " + x.city : ""}. ${fmtMoney(x.price)} a spot${left <= 10 ? `, ${left} left` : ""}. ${(x.items || []).slice(0, 2).join(", ")}.`
-    : "This meet & greet has ended. See what's coming up on Whisper+Me.";
-  const img = (x && (x.imageURL || x.hostPhoto)) || `${APP_URL}/og-image.png?v=4`;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${htmlEsc(title)}</title><meta name="description" content="${htmlEsc(desc)}"><link rel="canonical" href="${htmlEsc(url)}">
-<meta property="og:type" content="website"><meta property="og:site_name" content="Whisper+Me">
-<meta property="og:url" content="${htmlEsc(url)}"><meta property="og:title" content="${htmlEsc(title)}">
-<meta property="og:description" content="${htmlEsc(desc)}"><meta property="og:image" content="${htmlEsc(img)}"><meta property="og:image:alt" content="${htmlEsc(title)}">
-<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${htmlEsc(title)}">
-<meta name="twitter:description" content="${htmlEsc(desc)}"><meta name="twitter:image" content="${htmlEsc(img)}">
-<meta http-equiv="refresh" content="0;url=${htmlEsc(appUrl)}"></head><body style="background:#0b0b16;color:#fff;font-family:system-ui;text-align:center;padding:40px">
-<p><a href="${htmlEsc(appUrl)}" style="color:#00e3ae">Open ${htmlEsc(title)} on Whisper+Me</a></p><script>location.replace(${JSON.stringify(appUrl)});</script></body></html>`;
-}
+/* Sharing: pictures drawn like the app + landing pages with real buttons (see share.js). */
+const share = require("./share")({ db, rtdb, APP_URL, logger, ms, fmtMoney });
+async function meetupOGPage(meetupId) { return share.meetupPage(meetupId); }
+exports.shareImage = onRequest({ cors: false, memory: "1GiB", cpu: 1, concurrency: 8, timeoutSeconds: 30 }, (req, res) => share.shareImage(req, res));
+exports.profilePage = onRequest({ cors: false }, async (req, res) => {
+  const uid = (req.path.split("/").filter(Boolean)[1]) || "";
+  try {
+    res.set("Cache-Control", "public, max-age=120, s-maxage=300");
+    res.status(200).send(await share.profilePage(uid));
+  } catch (e) { logger.error("profilePage", e.message); res.redirect(302, `${APP_URL}/?openProfile=${encodeURIComponent(uid)}`); }
+});
 exports.meetupOG = onRequest({ cors: false }, async (req, res) => {
   try {
     const id = (req.path.split("/").filter(Boolean)[1]) || "";
@@ -2662,5 +2650,5 @@ exports.chatPrune = onSchedule({ schedule: "every 30 minutes", memory: "512MiB" 
 
 // Test hooks (only when running the local test script; never part of a deploy).
 if (process.env.DATES_TEST) {
-  module.exports.__test = { setStripe: s => { _stripe = s; }, handleStripeEvent, housekeeping, settleDate, getSettings, CATEGORIES, landingStats, chatPrune, dateOGPage, meetupOGPage, payAllReady, ringFlow, stopRingFlow, claimDevice, sentMail, meetupReminders, connectReminders, emailHTML, connectInviteToken: async orderId => ((await coRef(orderId).get()).data()?.seats || []).map(x => x.token) };
+  module.exports.__test = { setStripe: s => { _stripe = s; }, handleStripeEvent, housekeeping, settleDate, getSettings, CATEGORIES, landingStats, chatPrune, dateOGPage, meetupOGPage, share, payAllReady, ringFlow, stopRingFlow, claimDevice, sentMail, meetupReminders, connectReminders, emailHTML, connectInviteToken: async orderId => ((await coRef(orderId).get()).data()?.seats || []).map(x => x.token) };
 }

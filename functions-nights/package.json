@@ -13,9 +13,13 @@
     "test": "node test/dates.test.js"
   },
   "dependencies": {
+    "@fontsource/inter": "^5.1.1",
+    "@resvg/resvg-js": "^2.6.2",
     "firebase-admin": "^12.6.0",
     "firebase-functions": "^6.0.1",
     "nodemailer": "^6.10.1",
+    "qrcode": "^1.5.4",
+    "satori": "^0.12.2",
     "stripe": "^16.12.0"
   }
 }

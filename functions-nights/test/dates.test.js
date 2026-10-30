@@ -756,7 +756,7 @@ async function test(name, fn) {
     const realSend = fa.messaging().send;
     // a token the browser has thrown away
     const msgMod = fa.messaging;
-    fa.messaging = () => ({ send: async m => { if (m.token === "tok-dead") { const e = new Error("Requested entity was not found."); e.code = "messaging/registration-token-not-registered"; throw e; } pushes.push(m); return "ok"; } });
+    fa.messaging = () => ({ send: async m => { fa.__checkFcm(m); if (m.token === "tok-dead") { const e = new Error("Requested entity was not found."); e.code = "messaging/registration-token-not-registered"; throw e; } pushes.push(m); return "ok"; } });
     rtdb.calls = { c1: { from: "amy", to: "bob", callerName: "Amy", status: "ringing", createdAt: Date.now() } };
     const p0 = pushes.length;
     const rings = await T.ringFlow("c1", rtdb.calls.c1);
@@ -794,6 +794,16 @@ async function test(name, fn) {
     assert.strictEqual(rtdb.fcmOwners.shared, "bob");
     await T.claimDevice("bob", "shared", null); // Bob logs out
     assert.ok(!rtdb.fcmOwners || !rtdb.fcmOwners.shared);
+  });
+
+  await test("Share pages: profile and M&G links show a picture drawn like the app and real buttons", async () => {
+    rtdb.users.sharey = { name: "Sharey <b>", bio: "Hi there", price: 2, calls: 3, rating: { avg: 4.5, n: 2 }, instagram: "sharey" };
+    const html = await T.share.profilePage("sharey");
+    assert.ok(html.includes('og:image" content="https://whisperplusme.com/s/u/sharey/card.png?v='), "link preview uses the app-style picture");
+    assert.ok(html.includes('twitter:card" content="summary_large_image"'));
+    assert.ok(html.includes("📞 Call Sharey &lt;b&gt; · $6") && html.includes("/?openProfile=sharey") && html.includes("instagram.com/sharey"), "real buttons");
+    assert.ok(!html.includes("<b>\"") && !html.includes("Sharey <b>"), "name is escaped");
+    assert.ok((await T.share.profilePage("nobody")).includes("isn't available"));
   });
 
   await test("Landing counter and chat cleanup keep the site fast", async () => {

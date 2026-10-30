@@ -12,7 +12,14 @@ Branch `social-upgrade`. This rebuild turns the front door, the profile, and the
 | **Admin** (`/admin.html`) | One long page of tables, browser pop-ups | MergeChat-style layout: top emoji tabs (🏁 Start here · 📡 Live now · 👥 People · 💰 Money · 🎬 Landing page · 📢 Announce · 💬 Rooms · 🛡️ Safety · ⭐ M&G · 🧾 Activity), "What do you want to do?" tiles, a "Needs your attention" list, "At a glance" numbers, and a "How the site fits together" map. Simple/Full layout switch. Every confirmation is an in-page dialog. The activity log is saved, so it survives a refresh. |
 | **Landing page manager** (new, Admin → 🎬) | none | Upload videos or pictures (or paste links), reorder, remove, shuffle, seconds per picture, darkness slider, sound-button switch, headline and subline, phone/computer preview, then **🚀 Publish**. |
 
-## 🕘 Call log, Home Screen app, emails, ratings, 21+ ID, sales charts (latest)
+## 🔗 Share cards that look like the app + incoming calls fixed (latest)
+
+- **Calls ring with the site closed (fixed).** The incoming-call push carried a field named `from`, which Firebase push doesn't allow, so Google rejected every one (only the "missed call" push got through). It's now `callerUid`, and the tests check every push the way Google does.
+- **Link previews look like the app.** `/s/u/{uid}/card.png` and `/s/m/{id}/card.png` (function `shareImage`) draw the profile screen or M&G poster with the buttons on it. Texts, Facebook, X, WhatsApp and Discord show this picture.
+- **Landing pages with real buttons.** `/u/{uid}` (function `profilePage`, replaces `profileOG`) and `/m/{id}` show the profile or M&G with buttons: Call, See full profile, M&Gs / live room, Share, Join free.
+- **New share sheet** in the app: preview of the card, Share link, **Share as a picture** (1080×1920 story image with a QR code, for Instagram/TikTok/Snapchat stories), and one-tap Text, WhatsApp, Facebook, X, Instagram, TikTok, Snapchat and Email.
+
+## 🕘 Call log, Home Screen app, emails, ratings, 21+ ID, sales charts
 
 - **Call log** (Profile → 📞 Calls): every call in and out with Missed / Declined / No answer, length, coins spent or earned, and a 📞 call-back button. A red number on the Calls tab shows new missed calls, and tapping a "Missed call" alert opens the log (`/?calls=1`).
 - **Add to Home Screen** (`public/install.js`): members are invited about 25 seconds in (then at most every 10 days). Android/desktop get the browser's one-tap Install, iPhone gets a picture guide (Share → Add to Home Screen), and Instagram/Facebook browsers on iPhone are told to open Safari first. Also in Profile → More and the Calls tab. `users/{uid}/appInstalled` records who has it.

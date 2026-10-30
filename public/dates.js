@@ -662,6 +662,7 @@
       var m = findM(id) || {};
       var url = shareLink(id);
       var text = (m.title || "M&G") + (m.hostName && !m.official ? " with " + m.hostName : "") + (m.venueName ? " at " + m.venueName : "") + (m.startsAt ? ", " + when(m.startsAt) : "") + ". Spots are limited.";
+      if (window.openShareSheet) { window.openShareSheet((m.title || "M&G") + " · Whisper+Me", text, url, null, null, "/s/m/" + encodeURIComponent(id)); return; }
       if (navigator.share) { navigator.share({ title: (m.title || "M&G") + " · Whisper+Me", text: text, url: url }).catch(function () {}); return; }
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text + " " + url).then(function () { toast("Link copied. Paste it anywhere."); }, function () { prompt("Copy this link:", url); });
       else prompt("Copy this link:", url);

@@ -2,6 +2,13 @@
 // good enough to run the Dates money logic end to end in tests.
 const store = new Map();        // Firestore: path -> data
 const rtdbStore = {};           // Realtime Database: nested object
+// Same checks real FCM does, so a payload Google would reject fails the tests too.
+function checkFcm(m) {
+  for (const [k, v] of Object.entries(m.data || {})) {
+    if (/^(from|notification|message_type)$/.test(k) || /^(google|gcm)/i.test(k)) throw new Error(`Invalid data payload key: ${k}`);
+    if (typeof v !== "string") throw new Error(`Data value for ${k} must be a string`);
+  }
+}
 const pushes = [];
 
 class Timestamp {
@@ -133,7 +140,8 @@ module.exports = {
   initializeApp: () => {},
   firestore: firestoreFn,
   database: () => database,
-  messaging: () => ({ send: async m => pushes.push(m) }),
+  messaging: () => ({ send: async m => { checkFcm(m); pushes.push(m); } }),
+  __checkFcm: m => checkFcm(m),
   auth: () => ({ updateUser: async () => {} }),
   __store: store, __rtdb: rtdbStore, __pushes: pushes, __Timestamp: Timestamp
 };

@@ -823,63 +823,99 @@ function renderMenu(){
    CONTENT PANEL (below phone + menu)
 ═══════════════════════════════════════════ */
 /* ══ SHARE SHEET ══ */
-function openShareSheet(title, text, url, embedId, embedType){
+/* ═══════════════════════════════════════════
+   SHARE SHEET — app-style buttons. With a picture (imgBase like "/s/u/<uid>"):
+   a preview of the link card people will see, "Share as a picture" for
+   Instagram / TikTok / Snapchat stories (the picture has a QR code), and
+   one-tap buttons for texts and social apps.
+═══════════════════════════════════════════ */
+var SS_CSS = ".ss{padding:18px 16px 16px;color:#f3f0fb;text-align:left;position:relative}"
+  + ".ss-h{font-size:19px;font-weight:900;margin:0 0 12px;padding-right:40px}"
+  + ".ss-x{position:absolute;top:12px;right:12px;width:36px;height:36px;min-height:0;border-radius:50%;border:0;background:rgba(255,255,255,.08);color:#fff;font-size:16px;cursor:pointer;padding:0}"
+  + ".ss-prev{position:relative;border-radius:16px;overflow:hidden;background:linear-gradient(135deg,#24104f,#04302a);aspect-ratio:1200/630;margin-bottom:6px;border:1px solid rgba(255,255,255,.1)}"
+  + ".ss-prev img{width:100%;height:100%;display:block;object-fit:cover;opacity:0;transition:opacity .25s}.ss-prev.ok img{opacity:1}"
+  + ".ss-prev:not(.ok)::after{content:'Making your card…';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#b3abcf;font-size:13px}"
+  + ".ss-cap{font-size:12px;color:#8f89a8;text-align:center;margin-bottom:12px}"
+  + ".ss-main,.ss-sec{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:52px;border-radius:999px;border:0;font:inherit;font-weight:800;font-size:16px;color:#fff;cursor:pointer;margin:0 0 10px}"
+  + ".ss-main{background:linear-gradient(90deg,#7b2ff7,#00e3ae)}"
+  + ".ss-sec{background:rgba(255,255,255,.06);border:2px solid rgba(255,255,255,.14);flex-direction:column;gap:0;line-height:1.2;padding:8px 0}.ss-sec small{font-weight:600;font-size:12px;color:#b3abcf}"
+  + ".ss-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px 6px;margin:6px 0 14px}"
+  + ".ss-t{display:flex;flex-direction:column;align-items:center;gap:6px;background:none;border:0;color:#d8d2ee;font:inherit;font-size:11.5px;font-weight:600;text-decoration:none;cursor:pointer;padding:0;min-height:0}"
+  + ".ss-t i{width:52px;height:52px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-style:normal;font-size:24px;color:#fff;font-weight:900}"
+  + ".ss-copy{display:flex;gap:8px;background:#0f0d1a;border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:5px 5px 5px 14px;align-items:center}"
+  + ".ss-copy input{flex:1;min-width:0;background:none;border:0;color:#b3abcf;font-size:13px;outline:0;padding:0;margin:0}"
+  + ".ss-copy button{flex:none;border:0;border-radius:999px;background:#fff;color:#111;font-weight:800;padding:9px 16px;cursor:pointer;min-height:0;margin:0;width:auto}"
+  + ".ss-emb{display:block;margin:12px auto 0;background:none;border:0;color:#9d97b8;font-size:13px;text-decoration:underline;cursor:pointer;width:auto;min-height:0}";
+function openShareSheet(title, text, url, embedId, embedType, imgBase){
   embedType = embedType || "room";
-  var full = text + "\n" + url;
-  if(navigator.share && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)){
-    navigator.share({ title:title, text:text, url:url }).catch(function(){});
-    return;
-  }
   var modal = document.getElementById("profileModal");
   var body  = document.getElementById("profileModalBody");
-  if(!modal || !body) return;
-  var enc  = encodeURIComponent(url);
-  var encF = encodeURIComponent(full);
-  var encT = encodeURIComponent(title + "\n" + text);
-  var platforms = [
-    { icon:"&#120143;", label:"X / Twitter", href:"https://twitter.com/intent/tweet?text="+encT+"&url="+enc },
-    { icon:"&#128172;", label:"WhatsApp",    href:"https://wa.me/?text="+encF },
-    { icon:"&#128216;", label:"Facebook",    href:"https://www.facebook.com/sharer/sharer.php?u="+enc },
-    { icon:"&#128231;", label:"Email",       href:"mailto:?subject="+encodeURIComponent(title)+"&body="+encF },
-    { icon:"&#128992;", label:"Reddit",      href:"https://reddit.com/submit?url="+enc+"&title="+encodeURIComponent(title) },
-    { icon:"&#128188;", label:"LinkedIn",    href:"https://www.linkedin.com/sharing/share-offsite/?url="+enc }
-  ];
-  var btns = platforms.map(function(p){
-    return "<a href='"+p.href+"' target='_blank' rel='noopener' onclick='window.closeProfileModal()' "
-      + "style='display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:12px;"
-      + "background:#1a1a2e;color:#fff;text-decoration:none;font-size:14px;font-weight:600;' "
-      + "onmouseover=\"this.style.background='#2a1a4e'\""
-      + " onmouseout=\"this.style.background='#1a1a2e'\">"
-      + "<span style='font-size:18px;width:24px;text-align:center'>"+p.icon+"</span>"+p.label+"</a>";
-  }).join("");
-  window.__shareCopyText = full;
-  body.innerHTML = "<div style='padding:20px'>"
-    + "<div style='font-size:17px;font-weight:800;color:#fff;margin-bottom:2px'>"+title+"</div>"
-    + "<div style='font-size:11px;color:#666;margin-bottom:14px;word-break:break-all'>"+url+"</div>"
-    + "<div style='display:flex;flex-direction:column;gap:7px;margin-bottom:14px'>"+btns+"</div>"
-    + "<button id='shareCopyBtn' style='width:100%;padding:13px;border-radius:20px;"
-    + "border:2px solid #7b2ff7;background:transparent;color:#7b2ff7;"
-    + "font-size:14px;font-weight:700;cursor:pointer;margin-bottom:8px;'>&#128203; Copy Link + Message</button>"
-    + (embedId
-        ? "<button onclick=\"showEmbedCode('" + embedId + "','" + embedType + "')\" style='width:100%;padding:13px;border-radius:20px;"
-          + "border:1px solid rgba(255,255,255,0.15);background:transparent;color:#aaa;"
-          + "font-size:13px;font-weight:600;cursor:pointer;'>&#60;/&#62; Embed on My Website</button>"
-        : "")
+  var full  = text + "\n" + url;
+  if(!modal || !body){
+    if(navigator.share) navigator.share({ title:title, text:text, url:url }).catch(function(){});
+    return;
+  }
+  if(!document.getElementById("ss-css")){ var st = document.createElement("style"); st.id = "ss-css"; st.textContent = SS_CSS; document.head.appendChild(st); }
+  var t = Math.floor(Date.now() / 600000); /* a fresh picture at most every 10 minutes */
+  var card  = imgBase ? imgBase + "/card.png?t=" + t : "";
+  var story = imgBase ? imgBase + "/story.png?t=" + t : "";
+  var enc = encodeURIComponent(url), encF = encodeURIComponent(full);
+  var mobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent || "");
+  var tile = function(bg, glyph, label, attrs){ return "<a class='ss-t' " + attrs + "><i style='background:" + bg + "'>" + glyph + "</i>" + label + "</a>"; };
+  var link = function(href){ return "href='" + sanitize(href) + "' target='_blank' rel='noopener'"; };
+  var tiles = tile("#2ecc71", "💬", "Text", "href='sms:?&body=" + encF + "'")
+    + tile("#25D366", "🟢", "WhatsApp", link("https://wa.me/?text=" + encF))
+    + tile("#1877F2", "f", "Facebook", link("https://www.facebook.com/sharer/sharer.php?u=" + enc))
+    + tile("#000", "𝕏", "X", link("https://twitter.com/intent/tweet?text=" + encodeURIComponent(text) + "&url=" + enc))
+    + (story ? tile("linear-gradient(45deg,#feda75,#d62976,#962fbf,#4f5bd5)", "📸", "Instagram", "href='#' data-pic='Instagram'") : "")
+    + (story ? tile("#111;border:1px solid #333", "🎵", "TikTok", "href='#' data-pic='TikTok'") : "")
+    + tile("#FFFC00;color:#111", "👻", "Snapchat", link("https://www.snapchat.com/scan?attachmentUrl=" + enc))
+    + tile("#5a39d6", "✉️", "Email", "href='mailto:?subject=" + encodeURIComponent(title) + "&body=" + encF + "'");
+  body.innerHTML = "<div class='ss'><div class='ss-h'>↗ Share</div><button class='ss-x' onclick='closeProfileModal()' aria-label='Close'>✕</button>"
+    + (card ? "<div class='ss-prev' id='ssPrev'><img src='" + sanitize(card) + "' alt='The card people will see'></div><div class='ss-cap'>This is what people see when you send your link</div>"
+            : "<div style='font-weight:700;margin:-4px 0 12px;color:#d8d2ee'>" + sanitize(title) + "</div>")
+    + "<button class='ss-main' id='ssNative'>" + (navigator.share && mobile ? "↗ Share link" : "🔗 Copy link") + "</button>"
+    + (story ? "<button class='ss-sec' id='ssPic'>🖼️ Share as a picture<small>For Stories, posts and chats. It has a QR code too.</small></button>" : "")
+    + "<div class='ss-grid'>" + tiles + "</div>"
+    + "<div class='ss-copy'><input readonly value='" + sanitize(url) + "' aria-label='Link' onclick='this.select()'><button id='ssCopy'>Copy</button></div>"
+    + (embedId ? "<button class='ss-emb' onclick=\"showEmbedCode('" + embedId + "','" + embedType + "')\">&lt;/&gt; Put it on my website</button>" : "")
     + "</div>";
   modal.style.display = "flex";
-  setTimeout(function(){
-    var btn = document.getElementById("shareCopyBtn");
-    if(!btn) return;
-    btn.onclick = function(){
-      var txt = window.__shareCopyText || url;
-      if(navigator.clipboard && navigator.clipboard.writeText){
-        navigator.clipboard.writeText(txt).then(function(){
-          showToast("Copied! Paste it anywhere \ud83d\udd17","success");
-          window.closeProfileModal();
-        }).catch(function(){ _fallbackCopy(txt); });
-      } else { _fallbackCopy(txt); }
-    };
-  }, 0);
+  var prev = document.getElementById("ssPrev");
+  if(prev){ var im = prev.querySelector("img"); im.onload = function(){ prev.classList.add("ok"); }; im.onerror = function(){ prev.style.display = "none"; }; if(im.complete && im.naturalWidth) prev.classList.add("ok"); }
+  var copy = function(txt, msg){
+    var done = function(){ showToast(msg || "Link copied 🔗", "success"); };
+    if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, function(){ _fallbackCopy(txt); });
+    else _fallbackCopy(txt);
+  };
+  document.getElementById("ssCopy").onclick = function(){ copy(url); };
+  document.getElementById("ssNative").onclick = function(){
+    if(navigator.share && mobile) navigator.share({ title:title, text:text, url:url }).catch(function(){});
+    else copy(full, "Link + message copied. Paste it anywhere 🔗");
+  };
+  /* The story picture is fetched as soon as the sheet opens, so tapping share happens
+     right away (phones only allow sharing straight after a tap). */
+  var pic = null, picErr = false;
+  if(story){
+    fetch(story).then(function(r){ if(!r.ok) throw new Error("bad"); return r.blob(); })
+      .then(function(b){ pic = new File([b], "whisperplusme.png", { type:"image/png" }); var pb = document.getElementById("ssPic"); if(pb && pb.dataset.wait){ pb.innerHTML = "🖼️ Ready! Tap to share the picture"; delete pb.dataset.wait; } })
+      .catch(function(){ picErr = true; });
+  }
+  var sharePic = function(where){
+    if(!pic){
+      if(picErr){ showToast("Couldn't make the picture right now. Share the link instead.", "warn"); return; }
+      var pb = document.getElementById("ssPic"); if(pb){ pb.dataset.wait = "1"; pb.innerHTML = "⏳ Getting your picture…"; } return;
+    }
+    copy(url, where ? "Link copied. Paste it into a Link sticker in " + where + "." : "Link copied too");
+    if(navigator.canShare && navigator.canShare({ files:[pic] })){
+      navigator.share({ files:[pic], text: full }).catch(function(){});
+    } else {
+      var a = document.createElement("a"); a.href = URL.createObjectURL(pic); a.download = "whisperplusme.png"; document.body.appendChild(a); a.click(); a.remove();
+      showToast("Picture saved" + (where ? ". Open " + where + ", add it to your Story, then add a Link sticker with your link (it's copied)." : "."), "success", 7000);
+    }
+  };
+  var pb = document.getElementById("ssPic"); if(pb) pb.onclick = function(){ sharePic(""); };
+  body.querySelectorAll("[data-pic]").forEach(function(a){ a.onclick = function(e){ e.preventDefault(); sharePic(a.getAttribute("data-pic")); }; });
 }
 function _fallbackCopy(txt){
   var ta = document.createElement("textarea");
@@ -3028,7 +3064,7 @@ window.shareProfile = function(uid){
              + "\n" + statLine + " \u00b7 Whisper+Me";
     }
   }).catch(function(){}).then(function(){
-    openShareSheet("Whisper+Me \xb7 " + name, text, url, uid, "profile");
+    openShareSheet("Whisper+Me \xb7 " + name, text, url, uid, "profile", "/s/u/" + encodeURIComponent(uid));
   });
 };
 
