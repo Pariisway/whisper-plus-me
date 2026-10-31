@@ -10,6 +10,7 @@ function checkFcm(m) {
   }
 }
 const pushes = [];
+const authState = {};
 
 class Timestamp {
   constructor(m) { this._m = m; }
@@ -121,7 +122,7 @@ function rtGet(path) { return path.split("/").filter(Boolean).reduce((o, k) => (
 function rtSet(path, v) { const parts = path.split("/").filter(Boolean); let o = rtdbStore; parts.slice(0, -1).forEach(k => { o[k] = o[k] || {}; o = o[k]; }); o[parts.at(-1)] = v; }
 const database = {
   ref: path => ({
-    orderByChild: k => ({ startAt: min => ({ once: async () => { const all = rtGet(path) || {}; const out = {}; Object.keys(all).forEach(id => { if (all[id] && Number(all[id][k]) >= min) out[id] = clone(all[id]); }); return { val: () => out, exists: () => Object.keys(out).length > 0 }; } }) }),
+    orderByChild: k => ({ equalTo: want => ({ once: async () => { const all = rtGet(path) || {}; const out = {}; Object.keys(all).forEach(id => { if (all[id] && all[id][k] === want) out[id] = clone(all[id]); }); return { val: () => out, exists: () => Object.keys(out).length > 0 }; } }), startAt: min => ({ once: async () => { const all = rtGet(path) || {}; const out = {}; Object.keys(all).forEach(id => { if (all[id] && Number(all[id][k]) >= min) out[id] = clone(all[id]); }); return { val: () => out, exists: () => Object.keys(out).length > 0 }; } }) }),
     once: async () => ({ val: () => clone(rtGet(path)), exists: () => rtGet(path) !== undefined }),
     set: async v => rtSet(path, v),
     transaction: async fn => { const nv = fn(clone(rtGet(path))); if (nv !== undefined) rtSet(path, nv); return { committed: nv !== undefined }; },
@@ -142,6 +143,7 @@ module.exports = {
   database: () => database,
   messaging: () => ({ send: async m => { checkFcm(m); pushes.push(m); } }),
   __checkFcm: m => checkFcm(m),
-  auth: () => ({ updateUser: async () => {} }),
+  auth: () => ({ updateUser: async (uid, o) => { authState[uid] = Object.assign(authState[uid] || {}, o); }, revokeRefreshTokens: async uid => { authState[uid] = Object.assign(authState[uid] || {}, { revoked: true }); }, getUser: async () => { throw new Error("no auth user"); } }),
+  __auth: authState,
   __store: store, __rtdb: rtdbStore, __pushes: pushes, __Timestamp: Timestamp
 };

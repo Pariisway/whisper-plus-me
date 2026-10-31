@@ -12,7 +12,22 @@ Branch `social-upgrade`. This rebuild turns the front door, the profile, and the
 | **Admin** (`/admin.html`) | One long page of tables, browser pop-ups | MergeChat-style layout: top emoji tabs (🏁 Start here · 📡 Live now · 👥 People · 💰 Money · 🎬 Landing page · 📢 Announce · 💬 Rooms · 🛡️ Safety · ⭐ M&G · 🧾 Activity), "What do you want to do?" tiles, a "Needs your attention" list, "At a glance" numbers, and a "How the site fits together" map. Simple/Full layout switch. Every confirmation is an in-page dialog. The activity log is saved, so it survives a refresh. |
 | **Landing page manager** (new, Admin → 🎬) | none | Upload videos or pictures (or paste links), reorder, remove, shuffle, seconds per picture, darkness slider, sound-button switch, headline and subline, phone/computer preview, then **🚀 Publish**. |
 
-## 🔗 Share cards that look like the app + incoming calls fixed (latest)
+## 🛡️ Chargebacks, 3-minute calls enforced, real bans, App Check ready (latest)
+
+- **Chargebacks** (`onDispute` in the nights webhook). When a card payment is disputed: the account is frozen (sign-in disabled, signed out everywhere), unspent coins are taken back, the creators' share of spent coins comes out of their *unpaid* earnings (newest calls first), M&G payouts are held, and you get a push + email. Admin → 💰 Money → 🛡️ Chargebacks lists them with a Stripe link and Unfreeze. A "possible stolen card" warning (before a dispute) freezes the account and tells you to refund it, which avoids the $15 fee.
+  **Stripe setup (once):** Developers → Webhooks → the endpoint for `nightsStripeWebhook` → add events `charge.dispute.created`, `charge.dispute.closed`, `radar.early_fraud_warning.created`.
+- **Calls end at 3 minutes for real.** The voice pass now comes from `callToken` (nights): it only works for the two people on the call and runs out 3 min + 45 s after answering, so the voice service drops the call even if someone edits the page. `generateAgoraToken` (default) refuses call channels; deploy it once with `firebase deploy --only functions:default:generateAgoraToken`.
+- **Bans really lock people out** (`banSync`): Ban/Unban in admin now disables/enables their sign-in too.
+- **Coin sales were counted twice** in the sales chart and the Coin purchases total; fixed.
+- **App Check (bot protection)** is wired in `public/firebase.js`; it does nothing until you paste a reCAPTCHA v3 site key there.
+
+## 📞 Ringing fixed for good: no more dings after hang-up
+
+- **Why it kept dinging:** the server waited between re-rings inside one function (~30 s). Google treats a slow database event as undelivered and sends it again, and each re-send started ringing again without checking whether the call had ended.
+- **Now:** every ring is its own quick step (`callRing` for the first, `ringAgain` asked for by the caller's app every 9 s for rings 2-4). Each one re-reads the call, is claimed once (`callAlerts/{id}`), and stops the moment the call isn't ringing. Each alert expires 50 s after the call started; a late one shows as a quiet "Missed call".
+- **Decline on the lock screen** now ends the call even with the site closed (`/api/declineCall`, one-time key per call), so the caller sees it right away.
+
+## 🔗 Share cards that look like the app + incoming calls fixed
 
 - **Calls ring with the site closed (fixed).** The incoming-call push carried a field named `from`, which Firebase push doesn't allow, so Google rejected every one (only the "missed call" push got through). It's now `callerUid`, and the tests check every push the way Google does.
 - **Link previews look like the app.** `/s/u/{uid}/card.png` and `/s/m/{id}/card.png` (function `shareImage`) draw the profile screen or M&G poster with the buttons on it. Texts, Facebook, X, WhatsApp and Discord show this picture.

@@ -46,7 +46,9 @@ const ADMIN_UIDS = ["v6aIXY12MDY9ci1wWJmCiLOAKoG2"]; // same admin as database.r
 
 let _stripe;
 const stripe = () => (_stripe ||= new Stripe(STRIPE_SECRET.value()));
-const GMAIL_PASS = defineSecret("GMAIL_APP_PASSWORD"); // same Gmail app password the default functions use
+const GMAIL_PASS = defineSecret("GMAIL_APP_PASSWORD");
+const AGORA_CERT = defineSecret("AGORA_APP_CERTIFICATE"); // same secret the default functions use
+const AGORA_APP_ID = "605c4549677d4f91b07bfb36df7cd30c"; // same Gmail app password the default functions use
 const withStripe = { secrets: [STRIPE_SECRET, GMAIL_PASS] }; // anything that takes money can also send the receipt
 
 const DEFAULT_SETTINGS = {
@@ -793,6 +795,9 @@ exports.nightsStripeWebhook = onRequest({ secrets: [STRIPE_SECRET, STRIPE_WEBHOO
 
 async function handleStripeEvent(event) {
   const o = event.data.object;
+  if (event.type === "charge.dispute.created") return onDispute(o);
+  if (event.type === "charge.dispute.closed" || event.type === "charge.dispute.updated") return onDisputeChanged(o);
+  if (event.type === "radar.early_fraud_warning.created") return onFraudWarning(o);
   if (event.type === "account.updated") {
     const q = await db.collection("venues").where("stripeAccountId", "==", o.id).limit(1).get();
     if (!q.empty) await q.docs[0].ref.update({ payoutsEnabled: !!o.payouts_enabled });
@@ -813,6 +818,113 @@ async function handleStripeEvent(event) {
   if (o.metadata.kind === "meetup") await onMeetupPaid(o);
   if (o.metadata.kind === "hostdeposit") await onHostDepositPaid(o);
   if (o.metadata.kind === "connect") await onConnectPaid(o);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CHARGEBACKS 🛡️  (someone disputes a card payment with their bank)
+   Stripe takes the money back plus a $15 fee, so as soon as a dispute
+   opens we:
+   1. freeze the account (signed out everywhere, can't sign back in)
+   2. coins: take back whatever coins are left; for coins already spent
+      on calls, take the creators' share back from earnings they
+      haven't been paid yet (newest calls first)
+   3. M&G / Connect Me: hold the host's payout and flag the spot
+   4. tell the admin (push + email) and list it in Admin → 💰 Money
+   Add these events to the Stripe webhook that points at
+   nightsStripeWebhook: charge.dispute.created, charge.dispute.closed,
+   radar.early_fraud_warning.created.
+═══════════════════════════════════════════════════════════════ */
+const COIN_USD = 3;
+async function purchaseFor(pi) {
+  let meta = {}, sessionId = "";
+  try {
+    const sess = (await stripe().checkout.sessions.list({ payment_intent: pi, limit: 1 })).data[0];
+    if (sess) { meta = sess.metadata || {}; sessionId = sess.id; }
+  } catch (e) { logger.warn("dispute: session lookup", e.message); }
+  if (!meta.uid) { try { meta = (await stripe().paymentIntents.retrieve(pi)).metadata || {}; } catch (e) { /* unknown */ } }
+  const product = meta.product === "coins" ? "coins" : meta.app === "dates" ? (meta.kind || "dates") : "unknown";
+  return { uid: meta.uid || "", product, qty: Number(meta.qty) || 0, dateId: meta.dateId || "", sessionId };
+}
+async function freezeAccount(uid, why) {
+  if (!uid || ADMIN_UIDS.includes(uid)) return false;
+  await rtdb.ref(`users/${uid}`).update({ banned: true, banAt: Date.now(), banReason: why });
+  try { await admin.auth().updateUser(uid, { disabled: true }); await admin.auth().revokeRefreshTokens(uid); } catch (e) { logger.warn("freeze auth", uid, e.message); }
+  return true;
+}
+/** Coins: take back what's left, then the creators' share of what was spent (from unpaid earnings only). */
+async function clawBackCoins(uid, coins) {
+  let took = 0;
+  await rtdb.ref(`users/${uid}/coins`).transaction(c => { const cur = Math.max(0, Number(c) || 0); took = Math.min(cur, coins); return cur - took; });
+  let spent = coins - took, fromCreators = 0;
+  const reversed = [];
+  if (spent > 0) {
+    const calls = Object.entries((await rtdb.ref("callLedger").orderByChild("from").equalTo(uid).once("value")).val() || {})
+      .map(([id, e]) => ({ id, ...e })).filter(e => e.charged && !e.reversed).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    for (const e of calls) {
+      if (spent <= 0) break;
+      const c = Math.min(spent, Number(e.price) || 1), want = Math.round(c * (Number(e.earnedUsd) / (Number(e.price) || 1)) * 100) / 100;
+      let got = 0;
+      await rtdb.ref(`users/${e.to}/earnings`).transaction(v => { const cur = Number(v) || 0; got = Math.min(cur, want); return Math.round((cur - got) * 100) / 100; });
+      await rtdb.ref(`callLedger/${e.id}`).update({ reversed: true, reversedUsd: got, reversedReason: "chargeback" });
+      if (got) { reversed.push({ uid: e.to, usd: got }); fromCreators += got; await push(e.to, "A call payment was reversed", `The caller disputed their card payment, so $${got.toFixed(2)} came back out of your earnings.`); }
+      spent -= c;
+    }
+  }
+  return { took, spentNotRecovered: Math.max(0, spent), fromCreators: Math.round(fromCreators * 100) / 100, reversed };
+}
+async function onDispute(d) {
+  const ref = db.doc(`disputes/${d.id}`);
+  if ((await ref.get()).exists) return; // repeat webhook
+  const pi = typeof d.payment_intent === "string" ? d.payment_intent : d.payment_intent?.id || "";
+  const p = await purchaseFor(pi);
+  const actions = [];
+  const rec = { id: d.id, pi, amount: d.amount, reason: d.reason || "", status: d.status || "needs_response", product: p.product, uid: p.uid, dateId: p.dateId,
+    dueBy: d.evidence_details?.due_by ? d.evidence_details.due_by * 1000 : null, at: nowTs(), actions };
+  await ref.set(rec); // claim it first so a repeat can't run twice
+  if (p.uid && await freezeAccount(p.uid, "Card dispute (chargeback)")) actions.push("Account frozen");
+  if (p.product === "coins" && p.uid) {
+    const coins = p.qty || Math.round(d.amount / 100 / COIN_USD);
+    const r = await clawBackCoins(p.uid, coins);
+    if (r.took) actions.push(`Took back ${r.took} unspent coin${r.took === 1 ? "" : "s"}`);
+    if (r.fromCreators) actions.push(`Took $${r.fromCreators.toFixed(2)} back from ${r.reversed.length} creator${r.reversed.length === 1 ? "" : "s"}' unpaid earnings`);
+    if (r.spentNotRecovered) actions.push(`${r.spentNotRecovered} coin${r.spentNotRecovered === 1 ? "" : "s"} were already spent and paid out`);
+    rec.coins = { bought: coins, ...r };
+  }
+  if (p.product === "meetup" && p.dateId && p.uid) {
+    const sref = mtRef(p.dateId).collection("spots").doc(p.uid);
+    if ((await sref.get()).exists) await sref.update({ disputed: true });
+    if ((await mtRef(p.dateId).get()).exists) { await mtRef(p.dateId).update({ reported: true, disputeId: d.id }); actions.push("Host payout on hold"); }
+  }
+  if (p.product === "connect" && p.dateId) {
+    if ((await coRef(p.dateId).get()).exists) { await coRef(p.dateId).update({ disputed: true, disputeId: d.id }); actions.push("Connect Me order flagged"); }
+  }
+  await ref.update({ actions, coins: rec.coins || null });
+  await db.collection("ledger").add({ kind: "dispute", disputeId: d.id, uid: p.uid, amount: d.amount, product: p.product, at: nowTs() });
+  const who = p.uid ? (await whisperProfile(p.uid)).name : "someone";
+  for (const a of ADMIN_UIDS) await push(a, `⚠️ Chargeback: ${fmtMoney(d.amount)}`, `${who} disputed a ${p.product === "coins" ? "coin purchase" : p.product} payment. ${actions.join(". ")}.`, `${APP_URL}/admin.html#money`);
+  await sendEmail(MAIL_FROM, `Chargeback: ${fmtMoney(d.amount)} from ${who}`, {
+    heading: "A card payment was disputed", intro: "Stripe took the money back while the bank decides. Here's what Whisper+Me already did.",
+    rows: [["Amount", fmtMoney(d.amount)], ["Member", who], ["Paid for", p.product], ["Reason", d.reason || ""], ["Respond by", rec.dueBy ? new Date(rec.dueBy).toLocaleDateString("en-US") : ""], ...actions.map((x, i) => [i ? "" : "Done", x])],
+    button: ["Answer it in Stripe", `https://dashboard.stripe.com/disputes/${d.id}`],
+    after: "If you have proof (the member used the coins on calls, or came to the M&G), send it to Stripe before the deadline. You can unfreeze the account in Admin → Money → Chargebacks." });
+}
+async function onDisputeChanged(d) {
+  const ref = db.doc(`disputes/${d.id}`);
+  if (!(await ref.get()).exists) { if (d.status !== "won" && d.status !== "lost") await onDispute(d); else return; }
+  await ref.update({ status: d.status, updatedAt: nowTs() });
+  if (d.status === "won" || d.status === "lost") for (const a of ADMIN_UIDS) await push(a, d.status === "won" ? "✅ Chargeback won" : "Chargeback lost", `${fmtMoney(d.amount)} dispute closed: ${d.status}.`, `${APP_URL}/admin.html#money`);
+}
+/** The card network warns a payment may be fraud (before any dispute): freeze, and tell the admin to refund it to avoid the $15 fee. */
+async function onFraudWarning(w) {
+  const ref = db.doc(`disputes/efw_${w.id}`);
+  if ((await ref.get()).exists) return;
+  const pi = typeof w.payment_intent === "string" ? w.payment_intent : w.payment_intent?.id || "";
+  const p = await purchaseFor(pi);
+  await ref.set({ id: `efw_${w.id}`, kind: "fraudWarning", pi, uid: p.uid, product: p.product, amount: null, status: "warning", reason: w.fraud_type || "", at: nowTs(), actions: [] });
+  const actions = [];
+  if (p.uid && await freezeAccount(p.uid, "Possible stolen card")) actions.push("Account frozen");
+  await ref.update({ actions });
+  for (const a of ADMIN_UIDS) await push(a, "⚠️ Possible stolen card", `A ${p.product} payment got a fraud warning. Refunding it now avoids a $15 chargeback fee. ${actions.join(". ")}.`, `${APP_URL}/admin.html#money`);
 }
 
 /* ================= scheduled housekeeping ================= */
@@ -1093,6 +1205,18 @@ exports.nightsAdminAction = onCall(withStripe, async req => {
       const reports = await db.collection("reports").where("meetupId", "==", id).limit(50).get();
       return { guests: g.docs.map(z => ({ name: z.data().name || "Guest", qty: z.data().qty || 1, code: z.data().code || "", status: z.data().status, here: !!z.data().checkedInAt, reported: !!z.data().reported })),
         reports: reports.docs.map(z => ({ reason: z.data().reason, detail: z.data().detail || "", by: z.data().by })) };
+    }
+    case "disputes": {
+      const q = await db.collection("disputes").orderBy("at", "desc").limit(100).get();
+      const out = [];
+      for (const d of q.docs) { const x = d.data(); out.push({ ...x, at: ms(x.at), name: x.uid ? (await whisperProfile(x.uid)).name : "" }); }
+      return { disputes: out };
+    }
+    case "unfreeze": {
+      const uid = str(id, 128);
+      await rtdb.ref(`users/${uid}`).update({ banned: false, banAt: null, banReason: null });
+      try { await admin.auth().updateUser(uid, { disabled: false }); } catch (e) { /* no auth record */ }
+      await log(req, action, uid); return { message: "Account unfrozen. They can sign in again." };
     }
     case "salesReport": {
       // Every M&G spot and Connect Me package sold since `since`, for the admin's sales charts.
@@ -2424,27 +2548,76 @@ function callAlert(callId, call, n, extra = {}) {
     webpush: { headers: { Urgency: "high", TTL: "45" }, fcmOptions: { link: APP_URL } }
   };
 }
-async function ringFlow(callId, call) {
-  if (!call || call.status !== "ringing" || !call.to) return 0;
-  if (call.from && (await rtdb.ref(`blocks/${call.to}/${call.from}`).once("value")).val()) return 0; // they blocked the caller
-  let sent = 0;
-  for (let n = 0; n < RINGS; n++) {
-    if (n) {
-      await sleep(RING_EVERY_MS);
-      const st = (await rtdb.ref(`calls/${callId}/status`).once("value")).val();
-      if (st !== "ringing") break;
-    }
-    const ok = await sendToDevices(call.to, callAlert(callId, call, n));
-    if (!ok) break; // no device has alerts on
-    sent++;
-  }
-  return sent;
+/* Each ring is its own quick step (never a long wait inside one function):
+   Google re-sends a database event when a function is slow to finish, and the
+   old version re-rang on every re-send, even after the call had ended.
+   - ring 1 is sent the moment the call is created (callRing)
+   - rings 2-4 are asked for by the caller's app every 9 seconds (ringAgain)
+   - every ring re-reads the call first and is claimed once, so a repeat never rings twice
+   - each alert carries an expiry, so a late one is shown as "missed", never as ringing */
+const CALL_RING_MS = 50000;
+async function claimOnce(path) {
+  let first = false;
+  const r = await rtdb.ref(path).transaction(v => { if (v) { first = false; return; } first = true; return Date.now(); });
+  return first && (!r || r.committed !== false);
 }
-exports.callRing = onValueCreated({ ref: "/calls/{callId}", region: "us-central1", timeoutSeconds: 60, memory: "256MiB" }, async event => {
-  await ringFlow(event.params.callId, event.data.val());
+async function ringOnce(callId, n) {
+  const call = (await rtdb.ref(`calls/${callId}`).once("value")).val();
+  if (!call || call.status !== "ringing" || !call.to) return 0;
+  if (Date.now() - Number(call.createdAt || 0) > CALL_RING_MS) return 0;
+  if (call.from && (await rtdb.ref(`blocks/${call.to}/${call.from}`).once("value")).val()) return 0; // they blocked the caller
+  if (!(await claimOnce(`callAlerts/${callId}/r${n}`))) return 0; // already rang this one
+  // A one-time key so "Decline" on the lock screen can end the call without the app open.
+  let key = (await rtdb.ref(`callAlerts/${callId}/key`).once("value")).val();
+  if (!key) { key = require("crypto").randomBytes(12).toString("hex"); await rtdb.ref(`callAlerts/${callId}/key`).set(key); }
+  return sendToDevices(call.to, callAlert(callId, call, n, { exp: String(Number(call.createdAt || Date.now()) + CALL_RING_MS), dk: key }));
+}
+exports.callRing = onValueCreated({ ref: "/calls/{callId}", region: "us-central1", memory: "256MiB" }, async event => {
+  await ringOnce(event.params.callId, 0);
+});
+/** The caller's app asks for rings 2, 3 and 4 while it's still ringing. */
+exports.ringAgain = onCall(async req => {
+  const uid = requireUser(req);
+  const callId = str(req.data?.callId, 64), n = Math.round(Number(req.data?.n));
+  if (!(n >= 1 && n < RINGS)) return { sent: 0 };
+  const from = (await rtdb.ref(`calls/${callId}/from`).once("value")).val();
+  if (from !== uid) fail("permission-denied", "Not your call.");
+  return { sent: await ringOnce(callId, n) };
+});
+/* Paid calls last 3 minutes. The voice pass for a call only works for the two
+   people on it and runs out 3 minutes (+45 s to connect) after it was answered,
+   so the voice service cuts the call even if someone changes the page to keep
+   talking. That also caps the voice minutes you pay for. */
+const CALL_MAX_SECONDS = 180, CALL_GRACE_SECONDS = 45;
+exports.callToken = onCall({ secrets: [AGORA_CERT] }, async req => {
+  const uid = requireUser(req);
+  const callId = str(req.data?.callId, 64);
+  const call = callId ? (await rtdb.ref(`calls/${callId}`).once("value")).val() : null;
+  if (!call || (call.from !== uid && call.to !== uid)) fail("permission-denied", "That isn't your call.");
+  if (!call.answeredAt || !["connecting", "active"].includes(call.status)) fail("failed-precondition", "This call isn't connected.");
+  const endsAt = Math.floor(Number(call.answeredAt) / 1000) + CALL_MAX_SECONDS + CALL_GRACE_SECONDS;
+  if (endsAt <= Math.floor(Date.now() / 1000)) fail("deadline-exceeded", "This call has ended.");
+  const { RtcTokenBuilder, RtcRole } = require("agora-access-token");
+  const token = RtcTokenBuilder.buildTokenWithUid(AGORA_APP_ID, AGORA_CERT.value(), callId, 0, RtcRole.PUBLISHER, endsAt);
+  return { token, endsAt: endsAt * 1000 };
+});
+/** "Decline" tapped on the lock-screen alert while the site is closed. */
+exports.declineCall = onRequest({ cors: true }, async (req, res) => {
+  const b = req.body || {};
+  const callId = str(b.c || req.query.c, 64), k = str(b.k || req.query.k, 64);
+  const key = callId ? (await rtdb.ref(`callAlerts/${callId}/key`).once("value")).val() : null;
+  if (!key || key !== k) { res.status(403).json({ ok: false }); return; }
+  let declined = false;
+  await rtdb.ref(`calls/${callId}`).transaction(v => {
+    if (!v || v.status !== "ringing") { declined = false; return; }
+    declined = true;
+    return { ...v, status: "ended", endedAt: Date.now(), endedBy: v.to, endReason: "declined" };
+  });
+  res.json({ ok: true, declined });
 });
 async function stopRingFlow(callId, before, after, call) {
   if (before !== "ringing" || after === "ringing" || !call || !call.to) return null;
+  if (!(await claimOnce(`callAlerts/${callId}/stop`))) return null; // a repeat of the same event
   const missed = after === "ended" && !call.answeredAt && call.endedBy !== call.to && call.endReason !== "unavailable";
   await sendToDevices(call.to, { data: { type: "call_ended", callId, missed: missed ? "1" : "", callerName: String(call.callerName || "Someone").slice(0, 40), url: APP_URL },
     webpush: { headers: { Urgency: "high", TTL: "600" } } });
@@ -2473,6 +2646,18 @@ async function claimDevice(uid, key, dev) {
   if (prev !== uid) await ownRef.set(uid);
   return prev && prev !== uid ? prev : null;
 }
+/** Banning someone (Admin → People → Ban, or a chargeback) really locks them out:
+    their sign-in is disabled and they're signed out everywhere. Unban turns it back on. */
+exports.banSync = onValueWritten({ ref: "/users/{uid}/banned", region: "us-central1", memory: "256MiB" }, async event => {
+  const uid = event.params.uid;
+  if (ADMIN_UIDS.includes(uid)) return;
+  const on = event.data.after.val() === true;
+  try {
+    await admin.auth().updateUser(uid, { disabled: on });
+    if (on) await admin.auth().revokeRefreshTokens(uid);
+  } catch (e) { logger.warn("banSync", uid, e.message); }
+});
+
 exports.fcmClaim = onValueWritten({ ref: "/fcmTokens/{uid}/devices/{key}", region: "us-central1", memory: "256MiB" }, async event => {
   await claimDevice(event.params.uid, event.params.key, event.data.after.exists() ? event.data.after.val() : null);
 });
@@ -2482,7 +2667,7 @@ exports.testRing = onCall({ timeoutSeconds: 30 }, async req => {
   const n = (await deviceTokens(uid)).length;
   if (!n) fail("failed-precondition", "Call alerts aren't on for this device yet. Tap Turn on first, then try again.");
   await sleep(Math.min(15, Math.max(0, Number(req.data?.delay ?? 8))) * 1000);
-  const ok = await sendToDevices(uid, callAlert(`test-${Date.now()}`, { callerName: "Whisper+Me test call", callerPhoto: `${APP_URL}/icon-192.png`, from: "test" }, 0, { test: "1" }));
+  const ok = await sendToDevices(uid, callAlert(`test-${Date.now()}`, { callerName: "Whisper+Me test call", callerPhoto: `${APP_URL}/icon-192.png`, from: "test" }, 0, { test: "1", exp: String(Date.now() + 40000) }));
   if (!ok) fail("failed-precondition", "We couldn't reach this device. Tap Turn on again to refresh it.");
   return { devices: ok, message: `Test call sent to ${ok} device${ok === 1 ? "" : "s"}.` };
 });
@@ -2650,5 +2835,5 @@ exports.chatPrune = onSchedule({ schedule: "every 30 minutes", memory: "512MiB" 
 
 // Test hooks (only when running the local test script; never part of a deploy).
 if (process.env.DATES_TEST) {
-  module.exports.__test = { setStripe: s => { _stripe = s; }, handleStripeEvent, housekeeping, settleDate, getSettings, CATEGORIES, landingStats, chatPrune, dateOGPage, meetupOGPage, share, payAllReady, ringFlow, stopRingFlow, claimDevice, sentMail, meetupReminders, connectReminders, emailHTML, connectInviteToken: async orderId => ((await coRef(orderId).get()).data()?.seats || []).map(x => x.token) };
+  module.exports.__test = { setStripe: s => { _stripe = s; }, handleStripeEvent, housekeeping, settleDate, getSettings, CATEGORIES, landingStats, chatPrune, dateOGPage, meetupOGPage, share, payAllReady, ringOnce, stopRingFlow, claimDevice, onDispute, onDisputeChanged, onFraudWarning, sentMail, meetupReminders, connectReminders, emailHTML, connectInviteToken: async orderId => ((await coRef(orderId).get()).data()?.seats || []).map(x => x.token) };
 }

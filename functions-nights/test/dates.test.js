@@ -15,15 +15,20 @@ const T = F.__test;
 const { __store: store, __rtdb: rtdb, __Timestamp: Timestamp } = fake;
 
 /* ---------- fake Stripe ---------- */
-const S = { intents: {}, refunds: [], canceled: [], captured: [], sessions: [], failCapture: new Set(), n: 0 };
+const S = { intents: {}, refunds: [], canceled: [], captured: [], sessions: [], failCapture: new Set(), n: 0, paid: {} };
 T.setStripe({
-  checkout: { sessions: { create: async o => { const id = "cs_" + (++S.n); S.sessions.push({ id, ...o }); return { id, url: "https://stripe.test/" + id }; } } },
+  checkout: { sessions: {
+    create: async o => { const id = "cs_" + (++S.n); S.sessions.push({ id, ...o }); return { id, url: "https://stripe.test/" + id }; },
+    list: async ({ payment_intent }) => ({ data: (S.paid[payment_intent] ? [S.paid[payment_intent]] : []) })
+  } },
   paymentIntents: {
     retrieve: async id => S.intents[id],
     capture: async id => { if (S.failCapture.has(id)) throw new Error("card_declined"); S.intents[id].status = "succeeded"; S.captured.push(id); return S.intents[id]; },
     cancel: async id => { S.intents[id].status = "canceled"; S.canceled.push(id); return S.intents[id]; }
   },
   refunds: { create: async o => { S.refunds.push(o.payment_intent); return { id: "re_" + (++S.n) }; } },
+  // checkout.sessions.list({ payment_intent }) finds the purchase behind a dispute
+
   transfers: { create: async o => { if (S.failTransfer) throw new Error("Insufficient funds in Stripe account"); S.transfers = (S.transfers || []).concat([o]); return { id: "tr_" + (++S.n) }; } },
   accounts: { retrieve: async id => ({ id, payouts_enabled: id !== "acct_unfinished" }) }
 });
@@ -33,6 +38,7 @@ async function completeLastCheckout(uid) {
   const pi = "pi_" + (++S.n);
   const hold = sess.payment_intent_data.capture_method === "manual";
   S.intents[pi] = { id: pi, status: hold ? "requires_capture" : "succeeded" };
+  S.paid[pi] = { id: sess.id, metadata: sess.metadata };
   await T.handleStripeEvent({ type: "checkout.session.completed", data: { object: {
     id: sess.id, metadata: sess.metadata, payment_intent: pi, payment_status: hold ? "unpaid" : "paid",
     amount_total: sess.line_items.reduce((a, l) => a + l.price_data.unit_amount * (l.quantity || 1), 0) } } });
@@ -749,7 +755,7 @@ async function test(name, fn) {
     assert.ok(!rtdb.users.barhost.rating, "host back to no rating");
   });
 
-  await test("Call alerts: ring every device, re-ring while ringing, stop + missed call, drop dead devices, test ring", async () => {
+  await test("Call alerts: ring every device, never re-ring a repeated or ended call, decline from the lock screen, missed call once, test ring", async () => {
     const pushes = require("firebase-admin").__pushes;
     const fa = require("firebase-admin");
     rtdb.fcmTokens = { bob: { token: "tok-laptop", devices: { phone: { token: "tok-phone" }, old: { token: "tok-dead" } } } };
@@ -759,23 +765,52 @@ async function test(name, fn) {
     fa.messaging = () => ({ send: async m => { fa.__checkFcm(m); if (m.token === "tok-dead") { const e = new Error("Requested entity was not found."); e.code = "messaging/registration-token-not-registered"; throw e; } pushes.push(m); return "ok"; } });
     rtdb.calls = { c1: { from: "amy", to: "bob", callerName: "Amy", status: "ringing", createdAt: Date.now() } };
     const p0 = pushes.length;
-    const rings = await T.ringFlow("c1", rtdb.calls.c1);
+    assert.strictEqual(await T.ringOnce("c1", 0), 2, "first ring goes to both live devices");
+    assert.strictEqual(await T.ringOnce("c1", 0), 0, "the same event delivered again never rings twice");
+    const ra = await call("ringAgain", "amy", { callId: "c1", n: 1 });
+    assert.strictEqual(ra.sent, 2, "the caller's app asks for the next ring");
+    await assert.rejects(call("ringAgain", "eve", { callId: "c1", n: 2 }), /Not your call/);
     const sent = pushes.slice(p0);
-    assert.strictEqual(rings, 4, "re-rings 4 times while still ringing");
     assert.deepStrictEqual([...new Set(sent.map(m => m.token))].sort(), ["tok-laptop", "tok-phone"], "both live devices ring");
     assert.ok(sent.every(m => !m.notification && m.data.type === "incoming_call" && m.webpush.headers.Urgency === "high"), "data-only, high priority");
+    assert.ok(sent.every(m => Number(m.data.exp) > Date.now() && m.data.dk), "alerts expire and carry a decline key");
     assert.ok(!rtdb.fcmTokens.bob.devices.old, "dead device forgotten");
-    rtdb.calls.c2 = { from: "amy", to: "bob", callerName: "Amy", status: "ringing", createdAt: Date.now() };
+    // hung up: no more rings, ever (this was the "keeps dinging" bug)
+    rtdb.calls.c1.status = "ended";
+    assert.strictEqual(await T.ringOnce("c1", 2), 0);
+    assert.strictEqual((await call("ringAgain", "amy", { callId: "c1", n: 3 })).sent, 0);
+    // too old to ring
+    rtdb.calls.cold = { from: "amy", to: "bob", status: "ringing", createdAt: Date.now() - 120000 };
+    assert.strictEqual(await T.ringOnce("cold", 0), 0, "a stuck old call never rings");
+    // Decline on the lock screen with the site closed
+    rtdb.calls.c5 = { from: "amy", to: "bob", callerName: "Amy", status: "ringing", createdAt: Date.now() };
+    await T.ringOnce("c5", 0);
+    const dk = pushes.at(-1).data.dk;
+    const resp = () => { const r = { code: 200, body: null, status(c) { r.code = c; return r; }, json(b) { r.body = b; return r; }, set() { return r; }, send(b) { r.body = b; return r; }, setHeader() {}, getHeader() {}, end() {}, on() {}, once() {}, emit() {}, statusCode: 200 }; return r; };
+    let r1 = resp(); await F.declineCall({ method: "POST", body: { c: "c5", k: "wrong" }, query: {}, headers: {}, get: () => "" }, r1);
+    assert.strictEqual(r1.code, 403, "wrong key can't end someone's call");
+    r1 = resp(); await F.declineCall({ method: "POST", body: { c: "c5", k: dk }, query: {}, headers: {}, get: () => "" }, r1);
+    assert.deepStrictEqual([r1.body && r1.body.declined, rtdb.calls.c5.status, rtdb.calls.c5.endedBy], [true, "ended", "bob"]);
     const p1 = pushes.length;
-    setTimeout(() => {}, 0);
-    rtdb.calls.c2.status = "ended"; // caller hung up right away
-    assert.strictEqual(await T.ringFlow("c2", { ...rtdb.calls.c2, status: "ringing" }), 1, "stops re-ringing once it's not ringing");
+    rtdb.calls.c2 = { from: "amy", to: "bob", callerName: "Amy", status: "ended", createdAt: Date.now() };
     const missed = await T.stopRingFlow("c2", "ringing", "ended", rtdb.calls.c2);
     assert.strictEqual(missed, true);
+    assert.strictEqual(await T.stopRingFlow("c2", "ringing", "ended", rtdb.calls.c2), null, "a repeated event doesn't send a second missed alert");
     const end = pushes.slice(p1).find(m => m.data.type === "call_ended");
     assert.deepStrictEqual([end.data.callId, end.data.missed], ["c2", "1"]);
+    // voice pass: only the two people on the call, and it runs out after 3 minutes
+    process.env.AGORA_APP_CERTIFICATE = "0123456789abcdef0123456789abcdef";
+    rtdb.calls.cv = { from: "amy", to: "bob", status: "connecting", answeredAt: Date.now(), createdAt: Date.now() };
+    const tk = await call("callToken", "bob", { callId: "cv" });
+    assert.ok(tk.token && tk.endsAt - Date.now() <= 226000 && tk.endsAt - Date.now() > 220000, "expires 3 min + 45 s after answering");
+    await assert.rejects(call("callToken", "eve", { callId: "cv" }), /isn't your call/);
+    rtdb.calls.cv.answeredAt = Date.now() - 300000;
+    await assert.rejects(call("callToken", "amy", { callId: "cv" }), /has ended/);
+    rtdb.calls.cr = { from: "amy", to: "bob", status: "ringing", createdAt: Date.now() };
+    await assert.rejects(call("callToken", "amy", { callId: "cr" }), /isn't connected/);
     rtdb.blocks = { bob: { amy: true } };
-    assert.strictEqual(await T.ringFlow("cb", { from: "amy", to: "bob", status: "ringing" }), 0, "a blocked caller never rings");
+    rtdb.calls.cb = { from: "amy", to: "bob", status: "ringing", createdAt: Date.now() };
+    assert.strictEqual(await T.ringOnce("cb", 0), 0, "a blocked caller never rings");
     delete rtdb.blocks;
     rtdb.calls.c3 = { from: "amy", to: "bob", callerName: "Amy", status: "ended", endedBy: "bob" };
     assert.strictEqual(await T.stopRingFlow("c3", "ringing", "ended", rtdb.calls.c3), false, "declined isn't missed");
@@ -794,6 +829,42 @@ async function test(name, fn) {
     assert.strictEqual(rtdb.fcmOwners.shared, "bob");
     await T.claimDevice("bob", "shared", null); // Bob logs out
     assert.ok(!rtdb.fcmOwners || !rtdb.fcmOwners.shared);
+  });
+
+  await test("Chargebacks: account frozen, unspent coins taken back, creators' unpaid share reversed, M&G payout held; ban really locks out", async () => {
+    seedPeople("cheat", "cre1", "cre2", "mgbuyer");
+    // a coin purchase made through the main site's checkout
+    S.paid.pi_coins = { id: "cs_coins", metadata: { uid: "cheat", qty: "10", product: "coins" } };
+    rtdb.users.cheat.coins = 4; // bought 10, spent 6 on calls
+    rtdb.users.cre1.earnings = 8; rtdb.users.cre2.earnings = 1;
+    rtdb.callLedger = Object.assign(rtdb.callLedger || {}, {
+      l1: { from: "cheat", to: "cre1", price: 3, earnedUsd: 6, charged: true, ts: 1 },
+      l2: { from: "cheat", to: "cre2", price: 3, earnedUsd: 6, charged: true, ts: 2 },
+      l3: { from: "someone", to: "cre1", price: 1, earnedUsd: 2, charged: true, ts: 3 } });
+    const M = T.sentMail; M.length = 0;
+    const dispute = { id: "dp_1", payment_intent: "pi_coins", amount: 3000, reason: "fraudulent", status: "needs_response", evidence_details: { due_by: Math.floor(Date.now() / 1000) + 7 * 86400 } };
+    await T.handleStripeEvent({ type: "charge.dispute.created", data: { object: dispute } });
+    await T.handleStripeEvent({ type: "charge.dispute.created", data: { object: dispute } }); // repeat webhook: nothing twice
+    const fa = require("firebase-admin");
+    assert.deepStrictEqual([rtdb.users.cheat.banned, fa.__auth.cheat.disabled, fa.__auth.cheat.revoked], [true, true, true], "frozen and signed out");
+    assert.strictEqual(rtdb.users.cheat.coins, 0, "4 unspent coins taken back");
+    assert.deepStrictEqual([rtdb.users.cre2.earnings, rtdb.users.cre1.earnings], [0, 2], "6 spent coins: newest call first, only from unpaid earnings");
+    assert.ok(rtdb.callLedger.l2.reversed && rtdb.callLedger.l1.reversed && !rtdb.callLedger.l3.reversed);
+    const dp = doc("disputes/dp_1");
+    assert.ok(dp.actions.some(a => /Took back 4/.test(a)) && dp.coins.spentNotRecovered === 0, JSON.stringify(dp.actions));
+    assert.ok(M.some(m => /Chargeback: \$30/.test(m.subject)), "admin emailed");
+    // an M&G spot disputed: payout held
+    const r = await admin({ action: "postMeetup", data: mgData({ title: "Dispute night", price: 20, spots: 3, contact: {}, startsAt: Date.now() + 30 * H }) });
+    await call("buyMeetupSpot", "mgbuyer", { meetupId: r.id, birthYear: 1990 });
+    const pi = await completeLastCheckout("mgbuyer");
+    await T.handleStripeEvent({ type: "charge.dispute.created", data: { object: { id: "dp_2", payment_intent: pi, amount: 2000, reason: "product_not_received", status: "needs_response" } } });
+    assert.ok(doc("meetups/" + r.id).reported && doc(`meetups/${r.id}/spots/mgbuyer`).disputed, "host payout on hold");
+    const list = await admin({ action: "disputes" });
+    assert.ok(list.disputes.some(x => x.id === "dp_1" && x.name === "CHEAT"));
+    await T.handleStripeEvent({ type: "charge.dispute.closed", data: { object: { ...dispute, status: "won" } } });
+    assert.strictEqual(doc("disputes/dp_1").status, "won");
+    await admin({ action: "unfreeze", id: "cheat" });
+    assert.deepStrictEqual([rtdb.users.cheat.banned, fa.__auth.cheat.disabled], [false, false]);
   });
 
   await test("Share pages: profile and M&G links show a picture drawn like the app and real buttons", async () => {

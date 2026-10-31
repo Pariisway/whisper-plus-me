@@ -86,6 +86,13 @@ exports.generateAgoraToken = onRequest(
 
     if (!channel) { res.status(400).json({ error: "channel required" }); return; }
 
+    /* Paid 1-on-1 calls use the call's ID as the channel (it starts with "-").
+       Their voice pass comes only from callToken (nights), which checks the
+       person is on the call and makes it run out after 3 minutes. */
+    if (channel.startsWith("-")) {
+      return res.status(403).json({ error: "Calls get their voice pass from callToken" });
+    }
+
     /* Member-only room mic gate — enforced here (not just hidden client-side)
        since this is the actual point where mic access is granted. Default
        is member-only (true) for any room that's never been explicitly

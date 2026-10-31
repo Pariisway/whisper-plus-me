@@ -378,6 +378,11 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
     </div>
     <p class="help" style="margin:12px 0 0">“Collected” counts the moment someone buys coins. “Your cut” grows only when a coin is spent on a call or room ($1 per coin). The gap is coins still sitting in people's balances.</p>
   </section>
+  <section class="card" id="sec-disputes">
+    <h2>🛡️ Chargebacks <span class="right"><button class="btn sm" onclick="loadDisputes()">↻</button></span></h2>
+    <p class="help">When someone disputes a card payment with their bank, the site freezes their account, takes back unspent coins, takes the creators' share of spent coins back from unpaid earnings, and holds M&amp;G payouts. <b>Answer each one in Stripe before its deadline</b> with your proof (call history, check-in). Unfreeze only if it was a mistake.</p>
+    <div id="dp-list" class="list"><div class="empty">Loading…</div></div>
+  </section>
   <section class="card" id="sec-payouts">
     <h2>💸 Creator payouts
       <span class="right"><select class="in" id="earn-sort" style="width:auto;padding:7px 10px" onchange="renderPayouts()"><option value="earnings">Most earned</option><option value="ready">Ready to pay first</option><option value="calls">Most calls</option><option value="coins">Most coins</option></select></span></h2>
@@ -839,7 +844,7 @@ function start() {
 
 /* ───────── navigation ───────── */
 const LOADERS = {
-  money: () => { loadSales(); loadMoney(); loadCoinPurchases(); loadCallLedger(); loadRoomLedger(); loadStripeAccounts(); loadAutoPay(); },
+  money: () => { loadSales(); loadDisputes(); loadMoney(); loadCoinPurchases(); loadCallLedger(); loadRoomLedger(); loadStripeAccounts(); loadAutoPay(); },
   landing: () => ldLoad(false),
   announce: () => loadBanners(),
   rooms: () => loadPresets(),
@@ -1085,6 +1090,26 @@ async function loadAutoPay() {
   try { await dtSdk(); const d = await firebase.firestore().doc("settings/platform").get(); $("auto-pay").checked = !!(d.exists && d.data().autoPayouts); } catch (e) {}
 }
 function table(head, rows, foot) { return rows.length ? `<table><thead><tr>${head.map(x => `<th>${x}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table>${foot || ""}` : `<div class="empty">Nothing yet.</div>`; }
+/* ───────── 🛡️ chargebacks ───────── */
+async function loadDisputes() {
+  if (!$("dp-list")) return;
+  let list = [];
+  try { await dtSdk(); list = (await dtCall("disputes")).disputes || []; }
+  catch (e) { $("dp-list").innerHTML = `<div class="empty">Couldn't load: ${h(e.message)}</div>`; return; }
+  const open = list.filter(d => !["won", "lost", "warning_closed", "charge_refunded"].includes(d.status)).length;
+  if (open && $("dp-list")) $("sec-disputes").querySelector("h2").firstChild.textContent = `🛡️ Chargebacks (${open} open) `;
+  const st = s => s === "won" ? `<span class="pill on">Won</span>` : s === "lost" ? `<span class="pill bad">Lost</span>` : s === "warning" ? `<span class="pill warn">Fraud warning</span>` : `<span class="pill warn">Needs answer</span>`;
+  $("dp-list").innerHTML = list.length ? list.map(d => `<div class="item"><div class="who"><b>${d.amount != null ? money(d.amount / 100) + " · " : ""}${h(d.name || "Unknown member")} ${st(d.status)}</b>
+    <span>${h(d.product === "coins" ? "Coin purchase" : d.product === "meetup" ? "M&G spot" : d.product === "connect" ? "Connect Me" : d.product || "")} · ${h(d.reason || "")} · ${ago(d.at)}${d.dueBy ? " · answer by " + new Date(d.dueBy).toLocaleDateString() : ""}</span>
+    ${(d.actions || []).length ? `<span>✓ ${d.actions.map(h).join(" · ✓ ")}</span>` : ""}</div>
+    <div class="acts"><a class="btn sm" href="https://dashboard.stripe.com/${d.kind === "fraudWarning" ? "payments/" + encodeURIComponent(d.pi) : "disputes/" + encodeURIComponent(d.id)}" target="_blank" rel="noopener">Stripe ↗</a>${d.uid ? `<button class="btn sm" onclick="unfreeze(${j(d.uid)})">Unfreeze</button>` : ""}</div></div>`).join("")
+    : `<div class="empty">No chargebacks. 🎉</div>`;
+}
+async function unfreeze(uid) {
+  if (!await dialog({ title: "Unfreeze " + nm(uid) + "?", body: "They can sign in and use the site again. Coins and earnings that were taken back stay taken back.", ok: "Unfreeze" })) return;
+  const r = await safely(() => dtCall("unfreeze", { id: uid }), null, "Couldn't unfreeze"); if (r) { toast(r.message); loadDisputes(); }
+}
+
 /* ───────── 📈 sales charts ───────── */
 const SL = { range: "w", data: null, table: false };
 const SL_SERIES = [["coins", "Coins", "var(--s1)"], ["mg", "M&G spots", "var(--s2)"], ["cm", "Connect Me", "var(--s3)"]];
@@ -1105,7 +1130,8 @@ async function loadSales() {
     const [cp, cl, rl] = await Promise.all([db.ref("coinPurchases").once("value"), db.ref("callLedger").orderByChild("ts").startAt(since).once("value"), db.ref("memberRoomLedger").once("value")]);
     const coins = [], calls = [], rooms = [];
     const walk = (v, f) => { if (!v || typeof v !== "object") return; if (v.ts && (v.amountUsd != null || v.earnedUsd != null || v.platformUsd != null)) { f(v); return; } Object.values(v).forEach(x => walk(x, f)); };
-    walk(cp.val(), v => { if (v.ts >= since) coins.push(v); });
+    const cpv = cp.val() || {};
+    walk(cpv.sessions || cpv, v => { if (v.ts >= since) coins.push(v); }); // "sessions" has each purchase once ("byUser" repeats them)
     walk(cl.val(), v => { if (v.ts >= since) calls.push(v); });
     walk(rl.val(), v => { if (v.ts >= since) rooms.push(v); });
     let mg = [], cm = [];
@@ -1185,7 +1211,8 @@ async function loadCoinPurchases() {
   try {
     const data = (await db.ref("coinPurchases").once("value")).val() || {};
     const all = []; let total = 0;
-    Object.entries(data).forEach(([uid, ps]) => Object.values(ps || {}).forEach(p => { if (p) { all.push(Object.assign({ uid }, p)); total += Number(p.amountUsd || 0); } }));
+    if (data.sessions) Object.values(data.sessions).forEach(p => { if (p && p.ts) { all.push(p); total += Number(p.amountUsd || 0); } }); // each purchase once
+    else Object.entries(data).forEach(([uid, ps]) => Object.values(ps || {}).forEach(p => { if (p && p.ts) { all.push(Object.assign({ uid }, p)); total += Number(p.amountUsd || 0); } }));
     all.sort((a, b) => (b.ts || 0) - (a.ts || 0));
     $("cp-total").textContent = money(total) + " total";
     $("cp-list").innerHTML = table(["When", "Who", "Coins", "Paid"], all.slice(0, 100).map(p => `<tr><td>${when(p.ts)}</td><td>${h(nm(p.uid))}</td><td class="num">${Number(p.coins || 0)}</td><td class="num">${money(p.amountUsd)}</td></tr>`));

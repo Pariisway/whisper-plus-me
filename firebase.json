@@ -138,6 +138,10 @@
         "function": "shareImage"
       },
       {
+        "source": "/api/declineCall",
+        "function": "declineCall"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

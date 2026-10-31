@@ -28,6 +28,16 @@ messaging.onBackgroundMessage(function(payload){
   const data = payload.data || {};
 
   if(data.type === "incoming_call"){
+    /* Arrived late (phone was asleep or offline): the call is over, so don't ring.
+       A notification still has to be shown, so it's a quiet "missed call". */
+    if(data.exp && Date.now() > Number(data.exp)){
+      return closeTagged("call-" + data.callId).then(function(){
+        return self.registration.showNotification("Missed call from " + (data.callerName || "someone"), {
+          body: "Tap to open Whisper+Me and call them back.", icon: "/icon-192.png", badge: "/favicon-32.png",
+          tag: "missed-" + data.callId, silent: true, data: { url: "https://whisperplusme.com/?calls=1", type: "missed_call" }
+        });
+      });
+    }
     return self.registration.showNotification(data.title || "📞 Incoming call", {
       body: data.body || "Tap to answer on Whisper+Me",
       icon: data.callerPhoto || "/icon-192.png",
@@ -42,7 +52,7 @@ messaging.onBackgroundMessage(function(payload){
         { action: "answer",  title: "📞 Answer"  },
         { action: "decline", title: "Decline" }
       ],
-      data: { url: data.url || "https://whisperplusme.com", type: "incoming_call", callId: data.callId || "", test: data.test || "" }
+      data: { url: data.url || "https://whisperplusme.com", type: "incoming_call", callId: data.callId || "", test: data.test || "", dk: data.dk || "" }
     });
   }
 
@@ -73,11 +83,14 @@ self.addEventListener("notificationclick", function(event){
   const data = event.notification.data || {};
   event.notification.close();
 
-  /* Decline: tell the open app (if any); otherwise the call times out on its own. */
+  /* Decline: ends the call right away, even with the site closed (the caller sees it at once). */
   if(event.action === "decline"){
-    event.waitUntil(clients.matchAll({ type: "window", includeUncontrolled: true }).then(function(list){
-      list.forEach(function(c){ c.postMessage({ type: "decline_call", callId: data.callId }); });
-    }));
+    event.waitUntil(Promise.all([
+      clients.matchAll({ type: "window", includeUncontrolled: true }).then(function(list){
+        list.forEach(function(c){ c.postMessage({ type: "decline_call", callId: data.callId }); });
+      }),
+      data.dk && !data.test ? fetch("/api/declineCall", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ c: data.callId, k: data.dk }) }).catch(function(){}) : Promise.resolve()
+    ]));
     return;
   }
 
