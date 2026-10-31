@@ -1,5 +1,6 @@
 // Shared Firebase setup and UI helpers for every ConnectUs page.
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check.js";
 import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
   GoogleAuthProvider, signInWithPopup, signOut, sendPasswordResetEmail, connectAuthEmulator
@@ -14,6 +15,7 @@ export const isAdminToken = token => token.claims.admin === true || ADMIN_UIDS.i
 
 export { BRAND };
 export const app = initializeApp(firebaseConfig);
+if (!USE_EMULATORS) { try { initializeAppCheck(app, { provider: new ReCaptchaEnterpriseProvider("6LcwcwkuAAAAAGGdo39hhjtGFmRME0D_FD5agtKP"), isTokenAutoRefreshEnabled: true }); } catch (e) { console.warn("App Check", e.message); } }
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const fns = getFunctions(app, FUNCTIONS_REGION);

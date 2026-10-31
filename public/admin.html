@@ -753,6 +753,7 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script>
 "use strict";
 const ADMIN_UID = "v6aIXY12MDY9ci1wWJmCiLOAKoG2";
@@ -766,6 +767,7 @@ firebase.initializeApp({
   messagingSenderId: "858087320089",
   appId: "1:858087320089:web:773c787b9f80075b0fd888"
 });
+try { firebase.appCheck().activate(new firebase.appCheck.ReCaptchaEnterpriseProvider("6LcwcwkuAAAAAGGdo39hhjtGFmRME0D_FD5agtKP"), true); } catch (e) { console.warn("App Check", e.message); }
 const db = firebase.database(), auth = firebase.auth(), storage = firebase.storage();
 
 /* ───────── helpers ───────── */
