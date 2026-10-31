@@ -1,0 +1,43 @@
+# Whisper+Me
+
+> Whisper+Me (whisperplusme.com) is a free live social web app for adults 18+. People join live voice chat rooms (talk or just listen), go live on an open mic, call members and creators 1-on-1 (creators set their price and earn from calls), and meet up in real life at M&G meet & greets and Connect Me date-night packages at real, public venues. It runs in any browser, no download, open 24/7.
+
+Key facts:
+
+- Joining is free. Rooms, chat and the open mic are free. Coins ($3 each) pay for 1-on-1 calls and paid member rooms; creators earn $2 per coin.
+- M&G (meet & greet): a member or Whisper+Me hosts a meetup at a public venue; people buy one spot each. 21+.
+- Connect Me: ready-made nights out (dinner, bowling, shows and more) at one price for 2 or 4. The buyer invites who they want. 21+.
+- Members can share a "take me out" link asking someone to treat them to a Connect Me night out.
+- Whisper+Me is peer support, not therapy or a crisis line. In the US, call or text 988 in a crisis.
+
+## Voice chat rooms
+
+- [All voice chat rooms](https://whisperplusme.com/rooms/): every topic room with what to expect
+- [General](https://whisperplusme.com/rooms/general-voice-chat/): talk to new people, any time
+- [Vent & Release](https://whisperplusme.com/rooms/vent-room/): get it off your chest, anonymously
+- [Anxiety & Stress](https://whisperplusme.com/rooms/anxiety-support-chat/): peer support for anxiety
+- [Night Owls](https://whisperplusme.com/rooms/night-owls-chat/): late-night chat for anyone awake at 3am
+- [Grief & Loss](https://whisperplusme.com/rooms/grief-support-chat/): talk about the person you miss
+- [Mental Health](https://whisperplusme.com/rooms/mental-health-chat/): honest, stigma-free peer support
+- [Live Voices](https://whisperplusme.com/rooms/open-mic/): an online open mic
+- [Real Connection](https://whisperplusme.com/rooms/meet-new-people/): meet genuine people by voice
+- [LGBTQ+ Safe Space](https://whisperplusme.com/rooms/lgbtq-safe-space/) and [Queer Connect](https://whisperplusme.com/rooms/queer-connect/)
+- [Astrology](https://whisperplusme.com/rooms/astrology-chat/), [Tarot](https://whisperplusme.com/rooms/tarot-reading-chat/), [Psychic Circle](https://whisperplusme.com/rooms/psychic-chat/), [The Apothecary](https://whisperplusme.com/rooms/herbal-remedies-chat/)
+- [Creators Lounge](https://whisperplusme.com/rooms/creators-lounge/): grow an audience and earn from calls
+
+## Meet up in real life
+
+- [Connect Me date ideas](https://whisperplusme.com/connect): every date-night package on sale now, with dates, places and prices
+- Live M&G pages are at https://whisperplusme.com/m/{id} and Connect Me packages at https://whisperplusme.com/c/{id}; all current ones are listed in the [sitemap](https://whisperplusme.com/sitemap.xml)
+
+## About
+
+- [About Whisper+Me](https://whisperplusme.com/about.html): mission and how it works
+- [Terms of Service](https://whisperplusme.com/terms.html)
+- [Privacy Policy](https://whisperplusme.com/privacy.html)
+- Contact: whisper.me.support@gmail.com
+
+## Optional
+
+- Member profiles: https://whisperplusme.com/u/{member-id}
+- Sign up or open the app: https://whisperplusme.com/

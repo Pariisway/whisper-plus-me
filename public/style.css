@@ -2,8 +2,6 @@
    WHISPERPLUSME — MASTER STYLESHEET v2
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700;800&display=swap');
-
 /* ── RESET ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 

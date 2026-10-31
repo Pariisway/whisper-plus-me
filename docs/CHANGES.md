@@ -12,7 +12,17 @@ Branch `social-upgrade`. This rebuild turns the front door, the profile, and the
 | **Admin** (`/admin.html`) | One long page of tables, browser pop-ups | MergeChat-style layout: top emoji tabs (🏁 Start here · 📡 Live now · 👥 People · 💰 Money · 🎬 Landing page · 📢 Announce · 💬 Rooms · 🛡️ Safety · ⭐ M&G · 🧾 Activity), "What do you want to do?" tiles, a "Needs your attention" list, "At a glance" numbers, and a "How the site fits together" map. Simple/Full layout switch. Every confirmation is an in-page dialog. The activity log is saved, so it survives a refresh. |
 | **Landing page manager** (new, Admin → 🎬) | none | Upload videos or pictures (or paste links), reorder, remove, shuffle, seconds per picture, darkness slider, sound-button switch, headline and subline, phone/computer preview, then **🚀 Publish**. |
 
-## 🖼️ Bigger share pictures, searchable profiles, rooms removed (latest)
+## ⚡ Faster first load (PageSpeed) (latest)
+
+- Firebase scripts load with `defer`, so the page isn't held up while they download; push setup runs once they're ready.
+- AdSense and the Facebook SDK load after the first tap/scroll, or 5 s after the page loads (they were the biggest "unused JavaScript" and main-thread cost). Google Analytics still starts right away.
+- The Cinzel font no longer blocks the first paint (it was an `@import` inside style.css).
+- Long-term caching: `tools/stamp-assets.js` (run by deploy.sh) adds a fingerprint `?v=` to app.js, dates.js, profile.js, landing.js, install.js and style.css in index.html; those files are cached for a year and refresh the moment they change. Pictures are cached 30 days.
+- Security headers: HSTS, Cross-Origin-Opener-Policy (Google sign-in popups still work), X-Frame-Options (embeds still work on other sites).
+- Smaller header icon, live-dot pulse runs on the GPU, second landing video no longer downloads up front.
+- `/llms.txt` describes the site for AI assistants (ChatGPT, Gemini, Perplexity).
+
+## 🖼️ Bigger share pictures, searchable profiles, rooms removed
 
 - **Share pictures**: "Share as a picture" stories now fill the whole 1080×1920 frame (no empty band at the bottom); photos are larger on every story and on link previews. The "Take me out" / date-ideas story shows one big package with two below.
 - **Profiles in Google**: `/u/{uid}` pages with a photo or bio can be indexed (ProfilePage data, Instagram/X/website linked) and are listed in `/sitemap.xml`. Bare and banned profiles stay out; banned members' pages now say "isn't available". Privacy Policy says so.

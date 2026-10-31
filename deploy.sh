@@ -11,6 +11,9 @@ MSG="${1:-Update}"
 echo "▶ Installing and testing the server code…"
 (cd functions-nights && npm install --no-audit --no-fund --loglevel=error && npm test)
 
+echo "▶ Fingerprinting the site's scripts (so browsers can cache them safely)…"
+node tools/stamp-assets.js
+
 echo "▶ Deploying the site, rules and server…"
 firebase deploy --only database,firestore,storage,hosting,functions:nights
 

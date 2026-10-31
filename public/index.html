@@ -111,8 +111,7 @@
   </script>
 
   <!-- ── Google AdSense ── -->
-  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1184595877548269"
-       crossorigin="anonymous"></script>
+  <!-- (loaded after the page is ready, see "Later" at the bottom of the page) -->
 
   <!-- ── Mapbox CSS ── -->
   <!-- Mapbox CSS loaded lazily when map tab opens -->
@@ -120,11 +119,15 @@
   <!-- ── App Styles ── -->
   <!-- Performance: preconnect to critical origins -->
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://whisperplusme-46d9c-default-rtdb.firebaseio.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;800&display=swap" media="print" onload="this.media='all'">
   <link rel="preconnect" href="https://firebasestorage.googleapis.com" crossorigin>
   <link rel="preconnect" href="https://us-central1-whisperplusme-46d9c.cloudfunctions.net" crossorigin>
   <link rel="dns-prefetch" href="https://api.mapbox.com">
   <link rel="dns-prefetch" href="https://download.agora.io">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=bcdcf6fae9">
 
   <!-- ── Desktop UI enlargement + header branding ── -->
   <style>
@@ -235,19 +238,18 @@
 <!-- ── Firebase SDK v8 ── -->
 <script>
   window.fbAsyncInit = function(){
-    FB.init({ appId:"1751576569186397", cookie:true, xfbml:true, version:"v19.0" });
+    FB.init({ appId:"1751576569186397", cookie:true, xfbml:false, version:"v19.0" });
     FB.AppEvents.logPageView();
   };
-  (function(d,s,id){var js,fjs=d.getElementsByTagName(s)[0];if(d.getElementById(id))return;js=d.createElement(s);js.id=id;js.src="https://connect.facebook.net/en_US/sdk.js";fjs.parentNode.insertBefore(js,fjs);}(document,"script","facebook-jssdk"));
 </script>
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-messaging.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-functions.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app-check.js"></script>
-<script src="firebase.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js" defer></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js" defer></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-messaging.js" defer></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js" defer></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js" defer></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-functions.js" defer></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app-check.js" defer></script>
+<script src="firebase.js" defer></script>
 
 <!-- ── Mapbox ── -->
 <!-- Mapbox JS loaded lazily -->
@@ -255,16 +257,16 @@
 <!-- ── Agora: loaded on demand by app.js (loadAgora) ── -->
 
 <!-- ── App ── -->
-<script src="landing.js" defer></script>
-<script src="app.js" defer></script>
-<script src="dates.js" defer></script>
-<script src="profile.js" defer></script>
-<script src="install.js" defer></script>
+<script src="landing.js?v=50282ecbc3" defer></script>
+<script src="app.js?v=eaead9cab5" defer></script>
+<script src="dates.js?v=dad8462f21" defer></script>
+<script src="profile.js?v=8301234185" defer></script>
+<script src="install.js?v=c0fdf0d311" defer></script>
 
 <!-- ── Firebase Cloud Messaging ── -->
 <script>
-(function(){
-  if(!firebase.messaging || !firebase.messaging.isSupported()) return;
+document.addEventListener("DOMContentLoaded", function(){
+  if(!window.firebase || !firebase.messaging || !firebase.messaging.isSupported()) return;
   var messaging = firebase.messaging();
 
   if('serviceWorker' in navigator){
@@ -352,7 +354,7 @@
     if(data.type === 'incoming_call'){ return; }
     showAdminToast(data.title || 'Whisper+Me', data.body || '');
   });
-})();
+});
 
 function showRoomPopup(data){
   var ex = document.getElementById('wpm-room-popup');
@@ -444,5 +446,20 @@ function showAdminToast(title, body){
 }
 </script>
 
+<!-- ── Later: AdSense and the Facebook SDK aren't needed to use the page, so they load after it's up ── -->
+<script>
+(function(){
+  var done = false;
+  function add(src, attrs){ var s = document.createElement("script"); s.async = true; s.src = src; for (var k in attrs) s.setAttribute(k, attrs[k]); document.head.appendChild(s); }
+  function go(){
+    if (done) return; done = true;
+    ["pointerdown","keydown","scroll","touchstart"].forEach(function(e){ removeEventListener(e, go, true); });
+    add("https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1184595877548269", { crossorigin: "anonymous" });
+    add("https://connect.facebook.net/en_US/sdk.js", { id: "facebook-jssdk" });
+  }
+  ["pointerdown","keydown","scroll","touchstart"].forEach(function(e){ addEventListener(e, go, { capture: true, passive: true, once: true }); });
+  addEventListener("load", function(){ setTimeout(go, 5000); });
+})();
+</script>
 </body>
 </html>

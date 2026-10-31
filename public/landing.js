@@ -46,8 +46,9 @@ body.lp2-on{background:#0b0b16}\
 .lp2-login{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:999px;padding:9px 18px;font-weight:700;font-size:14px;cursor:pointer;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}\
 .lp2-hero{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;max-width:560px;width:100%;margin:0 auto;padding:28px 0 18px;gap:18px}\
 .lp2-live{display:inline-flex;align-self:center;align-items:center;gap:8px;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:7px 14px;font-size:13px;font-weight:700;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}\
-.lp2-live i{width:9px;height:9px;border-radius:50%;background:#ff3b5c;box-shadow:0 0 0 0 rgba(255,59,92,.7);animation:lpPulse 1.6s infinite}\
-@keyframes lpPulse{70%{box-shadow:0 0 0 9px rgba(255,59,92,0)}100%{box-shadow:0 0 0 0 rgba(255,59,92,0)}}\
+.lp2-live i{position:relative;width:9px;height:9px;border-radius:50%;background:#ff3b5c}\
+.lp2-live i::after{content:'';position:absolute;inset:0;border-radius:50%;background:rgba(255,59,92,.7);animation:lpPulse 1.6s infinite;will-change:transform,opacity}\
+@keyframes lpPulse{0%{transform:scale(1);opacity:.8}70%{transform:scale(3);opacity:0}100%{transform:scale(3);opacity:0}}\
 .lp2-h1{margin:0;font-size:clamp(40px,9vw,72px);line-height:1.02;font-weight:900;letter-spacing:-.03em;text-shadow:0 4px 30px rgba(0,0,0,.45)}\
 .lp2-h1 span{white-space:nowrap;background:linear-gradient(90deg,#b98cff,#00e3ae);-webkit-background-clip:text;background-clip:text;color:transparent}\
 .lp2-sub{margin:0 auto;font-size:clamp(16px,2.4vw,19px);line-height:1.5;color:rgba(255,255,255,.88);max-width:46ch;text-shadow:0 2px 16px rgba(0,0,0,.5)}\
@@ -169,7 +170,7 @@ body.lp2-on{background:#0b0b16}\
     queue = items.slice();
     if (cfg.shuffle) queue.sort(function () { return Math.random() - .5; });
     qi = 0;
-    el.innerHTML = "<video class='lp-layer' muted playsinline preload='auto'></video><video class='lp-layer' muted playsinline preload='auto'></video><img class='lp-layer' alt=''>" + baseLayer();
+    el.innerHTML = "<video class='lp-layer' muted playsinline preload='auto'></video><video class='lp-layer' muted playsinline preload='none'></video><img class='lp-layer' alt=''>" + baseLayer();
     layers = Array.prototype.slice.call(el.querySelectorAll(".lp-layer"));
     playItem(queue[0]);
   }
@@ -370,7 +371,7 @@ body.lp2-on{background:#0b0b16}\
   /* ---------- markup (rendered by app.js when signed out) ---------- */
   function html() {
     return "<div class='lp2" + (fromLink() ? " lp2-fromlink" : "") + "'>"
-      + "<div class='lp2-top'><a class='lp2-logo' href='/'><img src='/header-icon.png' alt=''><span>Whisper<b>+</b>Me</span></a>"
+      + "<div class='lp2-top'><a class='lp2-logo' href='/'><img src='/header-icon.png' alt='' width='34' height='34'><span>Whisper<b>+</b>Me</span></a>"
       + "<button class='lp2-login' onclick=\"Landing.showEmail('login')\">Log in</button></div>"
       + "<main class='lp2-hero'>"
       + "<div class='lp2-live'><i></i><span id='lp2-live-text'>" + esc(liveText()) + "</span></div>"
