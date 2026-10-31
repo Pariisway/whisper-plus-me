@@ -11,7 +11,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 
 /* App Check (bot protection): proves requests come from the real site, not a script.
-   Paste your reCAPTCHA v3 SITE key below to turn it on (see UPGRADE.md → App Check).
+   Paste your reCAPTCHA v3 SITE key below to turn it on (see docs/CHANGES.md → App Check).
    Turning it on only adds the proof; nothing is blocked until you press Enforce in
    the Firebase console, so it's safe to switch on first and watch the numbers. */
 var APP_CHECK_SITE_KEY = "";

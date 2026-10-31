@@ -846,7 +846,7 @@ var SS_CSS = ".ss{padding:18px 16px 16px;color:#f3f0fb;text-align:left;position:
   + ".ss-copy input{flex:1;min-width:0;background:none;border:0;color:#b3abcf;font-size:13px;outline:0;padding:0;margin:0}"
   + ".ss-copy button{flex:none;border:0;border-radius:999px;background:#fff;color:#111;font-weight:800;padding:9px 16px;cursor:pointer;min-height:0;margin:0;width:auto}"
   + ".ss-emb{display:block;margin:12px auto 0;background:none;border:0;color:#9d97b8;font-size:13px;text-decoration:underline;cursor:pointer;width:auto;min-height:0}";
-function openShareSheet(title, text, url, embedId, embedType, imgBase){
+function openShareSheet(title, text, url, embedId, embedType, imgBase, imgQuery){
   embedType = embedType || "room";
   var modal = document.getElementById("profileModal");
   var body  = document.getElementById("profileModalBody");
@@ -857,8 +857,9 @@ function openShareSheet(title, text, url, embedId, embedType, imgBase){
   }
   if(!document.getElementById("ss-css")){ var st = document.createElement("style"); st.id = "ss-css"; st.textContent = SS_CSS; document.head.appendChild(st); }
   var t = Math.floor(Date.now() / 600000); /* a fresh picture at most every 10 minutes */
-  var card  = imgBase ? imgBase + "/card.png?t=" + t : "";
-  var story = imgBase ? imgBase + "/story.png?t=" + t : "";
+  var iq = imgQuery ? "&" + imgQuery : "";
+  var card  = imgBase ? imgBase + "/card.png?t=" + t + iq : "";
+  var story = imgBase ? imgBase + "/story.png?t=" + t + iq : "";
   var enc = encodeURIComponent(url), encF = encodeURIComponent(full);
   var mobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent || "");
   var tile = function(bg, glyph, label, attrs){ return "<a class='ss-t' " + attrs + "><i style='background:" + bg + "'>" + glyph + "</i>" + label + "</a>"; };
@@ -3387,6 +3388,17 @@ window.signInWithGoogle = function(){
 
 firebase.auth().onAuthStateChanged(async function(user){
   currentUser = user;
+  /* New account: remember which ad / site brought them (once, only for accounts made in the last day). */
+  try{
+    if(user && !user.isAnonymous && window.wpmSource && window.wpmSource()){
+      var made = Date.parse((user.metadata || {}).creationTime || "") || 0;
+      var flag = "wpmSrcSaved_" + user.uid, saved = false; try{ saved = !!localStorage.getItem(flag); }catch(e){}
+      if(!saved && Date.now() - made < 864e5){
+        firebase.database().ref("userSrc/" + user.uid).set(Object.assign({ at: Date.now() }, window.wpmSource())).catch(function(){});
+        try{ localStorage.setItem(flag, "1"); }catch(e){}
+      }
+    }
+  }catch(e){}
   if(!user){
     /* A shared room or profile link should drop a brand-new visitor
        straight into guest mode instead of the landing page. */
@@ -3926,6 +3938,32 @@ window.addEventListener("pagehide", function(){
      /?stripe_refresh=1
    Handle each case and clean the URL so refreshing doesn't re-trigger.
 ═══════════════════════════════════════════ */
+/* ═══════════════════════════════════════════
+   AD TRACKING — where did this visitor come from?
+   Links in ads carry ?utm_source=instagram&utm_campaign=launch (or ?ref=…).
+   The first source is kept for 30 days and saved with their sign-up and
+   with every M&G / Connect Me purchase, so Admin → Money shows which
+   ads bring buyers. Without a tag, the site they came from is used
+   (instagram.com, facebook.com, tiktok.com…).
+═══════════════════════════════════════════ */
+(function captureSource(){
+  var KEY = "wpmSrc", DAYS = 30;
+  var clean = function(v){ return String(v || "").replace(/[^\w .\-:/]/g, "").slice(0, 60); };
+  var cur = null; try { cur = JSON.parse(localStorage.getItem(KEY) || "null"); } catch(e){}
+  if(cur && Date.now() - (cur.at || 0) > DAYS * 864e5) cur = null;
+  var p = new URLSearchParams(window.location.search), src = null;
+  if(p.get("utm_source") || p.get("ref")){
+    src = { s: clean(p.get("utm_source") || p.get("ref")), m: clean(p.get("utm_medium")), c: clean(p.get("utm_campaign")), ct: clean(p.get("utm_content")) };
+  } else if(document.referrer){
+    try{
+      var host = new URL(document.referrer).hostname.replace(/^(www|m|l|lm)\./, "");
+      if(host && host.indexOf("whisperplusme") < 0 && host.indexOf("localhost") < 0) src = { s: clean(host), m: "referral", c: "", ct: "" };
+    }catch(e){}
+  }
+  if(src && src.s && !cur){ src.at = Date.now(); src.landing = clean(window.location.pathname + (p.get("deal") ? "?deal=" + p.get("deal") : p.get("meetup") ? "?meetup=" + p.get("meetup") : "")); try{ localStorage.setItem(KEY, JSON.stringify(src)); }catch(e){} cur = src; }
+  window.wpmSource = function(){ var x = null; try{ x = JSON.parse(localStorage.getItem(KEY) || "null"); }catch(e){} return x && x.s ? { s:x.s, m:x.m || "", c:x.c || "", ct:x.ct || "" } : null; };
+})();
+
 (function handleStripeReturn(){
   var params = new URLSearchParams(window.location.search);
   if(!params.toString()) return;

@@ -165,7 +165,7 @@ module.exports = function makeShare({ db, rtdb, APP_URL, logger, ms, fmtMoney })
     pic ? img(pic, { position: "absolute", top: 0, left: 0, width: w - 8 * s, height: hgt - 8 * s, objectFit: "cover" }) : null,
     h("div", { position: "absolute", top: 0, left: 0, width: w - 8 * s, height: hgt - 8 * s, backgroundImage: "linear-gradient(180deg, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0) 35%, rgba(0,0,0,0.85) 100%)" }),
     h("div", { position: "absolute", top: 22 * s, left: 22 * s, right: 22 * s, justifyContent: "space-between" },
-      h("div", { background: "rgba(0,0,0,0.5)", borderRadius: 999, padding: `${7 * s}px ${14 * s}px`, fontSize: 17 * s, fontWeight: 800, color: "#fff", letterSpacing: 1 }, m.official ? "⭐ WHISPER+ME PICK" : "⭐ M&G"),
+      h("div", { background: "rgba(0,0,0,0.5)", borderRadius: 999, padding: `${7 * s}px ${14 * s}px`, fontSize: 17 * s, fontWeight: 800, color: "#fff", letterSpacing: 1 }, m.tag || (m.official ? "⭐ WHISPER+ME PICK" : "⭐ M&G")),
       m.live && m.left <= 10 ? h("div", { background: "#e53950", borderRadius: 999, padding: `${7 * s}px ${14 * s}px`, fontSize: 17 * s, fontWeight: 800, color: "#fff" }, m.left ? `${m.left} LEFT` : "SOLD OUT") : null),
     h("div", { position: "absolute", left: 24 * s, right: 24 * s, bottom: 26 * s, fontSize: 36 * s, fontWeight: 900, color: "#fff", lineHeight: 1.1 }, clip(m.title, 60)));
   async function meetupCard(m, story) {
@@ -200,6 +200,95 @@ module.exports = function makeShare({ db, rtdb, APP_URL, logger, ms, fmtMoney })
         h("div", { flexDirection: "column", gap: 8 }, h("div", { fontSize: 36, fontWeight: 800, color: "#fff" }, "Tap the link or scan"), h("div", { fontSize: 28, color: C.muted }, "whisperplusme.com")))), 1080, 1920);
   }
 
+  /* ---------- Connect Me package (the ad link: /c/{id}) ---------- */
+  async function connectData(id) {
+    const x = (await db.doc(`connects/${id}`).get()).data();
+    if (!x || x.hidden && x.status === "live") return null;
+    const live = x.status === "live" && !x.hidden && ms(x.startsAt) > Date.now() + 2 * 3600000;
+    return { id, tag: "💞 CONNECT ME", title: clip(x.title, 80), imageUrl: x.imageURL || "", hue: x.hue || 330, category: x.category || "Night out", items: x.items || [], about: x.about || "",
+      startsAt: ms(x.startsAt), venueName: x.venueName || "", city: x.city || "", price: x.price, size: x.size || 2,
+      left: Math.max(0, (x.quantity || 0) - (x.sold || 0) - (x.held || 0)), idCheck: !!x.idCheck, rating: x.venueRating || null, live };
+  }
+  /** The person asking to be taken out (a member): name and photo only. */
+  async function askerData(uid) {
+    uid = String(uid || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 128);
+    if (!uid) return null;
+    const u = (await rtdb.ref(`users/${uid}`).once("value")).val();
+    if (!u || !u.name || u.banned) return null;
+    return { uid, name: clip(u.name, 30), first: clip(String(u.name).trim().split(/\s+/)[0], 16), photoUrl: u.photo || "" };
+  }
+  const askRow = (a, pic, size) => h("div", { alignItems: "center", gap: size * 0.5 },
+    pic ? img(pic, { width: size * 2.4, height: size * 2.4, borderRadius: size * 2.4, objectFit: "cover", border: "3px solid #ff8fb3" }) : initialCircle(a.name, size * 2.4),
+    h("div", { flexDirection: "column" }, h("div", { fontSize: size * 1.05, fontWeight: 900, color: "#fff" }, `${a.name} wants to go 💞`), h("div", { fontSize: size * 0.8, color: "#ff9cc2", fontWeight: 700 }, "Be the one who takes them")));
+  async function connectCard(c, story, asker) {
+    const icon = await appIcon();
+    const pic = await dataUrl(c.imageUrl);
+    const askPic = asker ? await dataUrl(asker.photoUrl) : "";
+    const buy = !c.live || !c.left ? (c.live ? "Sold out · see what's next" : "See what's on now") : asker ? `💞  Take ${asker.first} out · ${fmtMoney(c.price)}` : `💞  Get it · ${fmtMoney(c.price)} for ${c.size}`;
+    const each = fmtMoney(Math.round(c.price / c.size));
+    const facts = (size) => h("div", { flexDirection: "column", gap: size * 0.4, fontSize: size, color: C.text },
+      h("div", {}, `📅  ${whenText(c.startsAt)}`), h("div", {}, `📍  ${clip(c.venueName, 34)}${c.city ? ", " + clip(c.city.split(",")[0], 20) : ""}`),
+      c.items.length ? h("div", { color: C.muted }, `✅  ${clip(c.items.slice(0, 3).join("  •  "), 60)}`) : null,
+      h("div", { gap: 12 * (size / 24), alignItems: "center" }, h("div", { fontWeight: 900, fontSize: size * 1.4, color: "#fff" }, fmtMoney(c.price)), h("div", { color: C.muted }, `for ${c.size} · ${each} each`),
+        c.rating && c.rating.n ? chip(`⭐ ${Number(c.rating.avg).toFixed(1)}`, size * 0.8, C.star) : null, c.idCheck ? chip("🪪 21+", size * 0.8, C.gold) : null));
+    const pitch = (size) => asker ? askRow(asker, askPic, size) : h("div", { fontSize: size, color: "#ff9cc2", fontWeight: 700 }, `Night out for ${c.size} · bring who you want`);
+    if (!story) {
+      return toPng(h("div", { width: 1200, height: 630, backgroundImage: BG, padding: "44px 56px", gap: 52, alignItems: "center", fontFamily: "Inter", color: C.text },
+        poster(c, 400, 542, 1, pic),
+        h("div", { flex: 1, flexDirection: "column", gap: 18 },
+          brand(icon, 22),
+          h("div", { fontSize: 48, fontWeight: 900, lineHeight: 1.08, color: "#fff" }, clip(c.title, 52)),
+          pitch(24), facts(24),
+          h("div", { flexDirection: "column", gap: 12, marginTop: 6 }, button(buy, 28, true), button(asker ? "↗  Share it with a friend" : "↗  Send to your date", 24, false)))), 1200, 630);
+    }
+    const link = `${APP_URL}/c/${c.id}${asker ? "?ask=" + asker.uid : ""}`;
+    return toPng(h("div", { width: 1080, height: 1920, backgroundImage: BG, padding: "90px 80px 80px", flexDirection: "column", alignItems: "center", gap: 40, fontFamily: "Inter", color: C.text },
+      brand(icon, 44),
+      poster(c, 920, 860, 2, pic),
+      h("div", { width: 920, flexDirection: "column", gap: 26 }, pitch(36), facts(36)),
+      h("div", { width: 920, flexDirection: "column", gap: 22 }, button(buy, 46, true)),
+      h("div", { alignItems: "center", gap: 30, marginTop: 6 },
+        img(await qr(link), { width: 180, height: 180, borderRadius: 24, border: "8px solid #fff" }),
+        h("div", { flexDirection: "column", gap: 8 }, h("div", { fontSize: 36, fontWeight: 800, color: "#fff" }, "Tap the link or scan"), h("div", { fontSize: 28, color: C.muted }, "whisperplusme.com")))), 1080, 1920);
+  }
+
+  /* ---------- Connect Me as a whole: "No date ideas? Start here" ---------- */
+  async function liveConnects(n) {
+    const q = await db.collection("connects").where("status", "==", "live").where("hidden", "==", false).orderBy("startsAt").limit(40).get();
+    const out = [];
+    for (const d of q.docs) { const c = await connectData(d.id); if (c && c.live && c.left) out.push(c); if (out.length >= n) break; }
+    return out;
+  }
+  async function listCard(story, asker) {
+    const icon = await appIcon();
+    const deals = await liveConnects(3);
+    const pics = await Promise.all(deals.map(c => dataUrl(c.imageUrl)));
+    const askPic = asker ? await dataUrl(asker.photoUrl) : "";
+    const W = story ? 1080 : 1200, H = story ? 1920 : 630, s = story ? 1.7 : 1;
+    const tile = (c, i) => h("div", { width: story ? 290 : 250, height: story ? 400 : 300, borderRadius: 26 * s, overflow: "hidden", position: "relative", backgroundImage: `linear-gradient(135deg, hsl(${c.hue},60%,32%), hsl(${(c.hue + 40) % 360},65%,16%) 70%, #0b0b16)` },
+      pics[i] ? img(pics[i], { position: "absolute", top: 0, left: 0, width: story ? 290 : 250, height: story ? 400 : 300, objectFit: "cover" }) : null,
+      h("div", { position: "absolute", top: 0, left: 0, width: story ? 290 : 250, height: story ? 400 : 300, backgroundImage: "linear-gradient(180deg, rgba(0,0,0,0) 30%, rgba(0,0,0,0.9) 100%)" }),
+      h("div", { position: "absolute", left: 16 * s, right: 16 * s, bottom: 16 * s, flexDirection: "column", gap: 4 },
+        h("div", { fontSize: 22 * s, fontWeight: 900, color: "#fff", lineHeight: 1.1 }, clip(c.title, 34)),
+        h("div", { fontSize: 16 * s, color: "#ff9cc2", fontWeight: 700 }, `${fmtMoney(c.price)} for ${c.size}`)));
+    const head = asker
+      ? h("div", { flexDirection: "column", alignItems: story ? "center" : "flex-start", gap: 14 * s }, askRow(asker, askPic, 28 * s), h("div", { fontSize: 50 * s, fontWeight: 900, color: "#fff", lineHeight: 1.05, textAlign: story ? "center" : "left" }, "Take me out? 💞"), h("div", { fontSize: 24 * s, color: C.muted }, "Pick a night out. It's all planned for you."))
+      : h("div", { flexDirection: "column", alignItems: story ? "center" : "flex-start", gap: 12 * s }, h("div", { fontSize: 26 * s, color: "#ff9cc2", fontWeight: 800 }, "💞 CONNECT ME"), h("div", { fontSize: 52 * s, fontWeight: 900, color: "#fff", lineHeight: 1.05, textAlign: story ? "center" : "left" }, "No date ideas?"), h("div", { fontSize: 52 * s, fontWeight: 900, lineHeight: 1.05, color: "#7ff0d0" }, "Start here."), h("div", { fontSize: 24 * s, color: C.muted, textAlign: story ? "center" : "left" }, "Dinner, bowling, shows and more. One price, bring who you want."));
+    const btn = button(asker ? `💞  Take ${asker.first} out` : "💞  See date ideas", 28 * s, true);
+    if (!story) {
+      return toPng(h("div", { width: W, height: H, backgroundImage: BG, padding: "44px 56px", gap: 40, alignItems: "center", fontFamily: "Inter", color: C.text },
+        h("div", { flex: 1, flexDirection: "column", gap: 22 }, brand(icon, 22), head, btn),
+        deals.length ? h("div", { gap: 14, alignItems: "center" }, deals.slice(0, 2).map(tile)) : null), W, H);
+    }
+    return toPng(h("div", { width: W, height: H, backgroundImage: BG, padding: "90px 70px 80px", flexDirection: "column", alignItems: "center", gap: 46, fontFamily: "Inter", color: C.text },
+      brand(icon, 44), head,
+      deals.length ? h("div", { gap: 20 }, deals.slice(0, 3).map(tile)) : null,
+      h("div", { width: 900, flexDirection: "column" }, btn),
+      h("div", { alignItems: "center", gap: 30 },
+        img(await qr(`${APP_URL}/connect${asker ? "?ask=" + asker.uid : ""}`), { width: 180, height: 180, borderRadius: 24, border: "8px solid #fff" }),
+        h("div", { flexDirection: "column", gap: 8 }, h("div", { fontSize: 36, fontWeight: 800, color: "#fff" }, "Tap the link or scan"), h("div", { fontSize: 28, color: C.muted }, "whisperplusme.com/connect")))), W, H);
+  }
+
   /* ---------- fallback picture (unknown profile / M&G) ---------- */
   async function plainCard(story) {
     const icon = await appIcon();
@@ -218,6 +307,8 @@ module.exports = function makeShare({ db, rtdb, APP_URL, logger, ms, fmtMoney })
     try {
       if (kind === "u") { const p = id && await profileData(id); png = p ? await profileCard(p, story) : await plainCard(story); }
       else if (kind === "m") { const m = id && await meetupData(id); png = m ? await meetupCard(m, story) : await plainCard(story); }
+      else if (kind === "c") { const c = id && await connectData(id); png = c ? await connectCard(c, story, await askerData(req.query && req.query.ask)) : await plainCard(story); }
+      else if (kind === "l") png = await listCard(story, await askerData(req.query && req.query.ask));
       else png = await plainCard(story);
     } catch (e) {
       logger.error("shareImage", req.path, e.stack || e.message);
@@ -305,7 +396,8 @@ ${ig || tw || web ? `<div class="soc">${ig ? `<a href="${esc(ig)}" target="_blan
     return pageShell({ title: `${p.name} on Whisper+Me`, desc, url, image: `${APP_URL}/s/u/${uid}/card.png?v=${v}`, body });
   }
 
-  async function meetupPage(id, legacyTitle) {
+  async function meetupPage(id, src) {
+    const tail = src ? "&" + src : "";
     id = String(id || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
     const m = id ? await meetupData(id) : null;
     const url = `${APP_URL}/m/${id}`;
@@ -313,8 +405,8 @@ ${ig || tw || web ? `<div class="soc">${ig ? `<a href="${esc(ig)}" target="_blan
       return pageShell({ title: "Meet & greets on Whisper+Me", desc: "Meet the people you follow, in person, at real venues.", url, image: `${APP_URL}/s/x/none/card.png`,
         body: `<div class="facts" style="text-align:center">This M&amp;G isn't available anymore.</div><div class="btns"><a class="b p" href="/?dates=1">⭐ See what's coming up</a></div>` });
     }
-    const appUrl = `/?dates=1${m.live ? "&meetup=" + encodeURIComponent(id) : ""}`;
-    const title = legacyTitle || `${m.title} · with ${m.hostName}`;
+    const appUrl = `/?dates=1${m.live ? "&meetup=" + encodeURIComponent(id) : ""}${tail}`;
+    const title = `${m.title} · with ${m.hostName}`;
     const desc = m.live ? `${whenText(m.startsAt)} at ${m.venueName}${m.city ? ", " + m.city : ""}. ${fmtMoney(m.price)} a spot${m.left <= 10 ? `, ${m.left} left` : ""}. ${(m.items || []).slice(0, 2).join(", ")}.`
       : "This meet & greet has ended. See what's coming up on Whisper+Me.";
     const v = ver(m.title, m.imageUrl, m.price, m.left, m.live, Math.floor(Date.now() / 36e5));
@@ -330,5 +422,58 @@ ${m.hostUid ? `<a class="b s" href="/u/${esc(m.hostUid)}">👤 About ${esc(clip(
     return pageShell({ title, desc, url, image: `${APP_URL}/s/m/${id}/card.png?v=${v}`, body });
   }
 
-  return { shareImage, profilePage, meetupPage, profileCard, meetupCard, profileData, meetupData, plainCard };
+  /** /c/{id}: a Connect Me package, for ads and sharing. */
+  async function connectPage(id, src, askUid) {
+    id = String(id || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
+    const c = id ? await connectData(id) : null;
+    const asker = await askerData(askUid);
+    const url = `${APP_URL}/c/${id}`;
+    const tail = src ? "&" + src : "";
+    if (!c) {
+      return pageShell({ title: "Connect Me · night-out packages on Whisper+Me", desc: "Dinner, bowling, shows and more for 2 or 4, at real places near you. One price, bring who you want.", url, image: `${APP_URL}/s/x/none/card.png`,
+        body: `<div class="facts" style="text-align:center">This package isn't available anymore.</div><div class="btns"><a class="b p" href="/?dates=1${tail}">💞 See what's on now</a></div>` });
+    }
+    const go = `/?dates=1&deal=${encodeURIComponent(id)}${asker ? "&ask=" + encodeURIComponent(asker.uid) : ""}${tail}`;
+    const each = fmtMoney(Math.round(c.price / c.size));
+    const title = asker ? `${asker.name} wants to go: ${c.title} 💞` : `${c.title} · ${fmtMoney(c.price)} for ${c.size}`;
+    const desc = c.live ? `${whenText(c.startsAt)} at ${c.venueName}${c.city ? ", " + c.city : ""}. ${fmtMoney(c.price)} for ${c.size} (${each} each)${c.left <= 5 ? `, only ${c.left} left` : ""}. ${(c.items || []).slice(0, 3).join(", ")}.`
+      : "This package has ended. See what's on now on Whisper+Me.";
+    const v = ver(c.title, c.imageUrl, c.price, c.left, c.live, asker ? asker.uid : "", Math.floor(Date.now() / 36e5));
+    const askHtml = asker ? `<div class="host" style="margin:0 0 14px"><a href="/u/${esc(asker.uid)}" style="display:flex">${asker.photoUrl ? `<img src="${esc(asker.photoUrl)}" alt="" style="border:2px solid #ff8fb3">` : `<div class="av">${esc((asker.name[0] || "?").toUpperCase())}</div>`}</a><div><b style="font-size:18px">${esc(asker.name)} wants to go 💞</b><small>Be the one who takes them. It's all planned: just pay and they get the invite.</small></div></div>` : "";
+    const body = askHtml + `<div class="ph" style="aspect-ratio:4/5;background:linear-gradient(135deg,hsl(${c.hue} 60% 32%),hsl(${(c.hue + 40) % 360} 65% 16%) 70%,#0b0b16)">${c.imageUrl ? `<img src="${esc(c.imageUrl)}" alt="">` : ""}<div class="sh"></div>
+<div class="pill" style="left:16px;transform:none">💞 Connect Me · night out for ${c.size}</div>${c.live && c.left <= 5 ? `<div class="tag">${c.left ? c.left + " LEFT" : "SOLD OUT"}</div>` : ""}
+<div class="info"><h1 class="nm">${esc(c.title)}</h1></div></div>
+<div class="facts"><div>📅 ${esc(whenText(c.startsAt))}</div><div>📍 ${esc(c.venueName)}${c.city ? ", " + esc(c.city) : ""}${c.rating && c.rating.n ? ` · <span style="color:#ffc94d">★ ${Number(c.rating.avg).toFixed(1)}</span>` : ""}</div>
+<div><b style="font-size:20px">${fmtMoney(c.price)}</b> for ${c.size} · ${each} each${c.live ? ` · ${c.left} left` : ""}</div>${(c.items || []).length ? `<div>✓ ${c.items.slice(0, 5).map(esc).join(" · ✓ ")}</div>` : ""}${c.about ? `<div style="color:#b3abcf">${esc(clip(c.about, 220))}</div>` : ""}${c.idCheck ? `<div style="color:#f7b955">🪪 21+, everyone brings a photo ID</div>` : ""}</div>
+${asker ? `<div class="facts" style="font-size:14px"><b>How it works</b><div>1. Tap Take ${esc(asker.first)} out and pay (one price covers you both).</div><div>2. ${esc(asker.first)} gets the invite right away and accepts.</div><div>3. Meet at the place and both tap “I'm here.” Enjoy!</div></div>`
+  : `<div class="facts" style="font-size:14px"><b>How it works</b><div>1. Get it (one price covers everyone).</div><div>2. Invite your date or friends: a member on the site, or send them a link.</div><div>3. At the place, everyone taps “I'm here.” Enjoy!</div></div>`}
+<div class="btns">${c.live && c.left ? `<a class="b p" href="${esc(go)}">💞 ${asker ? `Take ${esc(asker.first)} out · ${fmtMoney(c.price)}` : `Get it · ${fmtMoney(c.price)} for ${c.size}`}</a>` : `<a class="b p" href="/connect${asker ? "?ask=" + esc(asker.uid) : ""}">💞 See other nights out</a>`}
+${asker ? `<a class="b s" href="/u/${esc(asker.uid)}">👤 See ${esc(asker.first)}'s profile</a>` : ""}
+<button class="b s" data-share>↗ ${asker ? "Share it with a friend" : "Send it to your date"}</button>
+${asker ? "" : `<a class="b s" href="/connect" style="min-height:48px;font-size:15px">💡 More date ideas</a>`}</div>`;
+    return pageShell({ title, desc: asker ? `${asker.name} wants to go. ${desc}` : desc, url: url + (asker ? "?ask=" + asker.uid : ""), image: `${APP_URL}/s/c/${id}/card.png?v=${v}${asker ? "&ask=" + asker.uid : ""}`, body });
+  }
+
+  /** /connect: every Connect Me package, as one page. With ?ask=uid: "{Name} wants a night out, pick one and take them". */
+  async function connectListPage(src, askUid) {
+    const tail = src ? "&" + src : "";
+    const asker = await askerData(askUid);
+    const deals = await liveConnects(12);
+    const askQ = asker ? "&ask=" + encodeURIComponent(asker.uid) : "";
+    const title = asker ? `${asker.name} wants a night out 💞 Take them?` : "No date ideas? Start here · Connect Me";
+    const desc = asker ? `${asker.name} is asking to be taken out. Pick a night out on Whisper+Me, pay once, and they get the invite.`
+      : "Night-out packages at real places near you: dinner, bowling, shows and more. One price, bring who you want.";
+    const v = ver(deals.map(d => d.id + d.left).join(","), asker ? asker.uid : "", Math.floor(Date.now() / 36e5));
+    const card = c => `<a href="/?dates=1&deal=${encodeURIComponent(c.id)}${askQ}${tail}" style="display:flex;gap:12px;align-items:center;text-decoration:none;color:#fff;background:#14121f;border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:10px;margin-top:10px">
+<div style="flex:none;width:84px;height:84px;border-radius:14px;overflow:hidden;background:linear-gradient(135deg,hsl(${c.hue} 60% 32%),hsl(${(c.hue + 40) % 360} 65% 16%) 70%,#0b0b16)">${c.imageUrl ? `<img src="${esc(c.imageUrl)}" alt="" style="width:100%;height:100%;object-fit:cover">` : ""}</div>
+<div style="flex:1;min-width:0"><b style="display:block;font-size:16px">${esc(c.title)}</b><span style="display:block;font-size:13px;color:#b3abcf">${esc(whenText(c.startsAt))} · 📍 ${esc(c.venueName)}</span><span style="display:block;font-size:14px;color:#ff9cc2;font-weight:800;margin-top:2px">${fmtMoney(c.price)} for ${c.size}${c.left <= 5 ? ` · only ${c.left} left` : ""}${c.idCheck ? " · 21+" : ""}</span></div><span style="flex:none;color:#7ff0d0;font-weight:800">${asker ? "Take →" : "Get →"}</span></a>`;
+    const head = asker
+      ? `<div class="host" style="margin:0 0 6px">${asker.photoUrl ? `<img src="${esc(asker.photoUrl)}" alt="" style="border:2px solid #ff8fb3">` : `<div class="av">${esc((asker.name[0] || "?").toUpperCase())}</div>`}<div><b style="font-size:20px">${esc(asker.name)} wants a night out 💞</b><small>Pick one, pay once, and ${esc(asker.first)} gets the invite.</small></div></div>`
+      : `<h1 class="nm" style="margin:6px 0 4px">No date ideas?<br><span style="color:#7ff0d0">Start here.</span></h1><p style="color:#b3abcf;margin:0 0 6px">💞 Connect Me: night-out packages at real places near you. One price, bring who you want.</p>`;
+    const body = head + (deals.length ? deals.map(card).join("") : `<div class="facts" style="text-align:center">New nights out are added every week. Check back soon!</div>`)
+      + `<div class="btns">${asker ? `<a class="b s" href="/u/${esc(asker.uid)}">👤 See ${esc(asker.first)}'s profile</a>` : ""}<button class="b s" data-share>↗ ${asker ? "Share it with a friend" : "Share date ideas"}</button><a class="b s" href="/?dates=1${tail}" style="min-height:48px;font-size:15px">✨ Open Whisper+Me</a></div>`;
+    return pageShell({ title, desc, url: `${APP_URL}/connect${asker ? "?ask=" + asker.uid : ""}`, image: `${APP_URL}/s/l/connect/card.png?v=${v}${asker ? "&ask=" + asker.uid : ""}`, body });
+  }
+
+  return { shareImage, profilePage, meetupPage, connectPage, connectListPage, listCard, askerData, connectCard, connectData, profileCard, meetupCard, profileData, meetupData, plainCard };
 };

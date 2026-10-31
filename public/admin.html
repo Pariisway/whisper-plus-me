@@ -367,6 +367,9 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
       <div><h3>💞 Top Connect Me places</h3><div id="sl-places" class="list"></div></div>
       <div><h3>📞 Top call earners</h3><div id="sl-callers" class="list"></div></div>
     </div>
+    <h3 style="margin:18px 0 8px;font-size:14px">📣 Where sales come from</h3>
+    <p class="help" style="margin:0 0 8px">From tagged ad links (Connect Me → 📣 Ad link) and the sites people came from. Same period as the chart.</p>
+    <div id="sl-src" class="tbl"></div>
     <p class="help" style="margin:12px 0 0"><b>Sales</b> is money members paid (coins, M&amp;G spots, Connect Me packages). <b>Your cut</b> is what the site keeps after creators and hosts are paid and card fees come out: $1 per coin spent on calls and rooms, your M&amp;G fee, and Connect Me minus card fees.</p>
   </section>
   <section class="card">
@@ -1136,7 +1139,9 @@ async function loadSales() {
     walk(rl.val(), v => { if (v.ts >= since) rooms.push(v); });
     let mg = [], cm = [];
     try { await dtSdk(); const r = await dtCall("salesReport", { data: { since } }); mg = r.mg || []; cm = r.cm || []; } catch (e) { console.warn("salesReport", e.message); }
-    SL.data = { coins, calls, rooms, mg, cm };
+    let signups = [];
+    try { signups = Object.values((await db.ref("userSrc").once("value")).val() || {}).filter(v => v && v.at >= since); } catch (e) { /* none yet */ }
+    SL.data = { coins, calls, rooms, mg, cm, signups };
     if (!RV.venues.length) await loadRatings();
   } catch (e) { $("sl-chart").innerHTML = `<div class="empty">Couldn't load sales: ${h(e.message)}</div>`; return; }
   slDraw();
@@ -1204,6 +1209,15 @@ function slDraw() {
   $("sl-hosts").innerHTML = hosts.length ? hosts.map((x, i) => { const u = S.users[x.k] || {}; return `<div class="item">${ava(u, 32)}<div class="who"><b>${i + 1}. ${h(u.name || x.r.hostName)}</b><span>${money(x.v)} · ${x.n} order${x.n === 1 ? "" : "s"}${star(u.rating && u.rating.avg, u.rating && u.rating.n)}</span></div></div>`; }).join("") : `<div class="empty">No member-hosted M&amp;G sales yet.</div>`;
   const places = rank(D.cm.filter(v => v.at >= start), v => (v.venueName || "") + "|" + (v.city || ""), v => v.amount / 100);
   $("sl-places").innerHTML = places.length ? places.map((x, i) => { const v = (RV.venues || []).find(z => z.name === x.r.venueName) || {}; return `<div class="item"><div class="who"><b>${i + 1}. ${h(x.r.venueName)}</b><span>${money(x.v)} · ${x.n} package${x.n === 1 ? "" : "s"}${star(v.avg, v.n)}</span></div></div>`; }).join("") : `<div class="empty">No Connect Me sales yet.</div>`;
+  // where sales come from: sign-ups (userSrc) and M&G / Connect Me sales by source + campaign
+  const srcKey = x => x && x.s ? x.s + (x.c ? " · " + x.c : "") : "Direct / unknown";
+  const by = {};
+  const add = (k, f, v) => { by[k] = by[k] || { k, signups: 0, mgN: 0, mg: 0, cmN: 0, cm: 0 }; by[k][f] += v; };
+  (D.signups || []).filter(v => v.at >= start).forEach(v => add(srcKey(v), "signups", 1));
+  D.mg.filter(v => v.at >= start).forEach(v => { add(srcKey(v.src), "mgN", 1); add(srcKey(v.src), "mg", v.amount / 100); });
+  D.cm.filter(v => v.at >= start).forEach(v => { add(srcKey(v.src), "cmN", 1); add(srcKey(v.src), "cm", v.amount / 100); });
+  const rowsSrc = Object.values(by).sort((a, b) => (b.mg + b.cm) - (a.mg + a.cm) || b.signups - a.signups);
+  $("sl-src").innerHTML = table(["Source · campaign", "Sign-ups", "M&G", "Connect Me", "Sales"], rowsSrc.map(r => `<tr><td>${h(r.k)}</td><td class="num">${r.signups}</td><td class="num">${r.mgN} · ${money(r.mg)}</td><td class="num">${r.cmN} · ${money(r.cm)}</td><td class="num"><b>${money(r.mg + r.cm)}</b></td></tr>`));
   const callers = rank(D.calls.filter(v => v.ts >= start && v.to), v => v.to, v => Number(v.earnedUsd || 0));
   $("sl-callers").innerHTML = callers.length ? callers.map((x, i) => { const u = S.users[x.k] || {}; return `<div class="item">${ava(u, 32)}<div class="who"><b>${i + 1}. ${h(u.name || "Member")}</b><span>${money(x.v)} earned · ${x.n} call${x.n === 1 ? "" : "s"}</span></div></div>`; }).join("") : `<div class="empty">No paid calls yet.</div>`;
 }
@@ -1942,6 +1956,7 @@ function dtRenderMeetups() {
     const acts = [];
     if (["pending", "changes"].includes(m.status)) acts.push(`<button class="btn sm teal" onclick="mgAct('approveMeetup',${j(m.id)})">✅ Approve</button>`, `<button class="btn sm gold" onclick="mgAct('requestMeetupChanges',${j(m.id)})">✏️ Ask for changes</button>`, `<button class="btn sm red" onclick="mgAct('rejectMeetup',${j(m.id)})">Reject</button>`);
     if (m.status === "live") {
+      acts.push(`<button class="btn sm main" onclick="adLink('m',${j(m.id)},${j(m.title)})">📣 Ad link</button>`);
       acts.push(m.hidden ? `<button class="btn sm teal" onclick="mgAct('showMeetup',${j(m.id)})">▶ Resume</button>` : `<button class="btn sm gold" onclick="mgAct('hideMeetup',${j(m.id)})">⏸ Pause</button>`);
       acts.push(m.official ? `<button class="btn sm" onclick="dtEditMeetup(${j(m.id)})">✏️ Edit</button>` : `<button class="btn sm gold" onclick="mgAct('requestMeetupChanges',${j(m.id)})">✏️ Ask for changes</button>`);
       acts.push(`<button class="btn sm" onclick="dtCopyMeetLink(${j(m.id)})">🔗 Link</button>`, `<button class="btn sm red" onclick="mgAct('cancelMeetup',${j(m.id)})">Cancel &amp; refund</button>`);
@@ -2102,8 +2117,28 @@ function cmRender() {
       c.hidden ? `<button class="btn sm teal" onclick="cmAct('showConnect',${j(c.id)})">▶ Resume</button>` : `<button class="btn sm gold" onclick="cmAct('hideConnect',${j(c.id)})">⏸ Pause</button>`,
       `<button class="btn sm" onclick="cmEdit(${j(c.id)})">✏️ Edit</button>`, `<button class="btn sm red" onclick="cmAct('endConnect',${j(c.id)})">Stop selling</button>`, `<button class="btn sm red" onclick="cmAct('cancelConnect',${j(c.id)})">Cancel</button>`] : [];
     return `<div class="item" style="flex-wrap:wrap"><div class="who"><b>${h(c.title)} ${st}</b><span>${h(c.venueName)}, ${h(c.city || "")} · ${h(dtWhenText(dtMs(c.startsAt)))} · ${usd(c.price)} for ${c.size} · ${Number(c.sold || 0)} of ${c.quantity} sold${c.siteNet != null ? " · you kept " + usd(c.siteNet) + " after card fees" : ""}</span></div>
-      <div class="acts"><button class="btn sm" onclick="cmOrders(${j(c.id)})">Who's going</button>${acts.join("")}</div></div>`;
+      <div class="acts">${c.status === "live" ? `<button class="btn sm main" onclick="adLink('c',${j(c.id)},${j(c.title)})">📣 Ad link</button>` : ""}<button class="btn sm" onclick="cmOrders(${j(c.id)})">Who's going</button>${acts.join("")}</div></div>`;
   }).join("") : `<div class="empty">${CM.f === "live" ? "Nothing on sale. Post a package below." : "No packages yet."}</div>`;
+}
+/* 📣 A link for an ad or post, tagged so Money → "Where sales come from" credits it. */
+function adLink(kind, id, title) {
+  const base = `https://whisperplusme.com/${kind}/${encodeURIComponent(id)}`;
+  const camp = String(title || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30);
+  const srcs = [["instagram", "Instagram"], ["facebook", "Facebook"], ["tiktok", "TikTok"], ["snapchat", "Snapchat"], ["flyer", "Flyer / QR"], ["text", "Texts"]];
+  const draw = () => {
+    const s = $("al-src").value, c = ($("al-camp").value || camp).replace(/[^a-z0-9-]/gi, "").toLowerCase();
+    const url = `${base}?utm_source=${s}&utm_medium=${s === "flyer" ? "print" : s === "text" ? "sms" : "social"}&utm_campaign=${c}`;
+    $("al-url").value = url;
+    $("al-img").innerHTML = `<a href="/s/${kind}/${encodeURIComponent(id)}/card.png" target="_blank" rel="noopener">Link picture ↗</a> · <a href="/s/${kind}/${encodeURIComponent(id)}/story.png" target="_blank" rel="noopener">Story picture (with QR) ↗</a>`;
+  };
+  openModal(`<h3>📣 Ad link · ${h(title)}</h3>
+    <p class="help">Use a different link for each place you advertise. Money → Sales → <b>Where sales come from</b> then shows which one sells.</p>
+    <label class="field"><span>Where will you post it?</span><select class="in" id="al-src">${srcs.map(([v, n]) => `<option value="${v}">${n}</option>`).join("")}</select></label>
+    <label class="field"><span>Campaign name</span><input class="in" id="al-camp" value="${h(camp)}" placeholder="launch"></label>
+    <label class="field"><span>Your link</span><input class="in" id="al-url" readonly onclick="this.select()"></label>
+    <p class="help" id="al-img" style="margin:0 0 10px"></p>
+    <div class="acts"><button class="btn" onclick="closeModal()">Close</button><button class="btn main" onclick="navigator.clipboard.writeText($('al-url').value).then(()=>toast('Link copied'))">Copy link</button></div>`);
+  $("al-src").onchange = draw; $("al-camp").oninput = draw; draw();
 }
 async function cmOrders(id) {
   const c = CM.list.find(x => x.id === id) || {};

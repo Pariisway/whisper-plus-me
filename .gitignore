@@ -10,3 +10,7 @@ functions/.runtimeconfig.json
 node_modules/
 deploy-config.json
 *firebase-adminsdk*.json
+*.zip
+firebase-debug.*.log
+ui-debug.log
+.DS_Store

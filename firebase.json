@@ -134,6 +134,14 @@
         "function": "meetupOG"
       },
       {
+        "source": "/c/**",
+        "function": "dealPage"
+      },
+      {
+        "source": "/connect",
+        "function": "dealPage"
+      },
+      {
         "source": "/s/**",
         "function": "shareImage"
       },

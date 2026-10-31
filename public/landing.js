@@ -62,6 +62,7 @@ body.lp2-on{background:#0b0b16}\
 .lp2-inv em{display:block;font-style:normal;font-weight:800;color:#00e3ae;font-size:13px;margin-top:3px}\
 .lp2-inv-go{margin:0 0 4px;font-size:13px;color:#fff;font-weight:700;text-align:center}\
 #lp2-invite{width:100%}#lp2-invite:not(:empty){margin-top:clamp(50px,18vh,240px)}#lp2-invite:not(:empty)+.lp2-card{margin-top:0}\
+.lp2-fromlink .lp2-hero{justify-content:flex-start;padding-top:14px}.lp2-fromlink #lp2-invite:not(:empty){margin-top:6px}.lp2-fromlink .lp2-card{margin-top:8px}\
 .lp2-forgot{align-self:center;font-size:13px}\
 .lp2-or{display:flex;align-items:center;gap:10px;color:rgba(255,255,255,.55);font-size:12px;text-transform:uppercase;letter-spacing:.1em}.lp2-or::before,.lp2-or::after{content:'';flex:1;height:1px;background:rgba(255,255,255,.18)}\
 .lp2-card{width:100%;max-width:440px;margin-top:clamp(70px,24vh,300px);background:rgba(10,10,22,.42)!important;text-align:left;display:flex;flex-direction:column;gap:10px;background:rgba(10,10,22,.55);border:1px solid rgba(255,255,255,.14);border-radius:22px;padding:16px;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}\
@@ -272,7 +273,34 @@ body.lp2-on{background:#0b0b16}\
     if (!t) { try { t = sessionStorage.getItem("wpmConnect") || ""; } catch (e) {} }
     return t.slice(0, 20);
   }
+  function sharedDeal() {
+    var d = (new URLSearchParams(window.__initialSearch || location.search).get("deal") || "").replace(/[^A-Za-z0-9_-]/g, "");
+    if (!d) { try { d = sessionStorage.getItem("wpmDeal") || ""; } catch (e) {} }
+    return d.slice(0, 64);
+  }
+  function fsGet(path, cb) {
+    var pid = (window.firebaseConfig && firebaseConfig.projectId) || "whisperplusme-46d9c";
+    fetch("https://firestore.googleapis.com/v1/projects/" + pid + "/databases/(default)/documents/" + path).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+      if (!j || !j.fields) return;
+      var f = j.fields;
+      cb(function (k) { var x = f[k] || {}; return x.stringValue != null ? x.stringValue : x.integerValue != null ? Number(x.integerValue) : x.doubleValue != null ? x.doubleValue : x.booleanValue != null ? x.booleanValue : x.timestampValue || null; });
+    }).catch(function () {});
+  }
+  function fromLink() { return !!(sharedDeal() || sharedMeetupId() || sharedConnect()); }
   function loadInvite() {
+    var deal = sharedDeal();
+    if (deal && !invite && !inviteLoading && window.fetch) {
+      inviteLoading = true;
+      // A Connect Me package from an ad or a shared /c/ link (live packages are public).
+      fsGet("connects/" + deal, function (v) {
+        if (v("status") !== "live" || v("hidden")) return;
+        var left = Math.max(0, (v("quantity") || 0) - (v("sold") || 0) - (v("held") || 0));
+        if (!left) return;
+        invite = { deal: true, title: v("title"), photo: v("imageURL") || "", venue: v("venueName"), city: v("city"), price: v("price"), size: v("size"), left: left, at: Date.parse(v("startsAt")) };
+        var el = document.getElementById("lp2-invite"); if (el) el.innerHTML = inviteHTML();
+      });
+      return;
+    }
     var tok = sharedConnect();
     if (tok && !invite && !inviteLoading && window.fetch) {
       inviteLoading = true;
@@ -303,6 +331,10 @@ body.lp2-on{background:#0b0b16}\
     if (!invite) { loadInvite(); return ""; }
     var d = new Date(invite.at), when = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) + " · " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
     var money = "$" + ((invite.price || 0) / 100).toFixed(invite.price % 100 ? 2 : 0);
+    if (invite.deal) return "<div class='lp2-inv' style='border-color:rgba(224,69,123,.7)'>" + (invite.photo ? "<img src='" + esc(invite.photo) + "' alt=''>" : "<span class='lp2-inv-ph' style='background:linear-gradient(135deg,#7b2ff7,#e0457b)'>💞</span>")
+      + "<div><small style='color:#ff8fb3'>Connect Me · night out for " + esc(invite.size || 2) + "</small><b>" + esc(invite.title) + "</b><span>" + esc(when) + "<br>📍 " + esc(invite.venue) + (invite.city ? ", " + esc(invite.city) : "") + "</span>"
+      + "<em style='color:#ff8fb3'>" + money + " for " + esc(invite.size || 2) + (invite.left <= 5 ? " · only " + invite.left + " left" : "") + "</em></div></div>"
+      + "<p class='lp2-inv-go'>Sign up free below to get it 👇</p>";
     if (invite.connect) return "<div class='lp2-inv' style='border-color:rgba(224,69,123,.7)'>" + (invite.photo ? "<img src='" + esc(invite.photo) + "' alt=''>" : "<span class='lp2-inv-ph' style='background:linear-gradient(135deg,#7b2ff7,#e0457b)'>💞</span>")
       + "<div><small style='color:#ff8fb3'>" + esc(invite.host) + " invited you out</small><b>" + esc(invite.title) + "</b><span>" + esc(when) + "<br>📍 " + esc(invite.venue) + (invite.city ? ", " + esc(invite.city) : "") + "</span>"
       + "<em style='color:#ff8fb3'>Already paid for · free to accept</em></div></div>"
@@ -315,14 +347,15 @@ body.lp2-on{background:#0b0b16}\
 
   /* ---------- markup (rendered by app.js when signed out) ---------- */
   function html() {
-    return "<div class='lp2'>"
+    return "<div class='lp2" + (fromLink() ? " lp2-fromlink" : "") + "'>"
       + "<div class='lp2-top'><a class='lp2-logo' href='/'><img src='/header-icon.png' alt=''><span>Whisper<b>+</b>Me</span></a>"
       + "<button class='lp2-login' onclick=\"Landing.showEmail('login')\">Log in</button></div>"
       + "<main class='lp2-hero'>"
       + "<div class='lp2-live'><i></i><span id='lp2-live-text'>" + esc(liveText()) + "</span></div>"
-      + "<h1 class='lp2-h1' id='lp2-h1'>" + headlineHTML(cfg.headline) + "</h1>"
+      + (fromLink() ? "<div id='lp2-invite'>" + inviteHTML() + "</div>" : "") // came from an ad or shared link: the package/M&G comes first
+      + "<h1 class='lp2-h1' id='lp2-h1'" + (fromLink() ? " style='font-size:clamp(28px,8vw,44px)'" : "") + ">" + headlineHTML(cfg.headline) + "</h1>"
       + "<p class='lp2-sub' id='lp2-sub'>" + esc(cfg.subline) + "</p>"
-      + "<div id='lp2-invite'>" + inviteHTML() + "</div>"
+      + (fromLink() ? "" : "<div id='lp2-invite'>" + inviteHTML() + "</div>")
       + "<div class='lp2-card' id='lp-auth'>"
       + "<input id='email' class='lp2-in' type='email' placeholder='Email' autocomplete='email' inputmode='email'>"
       + "<input id='password' class='lp2-in' type='password' placeholder='Password (6+ characters)' autocomplete='current-password'>"

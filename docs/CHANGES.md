@@ -12,7 +12,21 @@ Branch `social-upgrade`. This rebuild turns the front door, the profile, and the
 | **Admin** (`/admin.html`) | One long page of tables, browser pop-ups | MergeChat-style layout: top emoji tabs (🏁 Start here · 📡 Live now · 👥 People · 💰 Money · 🎬 Landing page · 📢 Announce · 💬 Rooms · 🛡️ Safety · ⭐ M&G · 🧾 Activity), "What do you want to do?" tiles, a "Needs your attention" list, "At a glance" numbers, and a "How the site fits together" map. Simple/Full layout switch. Every confirmation is an in-page dialog. The activity log is saved, so it survives a refresh. |
 | **Landing page manager** (new, Admin → 🎬) | none | Upload videos or pictures (or paste links), reorder, remove, shuffle, seconds per picture, darkness slider, sound-button switch, headline and subline, phone/computer preview, then **🚀 Publish**. |
 
-## 🛡️ Chargebacks, 3-minute calls enforced, real bans, App Check ready (latest)
+## 🙋 Take me out, date ideas page, tidy repo (latest)
+
+- **Take me out**: Connect Me has "🙋 Ask someone to take me out" (all packages: `/connect?ask={uid}`) and "🙋 Ask to be taken" on each package (`/c/{id}?ask={uid}`). The shared picture and page say "{Name} wants to go" with a "Take {name} out" button. Whoever buys it pays; the asker gets the other spot as an invite right away (push + email) and can Accept or "Not this time" (`declineConnect`), which opens the spot back up for the buyer.
+- **💡 Share date ideas**: `/connect` is a public "No date ideas? Start here" page listing every live package, with its own preview picture (`/s/l/connect/card.png`).
+- **Repo cleanup**: removed unused copies at the top level (`index.html`, `manifest.json`, `og-image1.png`, `robots.txt`, `sitemap.xml`, `ads.txt`, empty `package-lock.json`, `extra/`) and the broken `public/ring.mp3`. Notes moved to `docs/`. New `README.md`, `deploy.sh` and `update.sh`.
+
+## 🚀 Launch-ready: Connect Me ad links, ad tracking, purchase safety net
+
+- **Public Connect Me links** `/c/{id}` (function `dealPage`): an app-style page with Get it / Send it to your date, and an app-style picture for link previews and stories (`/s/c/{id}/card.png`, `story.png`). "↗ Send it to your date" on every package.
+- **Ad visitors**: a new visitor from a package or M&G link sees it at the top of the sign-up page, and it opens again right after they sign up (also for guests who tap "Get it").
+- **Ad tracking**: links with `?utm_source=…&utm_campaign=…` (or `?ref=`) are remembered for 30 days and saved with the sign-up (`userSrc/`) and with every M&G / Connect Me purchase. Admin → Money → Sales → **Where sales come from**. Admin → Connect Me / M&G → **📣 Ad link** builds a tagged link per place you advertise.
+- **Purchase safety net**: after paying, the app asks Stripe directly (`confirmCheckout`), so a slow or missing Stripe webhook never leaves a buyer without a ticket. It can't count twice.
+- **Fixed**: a brand-new account buying in its first seconds could get "Enter your birth year" with no box to type it; now the box appears and it tries again.
+
+## 🛡️ Chargebacks, 3-minute calls enforced, real bans, App Check ready
 
 - **Chargebacks** (`onDispute` in the nights webhook). When a card payment is disputed: the account is frozen (sign-in disabled, signed out everywhere), unspent coins are taken back, the creators' share of spent coins comes out of their *unpaid* earnings (newest calls first), M&G payouts are held, and you get a push + email. Admin → 💰 Money → 🛡️ Chargebacks lists them with a Stripe link and Unfreeze. A "possible stolen card" warning (before a dispute) freezes the account and tells you to refund it, which avoids the $15 fee.
   **Stripe setup (once):** Developers → Webhooks → the endpoint for `nightsStripeWebhook` → add events `charge.dispute.created`, `charge.dispute.closed`, `radar.early_fraud_warning.created`.

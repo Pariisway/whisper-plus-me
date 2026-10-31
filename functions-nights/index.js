@@ -290,7 +290,7 @@ async function checkoutFor({ kind, uid, email, amount, name, description, dateId
     metadata: meta,
     payment_intent_data: { metadata: meta, ...(hold ? { capture_method: "manual" } : {}) },
     expires_at: Math.floor(Date.now() / 1000) + 31 * 60,
-    success_url: `${APP_URL}/?dates=${kind}#dates`,
+    success_url: `${APP_URL}/?dates=${kind}&sid={CHECKOUT_SESSION_ID}#dates`, // the app double-checks the payment with confirmCheckout
     cancel_url: `${APP_URL}/?dates=back#dates`
   });
   return session.url;
@@ -793,6 +793,19 @@ exports.nightsStripeWebhook = onRequest({ secrets: [STRIPE_SECRET, STRIPE_WEBHOO
   }
 });
 
+/** Back from Stripe: the app asks us to check the payment directly with Stripe, in case
+    Stripe's webhook is slow or missing. Same handlers as the webhook, so it never counts twice. */
+exports.confirmCheckout = onCall(withStripe, async req => {
+  const uid = requireUser(req);
+  const sid = str(req.data?.sid, 200);
+  if (!/^cs_[A-Za-z0-9_]+$/.test(sid)) fail("invalid-argument", "That checkout link isn't valid.");
+  const sess = await stripe().checkout.sessions.retrieve(sid);
+  if (!sess || sess.metadata?.app !== "dates" || sess.metadata?.uid !== uid) fail("permission-denied", "That isn't your checkout.");
+  if (sess.status !== "complete" || !["paid", "no_payment_required"].includes(sess.payment_status)) return { done: false, kind: sess.metadata.kind };
+  await handleStripeEvent({ type: "checkout.session.completed", data: { object: sess } });
+  return { done: true, kind: sess.metadata.kind };
+});
+
 async function handleStripeEvent(event) {
   const o = event.data.object;
   if (event.type === "charge.dispute.created") return onDispute(o);
@@ -1234,14 +1247,14 @@ exports.nightsAdminAction = onCall(withStripe, async req => {
           const v = z.data(), at = ms(v.paidAt);
           if (at < since) continue;
           const amount = v.paid ?? x.price * (v.qty || 1);
-          mg.push({ at, amount, site: Math.round(amount * pct / 100), fee: v.stripeFee || 0, qty: v.qty || 1, hostUid: x.official ? "" : x.hostUid, hostName: x.official ? "Whisper+Me" : x.hostName, title: x.title });
+          mg.push({ at, amount, site: Math.round(amount * pct / 100), fee: v.stripeFee || 0, qty: v.qty || 1, hostUid: x.official ? "" : x.hostUid, hostName: x.official ? "Whisper+Me" : x.hostName, title: x.title, src: v.src || null });
         }
       }
       const os = await db.collection("connectOrders").where("startsAt", ">=", fromMs(since)).limit(3000).get();
       for (const d of os.docs) {
         const o = d.data(), at = ms(o.paidAt);
         if (!["paid", "completed"].includes(o.status) || at < since) continue;
-        cm.push({ at, amount: o.amount || 0, fee: o.stripeFee || 0, venueName: o.venueName, city: o.city, title: o.title });
+        cm.push({ at, amount: o.amount || 0, fee: o.stripeFee || 0, venueName: o.venueName, city: o.city, title: o.title, src: o.src || null });
       }
       return { since, mg, cm };
     }
@@ -1602,12 +1615,20 @@ async function postOfficialMeetup(req, id, data) {
 }
 
 const MAX_SPOTS_PER_ORDER = 6;
+/** Which ad or site brought the buyer (from the app's ?utm_source tracking). */
+function cleanSrc(v) {
+  if (!v || typeof v !== "object") return null;
+  const c = x => String(x == null ? "" : x).replace(/[^\w .\-:/]/g, "").slice(0, 60);
+  const out = { s: c(v.s), m: c(v.m), c: c(v.c), ct: c(v.ct) };
+  return out.s ? out : null;
+}
 /** One checkout for you (and up to 5 friends). One code covers the whole group. */
 exports.buyMeetupSpot = onCall(withStripe, async req => {
   const uid = requireUser(req);
   notSuspended(await memberFor(uid, req.data?.birthYear));
   const id = str(req.data?.meetupId, 64);
   const qty = Math.min(MAX_SPOTS_PER_ORDER, Math.max(1, Math.round(Number(req.data?.qty) || 1)));
+  const src = cleanSrc(req.data?.src);
   const ref = mtRef(id), spotRef = ref.collection("spots").doc(uid);
   let x, total = 0, credit = 0, code = null;
   await db.runTransaction(async tx => {
@@ -1630,12 +1651,12 @@ exports.buyMeetupSpot = onCall(withStripe, async req => {
       code = newCode();
       tx.set(creditRef(uid), t.next);
       tx.update(ref, { held: FieldValue.increment(-holding), sold: FieldValue.increment(qty), buyerUids: FieldValue.arrayUnion(uid) });
-      tx.set(spotRef, { uid, role: "buyer", status: "paid", qty, code, paid: total, ...(x.idCheck ? { idOkAt: Date.now() } : {}), cardPaid: 0, creditFrom: t.from, paymentIntent: null, paidAt: nowTs(), createdAt: nowTs() });
+      tx.set(spotRef, { uid, role: "buyer", status: "paid", qty, code, paid: total, src, ...(x.idCheck ? { idOkAt: Date.now() } : {}), cardPaid: 0, creditFrom: t.from, paymentIntent: null, paidAt: nowTs(), createdAt: nowTs() });
       tx.set(db.doc(`meetupCodes/${code}`), { meetupId: id, uid, role: "buyer" });
       return;
     }
     tx.update(ref, { held: FieldValue.increment(qty - holding) });
-    tx.set(spotRef, { uid, role: "buyer", status: "pending", qty, creditToUse: credit, createdAt: nowTs(), ...(x.idCheck ? { idOkAt: Date.now() } : {}) });
+    tx.set(spotRef, { uid, role: "buyer", status: "pending", qty, creditToUse: credit, src, createdAt: nowTs(), ...(x.idCheck ? { idOkAt: Date.now() } : {}) });
   });
   const me = await whisperProfile(uid);
   await spotRef.set({ name: me.name, photo: me.photo }, { merge: true });
@@ -1739,11 +1760,20 @@ async function onHostDepositPaid(sess) {
   const { dateId: id } = sess.metadata || {};
   if (sess.payment_status !== "paid") return;
   const pi = typeof sess.payment_intent === "string" ? sess.payment_intent : sess.payment_intent?.id;
-  const ref = mtRef(id), x = (await ref.get()).data();
+  const ref = mtRef(id);
+  let x = (await ref.get()).data();
   const uid = sess.metadata?.uid || x?.hostUid;
   await addToDeposit(uid, sess.amount_total, pi); // always lands on their account, even if the M&G is gone
-  if (!x || x.hostDeposit?.paymentIntent === pi) return;
-  await ref.update({ status: x.status === "draft" ? "pending" : x.status, hostDeposit: { status: "held", amount: x.hostDeposit?.amount || sess.amount_total, paymentIntent: pi, paidAt: nowTs() } });
+  if (!x) return;
+  // Claimed in a transaction: the webhook and the app's double-check can both arrive.
+  let first = false;
+  await db.runTransaction(async tx => {
+    const cur = (await tx.get(ref)).data();
+    if (!cur || cur.hostDeposit?.paymentIntent === pi) return;
+    x = cur; first = true;
+    tx.update(ref, { status: cur.status === "draft" ? "pending" : cur.status, hostDeposit: { status: "held", amount: cur.hostDeposit?.amount || sess.amount_total, paymentIntent: pi, paidAt: nowTs() } });
+  });
+  if (!first) return;
   await db.collection("ledger").add({ kind: "hostDepositPaid", uid, meetupId: id, amount: sess.amount_total, at: nowTs() });
   await sendEmail(uid, `Deposit received: ${x.title}`, {
     heading: "Your host deposit is in",
@@ -2100,6 +2130,9 @@ exports.buyConnect = onCall(withStripe, async req => {
   notSuspended(await memberFor(uid, req.data?.birthYear));
   const dealId = str(req.data?.dealId, 64);
   const me = await whisperProfile(uid);
+  // "Take me out": someone shared a package asking to be taken. The buyer pays; the asker gets the other spot.
+  let askedBy = str(req.data?.askUid, 128) || null;
+  if (askedBy && (askedBy === uid || !(await rtdb.ref(`users/${askedBy}/name`).once("value")).exists())) askedBy = null;
   const oref = db.collection("connectOrders").doc();
   let x, credit = 0, paidNow = false;
   await db.runTransaction(async tx => {
@@ -2110,7 +2143,7 @@ exports.buyConnect = onCall(withStripe, async req => {
     if (ms(x.startsAt) < Date.now() + 2 * 3600000) fail("failed-precondition", "Sales for this one have closed.");
     if (x.quantity - x.sold - x.held < 1) fail("resource-exhausted", "Sold out.");
     credit = Math.min(x.price, c?.balance || 0);
-    const base = { dealId, buyerUid: uid, buyerName: me.name, title: x.title, venueName: x.venueName, city: x.city, startsAt: x.startsAt, size: x.size, amount: x.price, memberUids: [uid], idCheck: !!x.idCheck, createdAt: nowTs() };
+    const base = { src: cleanSrc(req.data?.src), askedBy, dealId, buyerUid: uid, buyerName: me.name, title: x.title, venueName: x.venueName, city: x.city, startsAt: x.startsAt, size: x.size, amount: x.price, memberUids: [uid], idCheck: !!x.idCheck, createdAt: nowTs() };
     if (credit >= x.price) {
       const t = takeCredit(c, x.price);
       tx.set(creditRef(uid), t.next);
@@ -2135,14 +2168,24 @@ async function issueConnectSeats(orderId, me) {
   if (!o || (o.seats || []).length) return;
   const seats = [{ uid: o.buyerUid, name: me?.name || o.buyerName, photo: me?.photo || "", role: "buyer", status: "accepted", code: connectCode() }];
   for (let i = 1; i < o.size; i++) seats.push({ uid: null, name: "", role: "guest", status: "open", token: inviteToken() });
+  if (o.askedBy && seats[1]) seats[1] = { ...seats[1], status: "invited", invitedUid: o.askedBy }; // they asked to be taken: the spot is theirs
   const batch = db.batch();
-  batch.update(ref, { seats });
+  batch.update(ref, o.askedBy ? { seats, invitedUids: [o.askedBy] } : { seats });
   seats.forEach((st, i) => {
     if (st.code) batch.set(db.doc(`connectCodes/${st.code}`), { orderId, seat: i });
     if (st.token) batch.set(db.doc(`connectInvites/${st.token}`), { orderId, seat: i });
   });
   await batch.commit();
-  await push(o.buyerUid, "Your Connect Me is booked 💞", `${o.title} · ${fmtWhen(o.startsAt)}. Now invite who you're bringing.`);
+  await push(o.buyerUid, "Your Connect Me is booked 💞", o.askedBy ? `${o.title} · ${fmtWhen(o.startsAt)}. We let them know you're taking them out.` : `${o.title} · ${fmtWhen(o.startsAt)}. Now invite who you're bringing.`);
+  if (o.askedBy) {
+    const link = connectLink(seats[1].token), buyer = me?.name || o.buyerName;
+    await push(o.askedBy, `💞 ${buyer} is taking you out!`, `${o.title} · ${fmtWhen(o.startsAt)} at ${o.venueName}. It's paid for. Tap to accept.`, link);
+    await sendEmail(o.askedBy, `${buyer} is taking you out 💞`, {
+      heading: `${buyer} said yes! 💞`, intro: `You asked to be taken out, and ${buyer} bought the night. It's already paid for; just accept.`,
+      rows: [["What", o.title], ["When", fmtWhen(o.startsAt) + " (Central)"], ["Where", `${o.venueName}${o.city ? ", " + o.city : ""}`]],
+      button: ["Accept", link],
+      after: "Not feeling it? Open the invite and tap \"Not this time\". They can give the spot to someone else. Meet in public and tell a friend where you'll be." });
+  }
   const v = ((await cnPrivate(o.dealId).get()).data() || {}).venue || {};
   const place = [v.name || o.venueName, v.address, v.city || o.city].filter(Boolean).join(", ");
   const cal = calendarLinks({ title: `Connect Me: ${o.title}`, start: ms(o.startsAt), place, details: `Your code: ${seats[0].code}. ${APP_URL}` });
@@ -2198,6 +2241,26 @@ exports.inviteToConnect = onCall(async req => {
   return { message: "Invite sent", link: connectLink(st.token) };
 });
 
+/** Someone invited (or who asked to be taken out) says "Not this time": the spot opens back up for the buyer. */
+exports.declineConnect = onCall(async req => {
+  const uid = requireUser(req);
+  const token = str(req.data?.token, 20).toLowerCase();
+  const inv = (await db.doc(`connectInvites/${token}`).get()).data();
+  if (!inv) fail("not-found", "This invite isn't active anymore.");
+  const ref = coRef(inv.orderId);
+  let o;
+  await db.runTransaction(async tx => {
+    o = (await tx.get(ref)).data();
+    const st = o && (o.seats || [])[inv.seat];
+    if (!st || st.status !== "invited" || st.invitedUid !== uid) fail("failed-precondition", "There's nothing to decline here.");
+    o.seats[inv.seat] = { ...st, status: "open", invitedUid: null };
+    tx.update(ref, { seats: o.seats, invitedUids: FieldValue.arrayRemove(uid) });
+  });
+  const me = await whisperProfile(uid);
+  await push(o.buyerUid, `${me.name} can't make it`, `Your spot for ${o.title} is open again. Invite someone else from Connect Me.`, `${APP_URL}/?dates=1`);
+  return { message: "Okay, we let them know." };
+});
+
 /** Give a spot a fresh link (e.g. the person can't make it). The old link stops working. */
 exports.newConnectLink = onCall(async req => {
   const uid = requireUser(req);
@@ -2230,7 +2293,8 @@ exports.connectInvite = onCall(async req => {
   const st = o.seats[inv.seat] || {};
   const me = req.auth?.uid;
   return { title: o.title, from: o.buyerName, venueName: o.venueName, city: o.city, startsAt: ms(o.startsAt), size: o.size, items: deal.items || [], about: deal.about || "",
-    imageURL: deal.imageURL || "", hue: deal.hue, idCheck: !!(o.idCheck || deal.idCheck), venueRating: deal.venueRating || null, taken: st.status === "accepted" && st.uid !== me, forSomeoneElse: !!(st.invitedUid && me && st.invitedUid !== me), mine: st.uid === me && st.status === "accepted" };
+    imageURL: deal.imageURL || "", hue: deal.hue, idCheck: !!(o.idCheck || deal.idCheck), venueRating: deal.venueRating || null, taken: st.status === "accepted" && st.uid !== me, forSomeoneElse: !!(st.invitedUid && me && st.invitedUid !== me), mine: st.uid === me && st.status === "accepted",
+    forYou: !!(me && st.invitedUid === me && st.status === "invited"), askedBy: !!o.askedBy && o.askedBy === me };
 }
 );
 
@@ -2776,6 +2840,18 @@ async function dateOGPage(ticketId) {
 const share = require("./share")({ db, rtdb, APP_URL, logger, ms, fmtMoney });
 async function meetupOGPage(meetupId) { return share.meetupPage(meetupId); }
 exports.shareImage = onRequest({ cors: false, memory: "1GiB", cpu: 1, concurrency: 8, timeoutSeconds: 30 }, (req, res) => share.shareImage(req, res));
+exports.dealPage = onRequest({ cors: false }, async (req, res) => {
+  const parts = req.path.split("/").filter(Boolean);
+  const id = parts[0] === "c" ? (parts[1] || "") : ""; // /c/{id} = one package, /connect = all of them
+  const ask = str(req.query && req.query.ask, 128).replace(/[^A-Za-z0-9_-]/g, "");
+  // Ad tracking: utm_* / ref on the link are passed through to the app so the sale is credited to that ad.
+  const keep = new URLSearchParams();
+  for (const k of ["utm_source", "utm_medium", "utm_campaign", "utm_content", "ref"]) if (req.query[k]) keep.set(k, String(req.query[k]).slice(0, 60));
+  try {
+    res.set("Cache-Control", keep.toString() ? "private, max-age=60" : "public, max-age=120, s-maxage=300");
+    res.status(200).send(id ? await share.connectPage(id, keep.toString(), ask) : await share.connectListPage(keep.toString(), ask));
+  } catch (e) { logger.error("dealPage", e.message); res.redirect(302, `${APP_URL}/?dates=1&deal=${encodeURIComponent(id)}`); }
+});
 exports.profilePage = onRequest({ cors: false }, async (req, res) => {
   const uid = (req.path.split("/").filter(Boolean)[1]) || "";
   try {
@@ -2787,7 +2863,10 @@ exports.meetupOG = onRequest({ cors: false }, async (req, res) => {
   try {
     const id = (req.path.split("/").filter(Boolean)[1]) || "";
     res.set("Cache-Control", "public, max-age=300, s-maxage=600");
-    res.status(200).send(await meetupOGPage(id));
+    const keep = new URLSearchParams();
+    for (const k of ["utm_source", "utm_medium", "utm_campaign", "utm_content", "ref"]) if (req.query && req.query[k]) keep.set(k, String(req.query[k]).slice(0, 60));
+    if (keep.toString()) res.set("Cache-Control", "private, max-age=60");
+    res.status(200).send(await share.meetupPage(id, keep.toString()));
   } catch (e) { logger.error("meetupOG", e.message); res.redirect(302, `${APP_URL}/?dates=1`); }
 });
 

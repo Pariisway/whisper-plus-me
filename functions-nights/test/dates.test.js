@@ -15,11 +15,12 @@ const T = F.__test;
 const { __store: store, __rtdb: rtdb, __Timestamp: Timestamp } = fake;
 
 /* ---------- fake Stripe ---------- */
-const S = { intents: {}, refunds: [], canceled: [], captured: [], sessions: [], failCapture: new Set(), n: 0, paid: {} };
+const S = { intents: {}, refunds: [], canceled: [], captured: [], sessions: [], failCapture: new Set(), n: 0, paid: {}, done: {} };
 T.setStripe({
   checkout: { sessions: {
     create: async o => { const id = "cs_" + (++S.n); S.sessions.push({ id, ...o }); return { id, url: "https://stripe.test/" + id }; },
-    list: async ({ payment_intent }) => ({ data: (S.paid[payment_intent] ? [S.paid[payment_intent]] : []) })
+    list: async ({ payment_intent }) => ({ data: (S.paid[payment_intent] ? [S.paid[payment_intent]] : []) }),
+    retrieve: async id => S.done[id] || { id, status: "open", payment_status: "unpaid", metadata: (S.sessions.find(x => x.id === id) || {}).metadata || {} }
   } },
   paymentIntents: {
     retrieve: async id => S.intents[id],
@@ -865,6 +866,67 @@ async function test(name, fn) {
     assert.strictEqual(doc("disputes/dp_1").status, "won");
     await admin({ action: "unfreeze", id: "cheat" });
     assert.deepStrictEqual([rtdb.users.cheat.banned, fa.__auth.cheat.disabled], [false, false]);
+  });
+
+  await test("Back from Stripe: the app double-checks the payment, so a slow or missing webhook never loses a ticket", async () => {
+    seedPeople("lateguy");
+    const r = await admin({ action: "postMeetup", data: mgData({ title: "Webhook-proof night", price: 15, spots: 5, contact: {}, startsAt: Date.now() + 30 * H }) });
+    await call("buyMeetupSpot", "lateguy", { meetupId: r.id, birthYear: 1990, src: { s: "instagram", m: "paid<script>", c: "launch" } });
+    const sess = [...S.sessions].reverse().find(x => x.metadata.uid === "lateguy");
+    assert.ok(/sid=\{CHECKOUT_SESSION_ID\}/.test(sess.success_url), "Stripe sends the session id back");
+    assert.deepStrictEqual(await call("confirmCheckout", "lateguy", { sid: sess.id }), { done: false, kind: "meetup" }, "not paid yet: nothing happens");
+    S.intents.pi_late = { id: "pi_late", status: "succeeded" };
+    S.done[sess.id] = { id: sess.id, status: "complete", payment_status: "paid", metadata: sess.metadata, payment_intent: "pi_late", amount_total: 1500 };
+    await assert.rejects(call("confirmCheckout", "someoneelse", { sid: sess.id }), /isn't your checkout/);
+    const c1 = await call("confirmCheckout", "lateguy", { sid: sess.id });
+    assert.strictEqual(c1.done, true);
+    assert.ok(/^MG-/.test(doc(`meetups/${r.id}/spots/lateguy`).code), "ticket issued without the webhook");
+    // the webhook arrives later: still one spot
+    await T.handleStripeEvent({ type: "checkout.session.completed", data: { object: S.done[sess.id] } });
+    await call("confirmCheckout", "lateguy", { sid: sess.id });
+    assert.deepStrictEqual([doc("meetups/" + r.id).sold, doc("meetups/" + r.id).held], [1, 0], "counted once");
+    assert.deepStrictEqual(doc(`meetups/${r.id}/spots/lateguy`).src, { s: "instagram", m: "paidscript", c: "launch", ct: "" }, "the ad that brought the sale is kept (cleaned)");
+    const rep = await admin({ action: "salesReport", data: { since: Date.now() - 86400000 } });
+    assert.ok(rep.mg.some(x => x.title === "Webhook-proof night" && x.src && x.src.s === "instagram"));
+  });
+
+  await test("Take me out: someone asks to be taken, a buyer pays, the asker gets the spot and can accept or decline; /connect lists date ideas", async () => {
+    seedPeople("asker", "treater", "rando");
+    rtdb.users.asker.email = "asker@x.com";
+    rtdb.fcmTokens = Object.assign(rtdb.fcmTokens || {}, { asker: { token: "tok-asker" } });
+    const venue = { name: "Pinz", address: "1 Lane St", city: "St. Louis, MO", phone: "314-555-0101", source: "other" };
+    const d = await admin({ action: "postConnect", data: { title: "Bowling for 2", category: "Activities", items: ["2 games", "Shoes"], venue, startsAt: Date.now() + 40 * H, price: 50, size: 2, quantity: 4 } });
+    // the shared page says who's asking
+    const page = await T.share.connectPage(d.id, "", "asker");
+    assert.ok(page.includes("ASKER wants to go") && page.includes("Take ASKER out · $50") && page.includes(`deal=${d.id}&amp;ask=asker`), "asker version of the page");
+    assert.ok(page.includes("card.png?v=") && page.includes("&amp;ask=asker"), "preview picture shows the asker too");
+    const list = await T.share.connectListPage("", "asker");
+    assert.ok(list.includes("ASKER wants a night out") && list.includes("Bowling for 2"), "/connect?ask= lists packages to take them to");
+    assert.ok((await T.share.connectListPage("", "")).includes("No date ideas?"));
+    // can't ask yourself; unknown askers are ignored
+    const self = await call("buyConnect", "asker", { dealId: d.id, birthYear: 1992, askUid: "asker" });
+    await completeLastCheckout("asker");
+    assert.strictEqual(doc("connectOrders/" + self.orderId).askedBy, null);
+    // a treater takes them out
+    const M = T.sentMail; M.length = 0;
+    const p0 = require("firebase-admin").__pushes.length;
+    const b = await call("buyConnect", "treater", { dealId: d.id, birthYear: 1990, askUid: "asker" });
+    await completeLastCheckout("treater");
+    const o = doc("connectOrders/" + b.orderId);
+    assert.deepStrictEqual([o.askedBy, o.seats[1].status, o.seats[1].invitedUid, o.invitedUids], ["asker", "invited", "asker", ["asker"]]);
+    const pushes = require("firebase-admin").__pushes.slice(p0);
+    assert.ok(pushes.some(m => /TREATER is taking you out/.test(JSON.stringify(m))), "asker gets a push");
+    assert.ok(M.some(m => m.to === "asker@x.com" && /taking you out/.test(m.subject)), "asker emailed");
+    const tok = o.seats[1].token;
+    const info = await call("connectInvite", "asker", { token: tok });
+    assert.deepStrictEqual([info.forYou, info.askedBy], [true, true]);
+    await assert.rejects(call("declineConnect", "rando", { token: tok }), /nothing to decline/);
+    await call("declineConnect", "asker", { token: tok });
+    const o2 = doc("connectOrders/" + b.orderId);
+    assert.deepStrictEqual([o2.seats[1].status, o2.seats[1].invitedUid, o2.invitedUids], ["open", null, []], "spot opens back up for the buyer");
+    // the open link still works for whoever the buyer sends it to
+    const acc = await call("acceptConnect", "rando", { token: tok, birthYear: 1991 });
+    assert.ok(/^CM-/.test(acc.code));
   });
 
   await test("Share pages: profile and M&G links show a picture drawn like the app and real buttons", async () => {
