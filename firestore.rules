@@ -100,6 +100,16 @@ service cloud.firestore {
     match /connectOrders/{id} { allow read: if isAdmin(); allow write: if false; }
     match /connectInvites/{t} { allow read, write: if false; }
     match /connectCodes/{c} { allow read, write: if false; }
+    // 📍 Plan a Date: open dates are listed for anyone signed in (members and guests peeking);
+    // the two people on a date can read it. Street address, requests and flags go through the server only.
+    match /plans/{id} {
+      allow read: if (request.auth != null && resource.data.status == 'live' && resource.data.hidden == false)
+        || isAdmin() || (signedIn() && (resource.data.creatorUid == me() || resource.data.guestUid == me()));
+      allow write: if false;
+      match /private/{doc} { allow read: if isAdmin(); allow write: if false; }
+    }
+    match /planRequests/{id} { allow read: if isAdmin(); allow write: if false; }
+    match /planFlags/{id} { allow read: if isAdmin(); allow write: if false; }
     match /credits/{uid} { allow read: if isAdmin() || (signedIn() && me() == uid); allow write: if false; }
     // Ratings: stars are copied onto profiles/packages by Cloud Functions; comments are for the admin only.
     match /ratings/{id} { allow read: if isAdmin(); allow write: if false; }

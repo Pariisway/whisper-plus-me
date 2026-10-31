@@ -155,7 +155,7 @@
 .dt-sheet .lbl{font-size:11.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#9a8fb5;margin-bottom:6px}\
 .dt-sheet .lbl small{text-transform:none;letter-spacing:0;font-weight:600}\
 .dt-seg{display:flex;gap:4px;margin:0 12px 8px;padding:4px;border-radius:999px;background:#15152a;border:1px solid rgba(255,255,255,.08)}\
-.dt-seg button{flex:1;border:0;border-radius:999px;padding:8px 6px;background:transparent;color:#a59cc4;font-weight:800;font-size:13px;cursor:pointer;min-height:36px}\
+.dt-seg button{flex:1;border:0;border-radius:999px;padding:8px 4px;background:transparent;color:#a59cc4;font-weight:800;font-size:12.5px;cursor:pointer;min-height:36px;white-space:nowrap}\
 .dt-seg button[aria-pressed=true]{background:linear-gradient(90deg,#7b2ff7,#e0457b);color:#fff}\
 .dt-card.cm{border-color:rgba(224,69,123,.45)}\
 .dt-seat{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#0b0b16;border-radius:12px;padding:8px 10px;margin-top:6px;font-size:13px;flex-wrap:wrap}\
@@ -248,8 +248,8 @@
   function stop() { S.unsubs.forEach(function (u) { try { u(); } catch (e) {} }); S.unsubs = []; S.started = false; }
   firebase.auth().onAuthStateChanged(function (u) {
     if (!u) { stop(); S.uid = null; S.mine = []; S.member = undefined; return; }
-    // Came in from a shared M&G or Connect Me link: take them straight to it.
-    var pending = null; try { pending = sessionStorage.getItem("wpmMeetup") || sessionStorage.getItem("wpmConnect") || sessionStorage.getItem("wpmDeal"); } catch (e) {}
+    // Came in from a shared M&G, Connect Me or Plan a Date link: take them straight to it.
+    var pending = null; try { pending = sessionStorage.getItem("wpmMeetup") || sessionStorage.getItem("wpmConnect") || sessionStorage.getItem("wpmDeal") || sessionStorage.getItem("wpmPlan"); } catch (e) {}
     if (pending) setTimeout(function () { if (window.setActive && typeof active !== "undefined" && active !== 4) window.setActive(4); }, 900);
   });
 
@@ -302,13 +302,14 @@
   function phoneInner() {
     var u = anyUser();
     if (!u) return "<div class='dt-empty'>Sign in to see M&Gs.</div>";
-    var cm = S.mode === "cm";
+    var cm = S.mode === "cm", pd = S.mode === "pd";
     var pool = cm ? S.connects : S.meetups;
     var list = pool.filter(function (m) { return S.cat === "All" || m.category === S.cat; });
     var n = upcomingTickets().length;
-    var head = "<div class='dt-head'><div>" + (cm ? "<h2>💞 Connect Me</h2><small>Night-out packages · invite who you want</small>" : "<h2>⭐ M&G</h2><small>Meet & Greet · meet people in person</small>") + "</div>"
+    var head = "<div class='dt-head'><div>" + (pd ? "<h2>📍 Plan a Date</h2><small>Anywhere · you pick who goes</small>" : cm ? "<h2>💞 Connect Me</h2><small>Night-out packages · invite who you want</small>" : "<h2>⭐ M&G</h2><small>Meet & Greet · meet people in person</small>") + "</div>"
       + (S.anon ? "" : "<button class='dt-mybtn' onclick='Dates.showTickets()'>🎟️ My tickets" + (n ? "<b>" + n + "</b>" : "") + "</button>") + "</div>"
-      + "<div class='dt-seg' role='tablist'><button aria-pressed='" + !cm + "' onclick=\"Dates.setMode('mg')\">⭐ M&G</button><button aria-pressed='" + cm + "' onclick=\"Dates.setMode('cm')\">💞 Connect Me</button></div>";
+      + "<div class='dt-seg' role='tablist'><button aria-pressed='" + (!cm && !pd) + "' onclick=\"Dates.setMode('mg')\">⭐ M&G</button><button aria-pressed='" + cm + "' onclick=\"Dates.setMode('cm')\">💞 Connect Me</button><button aria-pressed='" + pd + "' onclick=\"Dates.setMode('pd')\">📍 Plan</button></div>";
+    if (pd) return head + (window.Plan ? window.Plan.phoneHTML() : "<div class='dt-empty'>Loading…</div>");
     var askRow = cm ? "<div class='dt-askrow'>" + (S.anon ? "" : "<button onclick='Dates.takeMeOut()'>🙋 Ask someone to take me out</button>") + "<button class='alt' onclick='Dates.shareIdeas()'>💡 Share date ideas</button></div>" : "";
     var cats = askRow + "<div class='dt-cats' data-noswipe role='group' aria-label='Categories' onwheel='Dates.catWheel(event,this)' onscroll='Dates.catScroll(this)'>" + CATS.map(function (c, i) {
       return "<button class='dt-cat' aria-pressed='" + (S.cat === c) + "' onclick='Dates.setCatIdx(" + i + ")'>" + CAT_ICON[c] + " " + esc(c) + "</button>";
@@ -436,9 +437,10 @@
   }
   function creditBox() {
     return S.credit > 0 ? "<div class='dt-box' style='border-color:rgba(0,227,174,.45)'><div class='dt-row'><h3 style='margin:0'>💳 Whisper+Me credit</h3><span class='dt-pill ok'>" + money(S.credit) + "</span></div>"
-      + "<p style='margin:8px 0'>It's used first on your next M&G or Connect Me, with no card needed.</p><button class='dt-btn ghost' onclick='Dates.creditToCard(this)'>Send it to my card instead</button></div>" : "";
+      + "<p style='margin:8px 0'>It's used first on your next M&G, Connect Me or date listing, with no card needed.</p><button class='dt-btn ghost' onclick='Dates.creditToCard(this)'>Send it to my card instead</button></div>" : "";
   }
   function panelInner() {
+    if (S.mode === "pd") return (me() ? creditBox() : "") + (window.Plan ? window.Plan.panelHTML() : "");
     if (!me()) return S.anon ? (S.mode === "cm" ? connectHow() : howItWorks()) : "";
     var out = creditBox();
     var t = myTickets(), h = myHosted(), c = myCons();
@@ -466,9 +468,12 @@
     if (rt && me() && S.loadedMine) {
       try { sessionStorage.removeItem("wpmRate"); } catch (e) {}
       var parts = rt.split(":");
+      if (parts[0] === "pd") { S.mode = "pd"; setTimeout(function () { refresh(); if (window.Plan) window.Plan.rate(parts[1]); }, 50); return; }
       setTimeout(function () { Dates.rate(parts[0] === "cm" ? "cm" : "mg", parts[1]); }, 50);
       return;
     }
+    var pl = null; try { pl = sessionStorage.getItem("wpmPlan"); } catch (e) {}
+    if (pl && anyUser() && window.Plan) { if (S.mode !== "pd") { S.mode = "pd"; setTimeout(refresh, 0); } window.Plan.openPending(); return; }
     var tok = null; try { tok = sessionStorage.getItem("wpmConnect"); } catch (e) {}
     if (tok && anyUser()) { try { sessionStorage.removeItem("wpmConnect"); } catch (e) {} S.mode = "cm"; setTimeout(function () { refresh(); Dates.openInvite(tok); }, 50); return; }
     var did = null; try { did = sessionStorage.getItem("wpmDeal"); } catch (e) {}
@@ -521,7 +526,10 @@
     mounted: function () { start(); refresh(); },
     setCat: function (c) { S.cat = c; refresh(); },
     setCatIdx: function (i) { S.cat = CATS[i] || "All"; refresh(); },
-    setMode: function (m) { S.mode = m === "cm" ? "cm" : "mg"; S.cat = "All"; refresh(); },
+    setMode: function (m) { S.mode = m === "cm" || m === "pd" ? m : "mg"; S.cat = "All"; refresh(); if (m === "pd" && window.Plan) window.Plan.load(); },
+    refresh: function () { refresh(); },
+    needsBirthYear: function () { return !S.anon && S.member === null; },
+    forgetMember: function () { S.member = null; },
 
     /* ---------- Connect Me ---------- */
     openConnect: function (id) {
@@ -925,9 +933,11 @@
   var askParam = (params.get("ask") || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 128);
   if (askParam) { try { sessionStorage.setItem("wpmAsk", askParam); } catch (e) {} if (!back) back = "1"; }
   var rateLink = (params.get("rate") || "").replace(/[^A-Za-z0-9:_-]/g, "").slice(0, 80);
-  if (/^(mg|cm):/.test(rateLink)) { try { sessionStorage.setItem("wpmRate", rateLink); } catch (e) {} if (!back) back = "1"; }
+  var sharedPlan = (params.get("plan") || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
+  if (sharedPlan) { try { sessionStorage.setItem("wpmPlan", sharedPlan); } catch (e) {} if (!back) back = "1"; }
+  if (/^(mg|cm|pd):/.test(rateLink)) { try { sessionStorage.setItem("wpmRate", rateLink); } catch (e) {} if (!back) back = "1"; }
   if (back) {
-    var msgs = { connect: "Booked! 💞 Now invite who you're bringing: a member, or send them a link.", meetup: "You're in! The address and your code are under 🎟️ My tickets.", hostdeposit: "Deposit received. We'll review your M&G (usually within a day) and let you know when it's live.", seat: "Payment received.", back: "Checkout wasn't finished. Nothing was charged." };
+    var msgs = { connect: "Booked! 💞 Now invite who you're bringing: a member, or send them a link.", meetup: "You're in! The address and your code are under 🎟️ My tickets.", hostdeposit: "Deposit received. We'll review your M&G (usually within a day) and let you know when it's live.", seat: "Payment received.", plan: "Your date is live! 📍 We'll tell you when someone's interested.", back: "Checkout wasn't finished. Nothing was charged." };
     history.replaceState(null, "", location.pathname);
     var tries = 0;
     var t = setInterval(function () {
@@ -941,6 +951,7 @@
         if (sid && back !== "back") fn("confirmCheckout", { sid: sid }).then(function () { loadMine(); }, function () {});
         if (back === "meetup") { setTimeout(loadMine, 2500); setTimeout(function () { loadMine(); if (upcomingTickets().length) Dates.showTickets(); }, 5000); }
         if (back === "hostdeposit") setTimeout(loadMine, 2500);
+        if (back === "plan") { S.mode = "pd"; refresh(); if (window.Plan) { setTimeout(window.Plan.load, 2500); setTimeout(window.Plan.load, 5000); } }
         if (back === "connect") { S.mode = "cm"; refresh(); setTimeout(loadMine, 2500); setTimeout(loadMine, 5000); }
       } else if (tries > 60) clearInterval(t);
     }, 250);

@@ -34,4 +34,17 @@ New update zip from Claude in your Home or Downloads folder:
 
 It applies the zip (and removes files that were deleted), installs, runs the tests, deploys, and pushes to GitHub.
 Already have the changes in the folder? Just run `./deploy.sh "what changed"`.
-Add `--agora` to either one to also update the `generateAgoraToken` function in `functions/`.
+Extra switches (work with either one):
+
+| Add | What it does |
+|---|---|
+| `--agora` | also updates the `generateAgoraToken` function in `functions/` |
+| `--main` | also copies this version to GitHub's main branch (`master`), so the repo's front page shows it |
+| `--github-only` | skips testing and deploying; only saves to GitHub (use it if the push failed) |
+
+If GitHub asks for a password, it wants a token: run `gh auth login` once (or make a token at github.com → Settings → Developer settings → Personal access tokens and paste it as the password).
+
+## The help page and room pages
+
+- `public/help/` is the "How to use Whisper+Me" guide (whisperplusme.com/help/). Edit `tools/help_page.py`, then run `python3 tools/help_page.py`. Its pictures are in `public/help/img/`.
+- `public/rooms/` are the voice chat room pages. Edit `tools/seo_pages.py` (and `tools/pages.css`), then run `python3 tools/seo_pages.py`.

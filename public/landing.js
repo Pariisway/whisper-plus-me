@@ -364,7 +364,7 @@ body.lp2-on{background:#0b0b16}\
       + "<div class='lp2-links'>" + ROOM_LINKS.map(function (r) { return "<a href='/rooms/" + r[0] + "/'>" + r[1] + "</a>"; }).join("") + "<a href='/rooms/'>All rooms →</a></div>"
       + "<div class='lp2-tiles'><a href='/connect'><b>💞 No date ideas? Start here.</b><span>Dinner, bowling, shows and more. One price for 2 or 4.</span></a>"
       + "<a href='/?dates=1'><b>⭐ Meet &amp; greets</b><span>Meet hosts and new people at real, public places.</span></a>"
-      + "<a href='/about.html'><b>🎙️ What is Whisper+Me?</b><span>Real voices, real people, no judgment.</span></a></div>"
+      + "<a href='/help/'><b>📖 How it all works</b><span>Rooms, calls, M&amp;G, Connect Me and Plan a Date, with pictures.</span></a></div>"
       + "</section>";
   }
 
@@ -393,7 +393,7 @@ body.lp2-on{background:#0b0b16}\
       + "<div class='lp2-chips'><a href='/rooms/'>🎙️ Live rooms</a><span>📞 1-on-1 calls</span><span>🗺️ Live map</span><span>⭐ Meet & greets</span><a href='/connect'>💞 Date ideas</a></div>"
       + "</main>"
       + moreHTML()
-      + "<div class='lp2-foot'><a href='/about.html'>About</a><a href='/terms.html'>Terms</a><a href='/privacy.html'>Privacy</a></div>"
+      + "<div class='lp2-foot'><a href='/help/'>How to use</a><a href='/about.html'>About</a><a href='/terms.html'>Terms</a><a href='/privacy.html'>Privacy</a></div>"
       + "</div>";
   }
 

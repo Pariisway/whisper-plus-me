@@ -74,7 +74,7 @@
         ]
       },
       {
-        "source": "/@(app|dates|profile|landing|install).js",
+        "source": "/@(app|dates|plan|profile|landing|install).js",
         "headers": [
           {
             "key": "Cache-Control",
@@ -189,6 +189,10 @@
       {
         "source": "/m/**",
         "function": "meetupOG"
+      },
+      {
+        "source": "/p/**",
+        "function": "planOG"
       },
       {
         "source": "/c/**",

@@ -695,6 +695,13 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
     <div id="cm-list" class="list"><div class="empty">Loading…</div></div>
   </section>
 
+  <section class="card" id="sec-plans">
+    <h2>📍 Plan a Date <span class="right"><div class="seg" id="pl-f"><button data-f="open" class="on" onclick="plFilter('open')">Active</button><button data-f="all" onclick="plFilter('all')">All</button><button data-f="flags" onclick="plFilter('flags')">Blocked words</button></div></span></h2>
+    <p class="help">Dates members post themselves, anywhere. They pay the listing fee; the couple pays the place directly. Remove anything that looks like paid company, a private place, or spam. “Blocked words” shows what the money/private-place filter stopped.</p>
+    <div class="row" style="margin-bottom:10px"><span class="help" style="margin:0">Listing fee</span><input class="in" id="pl-fee" type="number" min="0" max="50" step="0.5" style="width:90px"><button class="btn sm" onclick="plSaveFee()">Save</button><span class="help" id="pl-stats" style="margin:0"></span></div>
+    <div id="pl-list" class="list"><div class="empty">Loading…</div></div>
+  </section>
+
   <div class="lm">
     <section class="card" id="sec-cmpost">
       <h2 id="cm-form-title">➕ Post a package</h2>
@@ -856,7 +863,7 @@ const LOADERS = {
   safety: () => { loadReports(); loadSafety(); loadMicLog(); loadOrg(); },
   log: () => listenLog(),
   dates: () => { dtLoad(); loadRatings(); },
-  connect: () => { cmLoad(); loadRatings(); }
+  connect: () => { cmLoad(); loadRatings(); plLoad(); }
 };
 const loaded = {};
 function go(tab, focusId) {
@@ -1771,13 +1778,52 @@ function rvDraw() {
   if (!$("rv-list")) return;
   const rows = RV.list.filter(r => RV.f === "all" || (RV.f === "low" ? r.stars <= 2 : r.kind === RV.f));
   const st = n => "<span class='inl'>" + "★".repeat(n) + "<i style='opacity:.25;font-style:normal'>" + "★".repeat(5 - n) + "</i></span>";
-  $("rv-list").innerHTML = rows.length ? rows.map(r => `<div class="item"><div class="who"><b><span class="inl" style="color:#ffc94d;letter-spacing:1px">${st(r.stars)}</span> ${h(r.kind === "cm" ? "💞 " + (r.subjectName || "") : "⭐ " + (r.subjectName || ""))}</b>
+  $("rv-list").innerHTML = rows.length ? rows.map(r => `<div class="item"><div class="who"><b><span class="inl" style="color:#ffc94d;letter-spacing:1px">${st(r.stars)}</span> ${h((r.kind === "cm" ? "💞 " : r.kind === "pd" ? "📍 " : "⭐ ") + (r.subjectName || ""))}</b>
     <span>${h(r.title || "")} · by ${h(r.byName || "a member")} · ${ago(r.at)}</span>${r.text ? `<span style="white-space:pre-wrap;color:var(--text)">“${h(r.text)}”</span>` : ""}</div>
     <div class="acts"><button class="btn sm red" onclick="rvRemove(${j(r.id)})">Remove</button></div></div>`).join("") : `<div class="empty">${RV.list.length ? "Nothing here." : "No ratings yet. Guests are asked to rate after each M&G and Connect Me."}</div>`;
 }
 async function rvRemove(id) {
   if (!await dialog({ title: "Remove this rating?", body: "Its stars come off the host's or place's average. This can't be undone.", ok: "Remove", danger: true })) return;
   const r = await safely(() => dtCall("removeRating", { id }), "Rating removed"); if (r) loadRatings();
+}
+/* ───────── 📍 Plan a Date ───────── */
+const PL = { plans: [], flags: [], f: "open" };
+const PL_ST = { draft: ["#ffba49", "Fee not paid"], live: ["var(--teal)", "Open"], matched: ["#c9a7ff", "Picked, waiting"], confirmed: ["var(--teal)", "It's a date"], completed: ["#c9a7ff", "Done"], expired: ["#ff8a80", "No match"], canceled: ["#ff8a80", "Called off"], removed: ["#ff8a80", "Removed"] };
+async function plLoad() {
+  try { await dtSdk(); const r = await dtCall("plans", { data: { limit: 200 } }); PL.plans = r.plans || []; PL.flags = r.flags || []; }
+  catch (e) { if ($("pl-list")) $("pl-list").innerHTML = `<div class="empty">Couldn't load: ${h(e.message)}</div>`; return; }
+  try { const st = (await firebase.firestore().doc("settings/platform").get()).data() || {}; if (document.activeElement !== $("pl-fee")) $("pl-fee").value = ((st.planFee == null ? 499 : st.planFee) / 100).toFixed(2); } catch (e) { /* keep */ }
+  const paid = PL.plans.filter(p => p.paidWith), done = PL.plans.filter(p => p.status === "completed");
+  $("pl-stats").textContent = `${paid.length} paid · ${done.length} went on the date · ${PL.plans.filter(p => (p.noShows || []).length).length} with a no-show`;
+  plDraw();
+}
+function plFilter(f) { PL.f = f; document.querySelectorAll("#pl-f button").forEach(b => b.classList.toggle("on", b.dataset.f === f)); plDraw(); }
+function plDraw() {
+  if (!$("pl-list")) return;
+  if (PL.f === "flags") {
+    $("pl-list").innerHTML = PL.flags.length ? PL.flags.map(x => `<div class="item"><div class="who"><b>🚫 ${h(x.name || "A member")} <span class="help" style="margin:0">· ${h(x.where || "")} · ${ago(x.at)}</span></b><span style="white-space:pre-wrap;color:var(--text)">“${h(x.text || "")}”</span></div>
+      <div class="acts"><button class="btn sm" onclick="person(${j(x.uid)})">👤 Member</button></div></div>`).join("") : `<div class="empty">Nothing blocked yet.</div>`;
+    return;
+  }
+  const rows = PL.plans.filter(p => PL.f === "all" || ["draft", "live", "matched", "confirmed"].includes(p.status));
+  $("pl-list").innerHTML = rows.length ? rows.map(p => { const st = PL_ST[p.status] || ["#aaa", p.status];
+    return `<div class="item"><div class="who"><b>📍 ${h(p.title)} <span style="color:${st[0]};font-size:12px">· ${h(st[1])}</span></b>
+      <span>${h(p.creatorName)}${p.guestName ? " + " + h(p.guestName) : ""} · ${h(p.venueName)}, ${h(p.city)} · ${new Date(p.startsAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
+      <span>${p.requests} asked · ${p.paidWith ? "paid $" + (p.fee / 100).toFixed(2) + " (" + h(p.paidWith) + ")" : "unpaid"}${p.feeReturned ? " · fee returned as credit" : ""}${(p.noShows || []).length ? " · ⚠️ no-show" : ""}</span>${p.about ? `<span style="white-space:pre-wrap;color:var(--text)">“${h(p.about)}”</span>` : ""}</div>
+      <div class="acts"><button class="btn sm" onclick="person(${j(p.creatorUid)})">👤</button>${["completed", "removed"].includes(p.status) ? "" : `<button class="btn sm red" onclick="plRemove(${j(p.id)},${p.paidWith && !p.feeReturned ? 1 : 0})">Remove</button>`}</div></div>`; }).join("")
+    : `<div class="empty">${PL.plans.length ? "Nothing active right now." : "No dates planned yet. Members post them from ⭐ M&G → 📍 Plan."}</div>`;
+}
+async function plRemove(id, paid) {
+  const reason = await dialog({ title: "Remove this date?", body: "It comes down, anyone who asked or was picked is told it's called off, and the creator is told why.", input: { placeholder: "Why (they'll see this)", value: "It didn't follow the Plan a Date rules." }, ok: "Remove", danger: true });
+  if (reason === null || reason === undefined || reason === false) return;
+  let refund = false;
+  if (paid) refund = !!(await dialog({ title: "Give the fee back?", body: "Return their listing fee as Whisper+Me credit? Pick No for scams or rule breaking.", ok: "Yes, give it back", cancel: "No" }));
+  const r = await safely(() => dtCall("removePlan", { id, reason, data: { refund } }), "Removed"); if (r) plLoad();
+}
+async function plSaveFee() {
+  const v = Math.round(Number($("pl-fee").value) * 100);
+  if (!(v >= 0 && v <= 5000)) return toast("Pick between $0 and $50", true);
+  const r = await safely(() => dtCall("savePlanFee", { data: { planFee: v } }), "Listing fee saved"); if (r !== undefined) plLoad();
 }
 async function dtCall(action, extra) { const r = await firebase.functions().httpsCallable("nightsAdminAction")(Object.assign({ action }, extra || {})); return r.data || {}; }
 async function dtLoad() {

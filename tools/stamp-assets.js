@@ -5,7 +5,7 @@
    deploy.sh runs this before every deploy, so you never have to. */
 const fs = require("fs"), path = require("path"), crypto = require("crypto");
 const PUB = path.join(__dirname, "..", "public");
-const FILES = ["app.js", "dates.js", "profile.js", "landing.js", "install.js", "style.css"];
+const FILES = ["app.js", "dates.js", "plan.js", "profile.js", "landing.js", "install.js", "style.css"];
 const page = path.join(PUB, "index.html");
 let html = fs.readFileSync(page, "utf8"), changed = 0;
 for (const f of FILES) {

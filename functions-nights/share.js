@@ -384,7 +384,7 @@ body{background:radial-gradient(900px 500px at 10% -10%,rgba(123,47,247,.35),tra
 <meta property="og:image" content="${esc(image)}"><meta property="og:image:type" content="image/png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="${esc(title)}">
 <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${esc(title)}"><meta name="twitter:description" content="${esc(desc)}"><meta name="twitter:image" content="${esc(image)}">
 <style>${PAGE_CSS}</style></head><body><div class="w"><a class="top" href="/"><img src="/icon-192.png" alt="">WHISPER+ME</a>${body}
-<nav class="more"><a href="/connect">💞 Date ideas</a><a href="/rooms/">🎙️ Voice chat rooms</a><a href="/about.html">About</a></nav>
+<nav class="more"><a href="/connect">💞 Date ideas</a><a href="/rooms/">🎙️ Voice chat rooms</a><a href="/help/">📖 How to use</a><a href="/about.html">About</a></nav>
 <div class="foot">Real voices. Real moments. <a href="/">whisperplusme.com</a></div></div>
 <script>document.querySelectorAll("[data-share]").forEach(function(b){b.onclick=function(){var d={title:document.title,url:location.href};if(navigator.share)navigator.share(d).catch(function(){});else if(navigator.clipboard)navigator.clipboard.writeText(location.href).then(function(){b.textContent="✅ Link copied";});};});</script>
 </body></html>`;
@@ -458,6 +458,35 @@ ${m.hostUid ? `<a class="b s" href="/u/${esc(m.hostUid)}">👤 About ${esc(clip(
     return pageShell({ title, desc, url, image, body, index: m.live, schema });
   }
 
+  /** /p/{id}: a 📍 Plan a Date someone posted, for sharing. Not indexed (it's one person's own plan). */
+  async function planPage(id) {
+    id = String(id || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
+    const x = id ? (await db.doc(`plans/${id}`).get()).data() : null;
+    const url = `${APP_URL}/p/${id}`;
+    const open = x && x.status === "live" && !x.hidden && ms(x.startsAt) > Date.now() + 3 * 3600000;
+    if (!open) {
+      return pageShell({ title: "Plan a Date on Whisper+Me", desc: "Plan a date anywhere at a real public place, and pick who you go with. Asking is free.", url, image: `${APP_URL}/og-image.jpg?v=5`,
+        body: `<div class="facts" style="text-align:center">This date isn't open anymore.</div><div class="btns"><a class="b p" href="/?dates=1&plan=none">📍 See open dates</a></div>` });
+    }
+    let tz = "America/Chicago"; try { if (x.tz) { new Intl.DateTimeFormat("en-US", { timeZone: x.tz }); tz = x.tz; } } catch (e) { /* default */ }
+    const when = new Date(ms(x.startsAt)).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: tz, timeZoneName: "short" });
+    const pays = { me: "💝 They're treating", split: "🤝 You split the bill", each: "🧾 Each pays your own" }[x.pays] || "🤝 You split the bill";
+    const name = clip(x.creatorName, 30), hue = [...String(x.title)].reduce((n, c) => (n * 31 + c.charCodeAt(0)) % 360, 0);
+    const title = `${clip(x.title, 60)} · a date with ${name}`;
+    const desc = `${when} at ${x.venueName}, ${x.city}. ${name} is planning it on Whisper+Me. Tap "I'm interested" (free) and they pick who goes.`;
+    const go = `/?dates=1&plan=${encodeURIComponent(id)}`;
+    const body = `<div class="ph" style="aspect-ratio:4/5;background:linear-gradient(135deg,hsl(${hue} 60% 32%),hsl(${(hue + 40) % 360} 65% 16%) 70%,#0b0b16)">${x.creatorPhoto ? `<img src="${esc(x.creatorPhoto)}" alt="">` : ""}<div class="sh"></div>
+<div class="pill" style="left:16px;transform:none">📍 Plan a Date</div>${x.requests ? `<div class="tag">${Number(x.requests)} INTERESTED</div>` : ""}
+<div class="info"><h1 class="nm">${esc(clip(x.title, 70))}</h1></div></div>
+<div class="host">${x.creatorPhoto ? `<img src="${esc(x.creatorPhoto)}" alt="">` : `<div class="av">${esc((name[0] || "?").toUpperCase())}</div>`}<div><b>${esc(name)} is planning this date</b><small>${x.creatorRating && x.creatorRating.n ? `⭐ ${Number(x.creatorRating.avg).toFixed(1)} from ${x.creatorRating.n} date${x.creatorRating.n === 1 ? "" : "s"}` : "21+ · public place"}</small></div></div>
+<div class="facts"><div>📅 ${esc(when)}</div><div>📍 ${esc(x.venueName)}, ${esc(x.city)} <span style="color:#8f89a8">(street address once you're picked)</span></div><div>${pays}, paid to the place directly</div>${x.about ? `<div>${esc(clip(x.about, 300))}</div>` : ""}</div>
+<div class="btns"><a class="b p" href="${esc(go)}">🙋 I'm interested · free</a>
+<a class="b s" href="/u/${esc(x.creatorUid)}">👤 About ${esc(clip(name, 20))}</a>
+<button class="b s" data-share>↗ Send to a friend</button></div>
+<div class="facts" style="font-size:13px;color:#8f89a8">Never send money to someone you're meeting. Meet only at the place listed.</div>`;
+    return pageShell({ title, desc, url, image: `${APP_URL}/s/u/${encodeURIComponent(x.creatorUid)}/card.png`, body, index: false });
+  }
+
   /** /c/{id}: a Connect Me package, for ads and sharing. */
   async function connectPage(id, src, askUid) {
     id = String(id || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
@@ -516,5 +545,5 @@ ${asker ? "" : `<a class="b s" href="/connect" style="min-height:48px;font-size:
     return pageShell({ title, desc, url: `${APP_URL}/connect${asker ? "?ask=" + asker.uid : ""}`, canonical: `${APP_URL}/connect`, image: `${APP_URL}/s/l/connect/card.png?v=${v}${asker ? "&ask=" + asker.uid : ""}`, body, index: !asker, schema });
   }
 
-  return { liveConnects, shareImage, profilePage, meetupPage, connectPage, connectListPage, listCard, askerData, connectCard, connectData, profileCard, meetupCard, profileData, meetupData, plainCard };
+  return { liveConnects, shareImage, profilePage, meetupPage, planPage, connectPage, connectListPage, listCard, askerData, connectCard, connectData, profileCard, meetupCard, profileData, meetupData, plainCard };
 };

@@ -65,7 +65,8 @@ const DEFAULT_SETTINGS = {
   openRequests: true,         // members may post "find me an M&G" and request to join
   autoApproveVenues: false,
   hostFee: 10,                // % the site keeps from each hosted M&G spot
-  hostPayoutHours: 72         // hosts are paid this long after their M&G starts (time for buyers to report a problem)
+  hostPayoutHours: 72,        // hosts are paid this long after their M&G starts (time for buyers to report a problem)
+  planFee: 499                // 📍 Plan a Date listing fee (cents), paid by the person who posts the date
 };
 const CATEGORIES = ["Dinner", "Activities", "Concerts", "Movies", "Other"];
 const HOST_PAY_MINUTES = 35;
@@ -78,7 +79,10 @@ const nowTs = () => Timestamp.now();
 const ms = ts => (ts && ts.toMillis ? ts.toMillis() : Number(ts) || 0);
 const fromMs = m => Timestamp.fromMillis(m);
 const fmtMoney = c => "$" + (c / 100).toFixed(c % 100 ? 2 : 0);
-const fmtWhen = ts => new Date(ms(ts)).toLocaleString("en-US", { timeZone: "America/Chicago", weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+/** A real IANA time zone name, or St. Louis time. */
+const okTz = tz => { try { if (tz && typeof tz === "string" && tz.length <= 40) { new Intl.DateTimeFormat("en-US", { timeZone: tz }); return tz; } } catch (e) { /* not a zone */ } return "America/Chicago"; };
+/** "Sat, Nov 7, 7:00 PM": St. Louis time, or the place's own time (with its zone, e.g. PST) for Plan a Date anywhere. */
+const fmtWhen = (ts, tz) => new Date(ms(ts)).toLocaleString("en-US", { timeZone: okTz(tz), weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", ...(tz && okTz(tz) !== "America/Chicago" ? { timeZoneName: "short" } : {}) });
 const makeCode = () => "WN-" + Array.from({ length: 5 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join("");
 const dayKey = d => d.toISOString().slice(0, 10);
 const isAdminReq = req => !!req.auth && (req.auth.token.admin === true || ADMIN_UIDS.includes(req.auth.uid));
@@ -831,6 +835,7 @@ async function handleStripeEvent(event) {
   if (o.metadata.kind === "meetup") await onMeetupPaid(o);
   if (o.metadata.kind === "hostdeposit") await onHostDepositPaid(o);
   if (o.metadata.kind === "connect") await onConnectPaid(o);
+  if (o.metadata.kind === "plan") await onPlanPaid(o);
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -991,6 +996,7 @@ async function housekeeping() {
   for (const doc of done.docs) await settleDate(doc.id, s);
   await meetupHousekeeping(s);
   await connectHousekeeping(s);
+  await planHousekeeping(s);
 }
 exports.datesHousekeeping = onSchedule({ schedule: "every 10 minutes", ...withStripe }, housekeeping);
 
@@ -1266,7 +1272,11 @@ exports.nightsAdminAction = onCall(withStripe, async req => {
     case "removeRating": {
       const ref = db.doc(`ratings/${str(id, 200)}`), r = (await ref.get()).data();
       if (!r) fail("not-found", "Already removed.");
-      if (r.kind === "mg") {
+      if (r.kind === "pd") {
+        if (r.subjectUid) await rtdb.ref(`users/${r.subjectUid}/dateRating`).transaction(v => {
+          if (!v) return v; v.sum -= r.stars; v.n -= 1; if (v.n <= 0) return null; v.avg = Math.round((v.sum / v.n) * 10) / 10; return v;
+        });
+      } else if (r.kind === "mg") {
         await mtRef(r.eventId).update({ "rating.sum": FieldValue.increment(-r.stars), "rating.n": FieldValue.increment(-1) }).catch(() => {});
         if (r.subjectUid) await rtdb.ref(`users/${r.subjectUid}/rating`).transaction(v => {
           if (!v) return v; v.sum -= r.stars; v.n -= 1; if (v.n <= 0) return null; v.avg = Math.round((v.sum / v.n) * 10) / 10; return v;
@@ -1278,6 +1288,33 @@ exports.nightsAdminAction = onCall(withStripe, async req => {
       }
       await ref.delete();
       await log(req, action, id, `${r.stars}★ ${r.title}`); return { message: "Rating removed" };
+    }
+    case "plans": {
+      // 📍 Plan a Date: the newest plans, any status, plus what the money/private-place filter blocked.
+      const q = await db.collection("plans").orderBy("createdAt", "desc").limit(Math.min(300, Number(data.limit) || 150)).get();
+      const f = await db.collection("planFlags").orderBy("at", "desc").limit(60).get();
+      const flags = [];
+      for (const d of f.docs) { const x = d.data(); flags.push({ id: d.id, ...x, at: ms(x.at), name: (await whisperProfile(x.uid)).name }); }
+      return { plans: q.docs.map(d => { const x = d.data(); return { id: d.id, title: x.title, about: x.about, status: x.status, hidden: !!x.hidden, creatorUid: x.creatorUid, creatorName: x.creatorName, guestName: x.guestName || "",
+        venueName: x.venueName, city: x.city, startsAt: ms(x.startsAt), createdAt: ms(x.createdAt), requests: x.requests || 0, fee: x.fee || 0, paidWith: x.paidWith || "", feeReturned: !!x.feeReturned, noShows: x.noShows || [] }; }), flags };
+    }
+    case "savePlanFee": {
+      const v = Math.round(Number(data.planFee));
+      if (!(v >= 0 && v <= 5000)) fail("invalid-argument", "Pick a fee between $0 and $50.");
+      await db.doc("settings/platform").set({ planFee: v }, { merge: true });
+      await log(req, action, "settings", `Plan a Date fee ${fmtMoney(v)}`); return { message: "Listing fee saved" };
+    }
+    case "removePlan": {
+      const pid = str(id, 64), x = (await plRef(pid).get()).data();
+      if (!x) fail("not-found", "No such plan.");
+      if (["completed", "removed"].includes(x.status)) fail("failed-precondition", "It's already over.");
+      await plRef(pid).update({ status: "removed", hidden: true, removedReason: str(reason, 200) || "Removed by Whisper+Me", removedAt: nowTs() });
+      await closePlanRequests(pid, x, "canceled");
+      await rtdb.ref(`planChat/${pid}`).set(null);
+      if (x.guestUid) await push(x.guestUid, "Your date was called off", `${x.title} was removed by Whisper+Me.`);
+      await push(x.creatorUid, "Your date plan was removed", str(reason, 200) || "It didn't follow the Plan a Date rules.");
+      if (data.refund) await refundPlanFee(pid, x, "Your date plan was removed");
+      await log(req, action, pid, `${x.title} · ${reason || ""}`); return { message: data.refund ? "Removed, and the fee went back as credit." : "Removed." };
     }
     case "hideMeetup":
     case "showMeetup": { await mtRef(id).update({ hidden: action === "hideMeetup" }); await log(req, action, id); return { message: action === "hideMeetup" ? "M&G paused" : "M&G is back on sale" }; }
@@ -1455,7 +1492,7 @@ async function addCredit(uid, sources, note) {
     heading: `${fmtMoney(total)} is back in your credit`, intro: note ? str(note, 80) : "",
     rows: [["Added", fmtMoney(total)], ["Your credit now", fmtMoney(bal)]],
     button: ["Find an M&G to use it on", `${APP_URL}/?dates=1`],
-    after: "Credit pays for any M&G or Connect Me with no card fee. Rather have it on your card? Tap \"Send to my card\" in My tickets." });
+    after: "Credit pays for any M&G, Connect Me or Plan a Date listing with no card fee. Rather have it on your card? Tap \"Send to my card\" in My tickets." });
   return total;
 }
 /** Inside a transaction (call after the other reads, before writes): takes up to `want` cents, oldest first. */
@@ -2497,6 +2534,465 @@ async function connectHousekeeping(s) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   📍 PLAN A DATE: anyone, in any city, posts a date at a real public
+   place; people tap "I'm interested"; the creator approves one.
+   Money rules (what keeps it from ever being paid companionship):
+   - The creator pays Whisper+Me a listing fee ($4.99). Nobody pays a member.
+   - The couple pays the venue themselves, at the venue.
+   - Requests are free. Plans and messages that talk about money, or about
+     meeting somewhere private, are blocked.
+   - No match before the date → the fee comes back as Whisper+Me credit.
+   - Late cancels and no-shows are strikes (2 = a 3-day break), like M&G.
+   plans/{id}                       public card (only live ones are listed)
+   plans/{id}/private/info          full venue (address, phone)
+   planRequests/{planId}_{uid}      "I'm interested" (pending → approved/declined/…)
+   planChat/{planId} (Realtime DB)  messages, only once someone is approved
+═══════════════════════════════════════════════════════════════ */
+const PLAN_FEE = 499;
+const planFeeOf = s => { const v = Number(s && s.planFee); return s && s.planFee != null && v >= 0 && v <= 5000 ? Math.round(v) : PLAN_FEE; }; // admin can change it (even to free)
+const PLAN_PAY_MINUTES = 40;
+const PLAN_CONFIRM_HOURS = 12;          // the approved person has this long to confirm
+const PLAN_MAX_LIVE = 3;                // live plans per creator
+const PLAN_MAX_REQUESTS = 5;            // open requests per person
+const PLAN_LATE_HOURS = 24;             // cancelling inside this counts as a strike
+const PAYS = { me: "I'll treat", split: "We split it", each: "Each pays our own" };
+const plRef = id => db.doc(`plans/${id}`);
+const plPrivate = id => db.doc(`plans/${id}/private/info`);
+const prRef = (planId, uid) => db.doc(`planRequests/${planId}_${uid}`);
+
+/* What gets blocked: money for someone's time, and meeting somewhere private. */
+const MONEY_TALK = /(\$\s?\d|\d\s?(dollars|bucks|usd)\b|cash\s?app|\$[a-z]{2,}|venmo|zelle|paypal|apple\s?pay|\bchime\b|western union|gift\s?cards?|\bgenerous\b|(?<!flower |floral )\barrangements?\b|\ballowance\b|\bdonations?\b|\broses\b|sugar\s?(daddy|baby|babies|mama|momma)|\bppm\b|pay\s?per|per\s?(hour|hr|night|meet|date)\b|\bhourly\b|\bgfe\b|\bincall\b|\boutcall\b|\bescort|companionship|\bpay (me|you)\b|\bfee\b|\btip (me|you)\b)/i;
+const PRIVATE_PLACE = /\b(hotel|motel|airbnb|vrbo|my (place|house|home|crib|apartment|room)|your (place|house|home|crib|apartment|room)|come over|back to mine)\b/i;
+const PRIVATE_VENUE = /\b(hotel|motel|airbnb|vrbo|apartments?|apt\.?|residence|residential|suites?)\b/i;
+function planTextOk(text, where) {
+  if (MONEY_TALK.test(text)) return `Leave money out of your ${where}: each of you pays the place directly, and nobody pays anyone to go out.`;
+  if (PRIVATE_PLACE.test(text)) return `Keep your ${where} about the public place you picked. Homes and hotels aren't allowed.`;
+  return "";
+}
+async function planFlag(uid, where, text, planId) {
+  await db.collection("planFlags").add({ uid, where, text: str(text, 300), planId: planId || null, at: nowTs() });
+}
+
+function cleanPlan(d) {
+  const v = d.venue || {};
+  const out = {
+    title: str(d.title, 70), about: str(d.about, 400), pays: PAYS[d.pays] ? d.pays : "split",
+    startsAt: Number(d.startsAt),
+    venue: { name: str(v.name, 80), address: str(v.address, 160), city: str(v.city, 60), phone: str(v.phone, 20), source: v.source === "osm" ? "osm" : "other", osmId: str(v.osmId, 40), lat: Number(v.lat) || null, lon: Number(v.lon) || null }
+  };
+  if (!out.title) fail("invalid-argument", "Say what the plan is, like \"Tacos and mini golf\".");
+  if (!out.venue.name || !out.venue.address || !out.venue.city) fail("invalid-argument", "Pick the place: name, street address and city.");
+  if (!PHONE_RE.test(out.venue.phone)) fail("invalid-argument", "Add the place's phone number. It shows it's a real business.");
+  if (PRIVATE_VENUE.test(out.venue.name)) fail("invalid-argument", "Pick a restaurant, café, bar or activity. Hotels and homes aren't allowed.");
+  if (!(out.startsAt > Date.now() + 24 * 3600000)) fail("invalid-argument", "Pick a time at least 24 hours away, so people have time to ask.");
+  if (out.startsAt > Date.now() + 30 * 864e5) fail("invalid-argument", "Pick a time within the next 30 days.");
+  return out;
+}
+const round3 = x => (Number.isFinite(x) ? Math.round(x * 1000) / 1000 : null);
+
+/** Make a plan. Pays the listing fee with credit if there's enough, otherwise returns a checkout link. */
+exports.createPlan = onCall(withStripe, async req => {
+  const uid = requireUser(req);
+  const s = await getSettings();
+  notSuspended(await memberFor(uid, req.data?.birthYear));
+  const c = cleanPlan(req.data || {});
+  for (const [t, w] of [[c.title, "plan"], [c.about, "plan"]]) {
+    const bad = planTextOk(t, w);
+    if (bad) { await planFlag(uid, "plan", t); fail("invalid-argument", bad); }
+  }
+  const mine = await db.collection("plans").where("creatorUid", "==", uid).where("status", "in", ["live", "matched", "confirmed"]).get();
+  if (mine.size >= PLAN_MAX_LIVE) fail("resource-exhausted", `You can have ${PLAN_MAX_LIVE} date plans up at a time.`);
+  const me = await whisperProfile(uid);
+  if (!me.photo) fail("failed-precondition", "Add a profile photo first (👤 Profile). People want to see who they're meeting.");
+  const fee = planFeeOf(s);
+  const rating = (await rtdb.ref(`users/${uid}/dateRating`).once("value")).val() || null;
+  const ref = db.collection("plans").doc();
+  let paid = false;
+  await db.runTransaction(async tx => {
+    const cr = (await tx.get(creditRef(uid))).data();
+    const base = { creatorUid: uid, creatorName: me.name, creatorPhoto: me.photo, creatorRating: rating && rating.n ? { avg: rating.avg, n: rating.n } : null,
+      title: c.title, about: c.about, pays: c.pays, venueName: c.venue.name, city: c.venue.city, lat: round3(c.venue.lat), lon: round3(c.venue.lon),
+      startsAt: fromMs(c.startsAt), tz: okTz(req.data?.tz), hidden: false, requests: 0, fee, createdAt: nowTs() };
+    if (fee === 0) { tx.set(ref, { ...base, status: "live", paidWith: "free", cardPaid: 0, paidAt: nowTs() }); paid = true; }
+    else if ((cr?.balance || 0) >= fee) {
+      const t = takeCredit(cr, fee);
+      tx.set(creditRef(uid), t.next);
+      tx.set(ref, { ...base, status: "live", paidWith: "credit", creditFrom: t.from, cardPaid: 0, paidAt: nowTs() });
+      paid = true;
+    } else tx.set(ref, { ...base, status: "draft" });
+  });
+  await plPrivate(ref.id).set({ venue: c.venue, creatorUid: uid });
+  if (paid) { await planWentLive(ref.id, uid); return { id: ref.id, url: null, message: "Your date is live! We'll tell you when someone's interested." }; }
+  const url = await checkoutFor({ kind: "plan", uid, email: req.auth.token.email, amount: fee, dateId: ref.id,
+    name: `Date listing · ${c.title}`, description: `${fmtWhen(c.startsAt, req.data?.tz)} at ${c.venue.name}, ${c.venue.city}. If nobody's approved by then, it comes back as Whisper+Me credit.` });
+  return { id: ref.id, url };
+});
+async function planWentLive(id, uid) {
+  const n = (await db.collection("plans").where("creatorUid", "==", uid).get()).size;
+  if (n <= 1) { const x = (await plRef(id).get()).data() || {}; for (const a of ADMIN_UIDS) await push(a, "New Plan a Date member", `${x.creatorName}: ${x.title} · ${x.city}`, `${APP_URL}/admin.html#connect`); }
+}
+async function onPlanPaid(sess) {
+  const { dateId: id, uid } = sess.metadata || {};
+  if (sess.payment_status !== "paid") return;
+  const pi = typeof sess.payment_intent === "string" ? sess.payment_intent : sess.payment_intent?.id;
+  let went = false, late = false;
+  await db.runTransaction(async tx => {
+    const x = (await tx.get(plRef(id))).data();
+    if (!x || x.pi === pi) return; // repeat webhook
+    if (x.status !== "draft" || ms(x.startsAt) < Date.now() + 3600000) { late = true; tx.update(plRef(id), { pi }); return; }
+    tx.update(plRef(id), { status: "live", paidWith: "card", pi, cardPaid: sess.amount_total, paidAt: nowTs() });
+    went = true;
+  });
+  if (late) { await addCredit(uid, [{ pi, amount: sess.amount_total }], "Payment for a date plan that had closed"); return; }
+  if (went) { await push(uid, "Your date is live 📍", "We'll tell you when someone's interested."); await planWentLive(id, uid); }
+}
+/** Pay the listing fee again (checkout was closed). */
+exports.payPlan = onCall(withStripe, async req => {
+  const uid = requireUser(req);
+  const id = str(req.data?.planId, 64), x = (await plRef(id).get()).data();
+  if (!x || x.creatorUid !== uid) fail("permission-denied", "Not your plan.");
+  if (x.status !== "draft") fail("failed-precondition", "This one is already paid.");
+  if (ms(x.startsAt) < Date.now() + 24 * 3600000) fail("failed-precondition", "This time is too close now. Make a new plan.");
+  return { url: await checkoutFor({ kind: "plan", uid, email: req.auth.token.email, amount: x.fee, dateId: id, name: `Date listing · ${x.title}`, description: `${fmtWhen(x.startsAt, x.tz)} at ${x.venueName}, ${x.city}.` }) };
+});
+
+async function blockedEitherWay(a, b) {
+  const [x, y] = await Promise.all([rtdb.ref(`blocks/${a}/${b}`).once("value"), rtdb.ref(`blocks/${b}/${a}`).once("value")]);
+  return !!(x.val() || y.val());
+}
+/** "I'm interested": free. Needs a photo, 21+, and not too many open requests. */
+exports.requestPlan = onCall(async req => {
+  const uid = requireUser(req);
+  notSuspended(await memberFor(uid, req.data?.birthYear));
+  const id = str(req.data?.planId, 64), note = str(req.data?.note, 200);
+  const x = (await plRef(id).get()).data();
+  if (!x || x.status !== "live" || x.hidden) fail("failed-precondition", "This date isn't open anymore.");
+  if (x.creatorUid === uid) fail("failed-precondition", "That's your own date.");
+  if (ms(x.startsAt) < Date.now() + 3 * 3600000) fail("failed-precondition", "It's too close to the time to ask now.");
+  if (await blockedEitherWay(uid, x.creatorUid)) fail("permission-denied", "You can't ask for this one.");
+  const bad = planTextOk(note, "note");
+  if (bad) { await planFlag(uid, "request", note, id); fail("invalid-argument", bad); }
+  const me = await whisperProfile(uid);
+  if (!me.photo) fail("failed-precondition", "Add a profile photo first (👤 Profile). People want to see who they're meeting.");
+  const open = await db.collection("planRequests").where("uid", "==", uid).where("status", "==", "pending").get();
+  if (open.size >= PLAN_MAX_REQUESTS) fail("resource-exhausted", `You have ${PLAN_MAX_REQUESTS} requests waiting. Wait for an answer, or take one back.`);
+  const ref = prRef(id, uid);
+  await db.runTransaction(async tx => {
+    const cur = (await tx.get(ref)).data();
+    const p = (await tx.get(plRef(id))).data();
+    if (cur) fail("already-exists", cur.status === "pending" ? "You already asked. We'll tell you if they say yes." : "You already asked for this one.");
+    if (!p || p.status !== "live") fail("failed-precondition", "This date isn't open anymore.");
+    tx.set(ref, { planId: id, uid, creatorUid: x.creatorUid, name: me.name, photo: me.photo, note, status: "pending", startsAt: x.startsAt, at: nowTs() });
+    tx.update(plRef(id), { requests: FieldValue.increment(1) });
+  });
+  await push(x.creatorUid, `${me.name} is interested 📍`, `${x.title}: tap to see who's asking and pick someone.`, `${APP_URL}/?dates=1&plan=${id}`);
+  return { message: "Sent! We'll tell you if they pick you." };
+});
+
+/** The creator says yes to one person (everyone else is told it's filled) or no to one. */
+exports.answerPlanRequest = onCall({ secrets: [GMAIL_PASS] }, async req => {
+  const uid = requireUser(req);
+  const id = str(req.data?.planId, 64), who = str(req.data?.uid, 128), yes = req.data?.approve === true;
+  const pref = plRef(id), rref = prRef(id, who);
+  let x, r;
+  await db.runTransaction(async tx => {
+    x = (await tx.get(pref)).data(); r = (await tx.get(rref)).data();
+    if (!x || x.creatorUid !== uid) fail("permission-denied", "Not your date.");
+    if (!r || r.status !== "pending") fail("failed-precondition", "That request isn't waiting anymore.");
+    if (!yes) { tx.update(rref, { status: "declined", answeredAt: nowTs() }); return; }
+    if (x.status !== "live") fail("failed-precondition", "You already picked someone.");
+    const start = ms(x.startsAt);
+    if (start < Date.now() + 2 * 3600000) fail("failed-precondition", "It's too close to the time to pick someone now.");
+    const confirmBy = Math.min(Date.now() + PLAN_CONFIRM_HOURS * 3600000, start - 3600000);
+    tx.update(pref, { status: "matched", guestUid: who, guestName: r.name, guestPhoto: r.photo, confirmBy: fromMs(confirmBy), matchedAt: nowTs() });
+    tx.update(rref, { status: "approved", answeredAt: nowTs() });
+  });
+  if (!yes) {
+    await push(who, "Not this time", `${x.creatorName} picked someone else for ${x.title}. Plenty more dates near you.`, `${APP_URL}/?dates=1`);
+    return { message: "Okay, we let them know." };
+  }
+  await rtdb.ref(`planChat/${id}/members`).set({ [uid]: true, [who]: true });
+  await push(who, `${x.creatorName} picked you! 🎉`, `Confirm ${x.title} within ${PLAN_CONFIRM_HOURS} hours, or it goes to someone else.`, `${APP_URL}/?dates=1&plan=${id}`);
+  await sendEmail(who, `${x.creatorName} picked you for a date`, {
+    heading: `${x.creatorName} picked you! 🎉`, intro: `Confirm within ${PLAN_CONFIRM_HOURS} hours, or it goes to someone else.`,
+    rows: [["The plan", x.title], ["When", fmtWhen(x.startsAt, x.tz)], ["Where", `${x.venueName}, ${x.city}`], ["The bill", PAYS[x.pays]]],
+    button: ["Confirm the date", `${APP_URL}/?dates=1&plan=${id}`] });
+  return { message: `You picked ${r.name}! They have ${PLAN_CONFIRM_HOURS} hours to confirm. You can message each other now.` };
+});
+
+/** Turn down everyone still waiting, with a kind note. */
+async function closePlanRequests(id, x, why, except) {
+  const q = await db.collection("planRequests").where("planId", "==", id).where("status", "==", "pending").get();
+  for (const d of q.docs) {
+    const r = d.data(); if (r.uid === except) continue;
+    await d.ref.update({ status: why === "filled" ? "filled" : "closed", answeredAt: nowTs() });
+    await push(r.uid, why === "filled" ? "That date was filled" : "That date was called off", `${x.title} with ${x.creatorName} ${why === "filled" ? "found someone" : "isn't happening"}. Plenty more dates near you.`, `${APP_URL}/?dates=1`);
+  }
+}
+
+/** The person who was picked says yes (or no). */
+exports.confirmPlan = onCall({ secrets: [GMAIL_PASS] }, async req => {
+  const uid = requireUser(req);
+  const id = str(req.data?.planId, 64), yes = req.data?.yes !== false;
+  const pref = plRef(id);
+  let x;
+  await db.runTransaction(async tx => {
+    x = (await tx.get(pref)).data();
+    if (!x || x.guestUid !== uid || x.status !== "matched") fail("failed-precondition", "There's nothing to confirm here.");
+    if (!yes) {
+      tx.update(pref, { status: "live", guestUid: null, guestName: null, guestPhoto: null, confirmBy: null });
+      tx.update(prRef(id, uid), { status: "passed", answeredAt: nowTs() });
+      return;
+    }
+    tx.update(pref, { status: "confirmed", confirmedAt: nowTs() });
+  });
+  if (!yes) {
+    await rtdb.ref(`planChat/${id}`).set(null);
+    await push(x.creatorUid, "They can't make it", `${x.guestName} passed on ${x.title}. Pick someone else from your requests.`, `${APP_URL}/?dates=1&plan=${id}`);
+    return { message: "No problem. We let them know." };
+  }
+  await closePlanRequests(id, x, "filled", uid);
+  const v = ((await plPrivate(id).get()).data() || {}).venue || {};
+  const place = [v.name || x.venueName, v.address, v.city || x.city].filter(Boolean).join(", ");
+  const start = ms(x.startsAt);
+  for (const [to, other] of [[x.creatorUid, x.guestName], [uid, x.creatorName]]) {
+    await push(to, "It's a date! 📍", `${x.title} with ${other}, ${fmtWhen(start, x.tz)} at ${x.venueName}.`, `${APP_URL}/?dates=1&plan=${id}`);
+    await sendEmail(to, `It's a date: ${x.title}`, {
+      heading: "It's a date! 📍", intro: `You're meeting ${other}.`,
+      rows: [["The plan", x.title], ["When", fmtWhen(start, x.tz)], ["Where", place], ["The bill", `${PAYS[x.pays]} (you pay the place directly)`]],
+      button: ["Open the date", `${APP_URL}/?dates=1&plan=${id}`], after: "Meet at the place, tap \"I'm here\" when you arrive, and share your plan with a friend. Never send money to someone you're meeting.",
+      cal: calendarLinks({ title: `Date: ${x.title}`, start, place, details: `${APP_URL}/?dates=1&plan=${id}` }) });
+  }
+  return { message: "It's a date! You'll both get a reminder the day before." };
+});
+
+/** Messages between the two people, once someone is picked. Money and private-place talk is blocked. */
+exports.planSay = onCall(async req => {
+  const uid = requireUser(req);
+  const id = str(req.data?.planId, 64), text = str(req.data?.text, 500);
+  if (!text) fail("invalid-argument", "Type a message.");
+  const x = (await plRef(id).get()).data();
+  if (!x || ![x.creatorUid, x.guestUid].includes(uid) || !["matched", "confirmed"].includes(x.status)) fail("permission-denied", "Messages open once someone is picked.");
+  const bad = planTextOk(text, "messages");
+  if (bad) { await planFlag(uid, "chat", text, id); fail("invalid-argument", bad); }
+  const me = await whisperProfile(uid);
+  await rtdb.ref(`planChat/${id}/msgs`).push({ uid, name: me.name, text, ts: Date.now() });
+  const other = uid === x.creatorUid ? x.guestUid : x.creatorUid;
+  await push(other, `${me.name}`, text.slice(0, 120), `${APP_URL}/?dates=1&plan=${id}`);
+  return { ok: true };
+});
+
+/** Strike + notice when someone backs out late. */
+async function lateStrike(uid, s, title) {
+  const broke = await addStrike(uid, s, "Late cancel (Plan a Date)");
+  await push(uid, "That counts as a strike", `You called off ${title} less than ${PLAN_LATE_HOURS} hours before.${broke ? ` You're on a ${s.suspensionDays}-day break from dates.` : " Two strikes means a short break from dates."}`);
+}
+
+/** Creator calls it off. More than 24 hours ahead: the fee comes back as credit. */
+exports.cancelPlan = onCall({ secrets: [GMAIL_PASS] }, async req => {
+  const uid = requireUser(req);
+  const s = await getSettings();
+  const id = str(req.data?.planId, 64);
+  let x;
+  await db.runTransaction(async tx => {
+    x = (await tx.get(plRef(id))).data();
+    if (!x || x.creatorUid !== uid) fail("permission-denied", "Not your date.");
+    if (!["draft", "live", "matched", "confirmed"].includes(x.status)) fail("failed-precondition", "This date is already over.");
+    tx.update(plRef(id), { status: "canceled", canceledBy: uid, canceledAt: nowTs() });
+  });
+  const start = ms(x.startsAt), early = start - Date.now() > PLAN_LATE_HOURS * 3600000;
+  await closePlanRequests(id, x, "canceled");
+  await rtdb.ref(`planChat/${id}`).set(null);
+  if (x.guestUid) {
+    await prRef(id, x.guestUid).update({ status: "canceled" }).catch(() => {});
+    await push(x.guestUid, "Your date was called off", `${x.creatorName} canceled ${x.title}. Sorry! Plenty more dates near you.`, `${APP_URL}/?dates=1`);
+  }
+  if (x.status === "draft") return { message: "Deleted." };
+  if (early) { const back = await refundPlanFee(id, x, "You called off a date plan early"); return { message: back ? `Called off. Your ${fmtMoney(back)} is back as Whisper+Me credit.` : "Called off." }; }
+  if (x.status === "confirmed") await lateStrike(uid, s, x.title);
+  return { message: x.status === "confirmed" ? "Called off. It was less than a day away, so it counts as a strike and the fee isn't returned." : "Called off. It was less than a day away, so the fee isn't returned." };
+});
+async function refundPlanFee(id, x, note) {
+  const done = await db.runTransaction(async tx => {
+    const cur = (await tx.get(plRef(id))).data();
+    if (!cur || cur.feeReturned || !(cur.cardPaid || cur.paidWith === "credit")) return false;
+    tx.update(plRef(id), { feeReturned: true });
+    return true;
+  });
+  if (!done) return 0;
+  const sources = x.paidWith === "credit" ? (x.creditFrom || []) : [{ pi: x.pi, amount: x.cardPaid || x.fee }];
+  return addCredit(x.creatorUid, sources.map(z => ({ pi: z.pi || null, amount: z.amount })), note);
+}
+
+/** The person who was picked backs out (or takes back a request). */
+exports.withdrawPlan = onCall(async req => {
+  const uid = requireUser(req);
+  const s = await getSettings();
+  const id = str(req.data?.planId, 64);
+  const rref = prRef(id, uid), r = (await rref.get()).data();
+  if (!r) fail("not-found", "You didn't ask for this one.");
+  if (r.status === "pending") {
+    await rref.update({ status: "withdrawn", answeredAt: nowTs() });
+    await plRef(id).update({ requests: FieldValue.increment(-1) });
+    return { message: "Taken back." };
+  }
+  let x;
+  await db.runTransaction(async tx => {
+    x = (await tx.get(plRef(id))).data();
+    if (!x || x.guestUid !== uid || !["matched", "confirmed"].includes(x.status)) fail("failed-precondition", "There's nothing to back out of.");
+    const reopen = ms(x.startsAt) > Date.now() + 6 * 3600000;
+    tx.update(plRef(id), reopen ? { status: "live", guestUid: null, guestName: null, guestPhoto: null, confirmBy: null } : { status: "canceled", canceledBy: uid, canceledAt: nowTs() });
+    tx.update(rref, { status: "withdrawn", answeredAt: nowTs() });
+  });
+  await rtdb.ref(`planChat/${id}`).set(null);
+  const late = x.status === "confirmed" && ms(x.startsAt) - Date.now() < PLAN_LATE_HOURS * 3600000;
+  if (late) await lateStrike(uid, s, x.title);
+  const reopened = ms(x.startsAt) > Date.now() + 6 * 3600000;
+  if (!reopened) await refundPlanFee(id, x, "Your date canceled on you, so your fee is back");
+  await push(x.creatorUid, "Your date backed out", reopened ? `${x.guestName} can't make ${x.title}. It's open again: pick someone else from your requests.` : `${x.guestName} can't make ${x.title}. Sorry! Your fee is back as credit.`, `${APP_URL}/?dates=1&plan=${id}`);
+  return { message: late ? "Okay. It was less than a day away, so it counts as a strike." : "Okay, we let them know." };
+});
+
+/** "I'm here": the phone has to be at the place (when we know where it is). */
+exports.planHere = onCall(async req => {
+  const uid = requireUser(req);
+  const id = str(req.data?.planId, 64);
+  const x = (await plRef(id).get()).data();
+  if (!x || x.status !== "confirmed" || ![x.creatorUid, x.guestUid].includes(uid)) fail("failed-precondition", "This date isn't on.");
+  const start = ms(x.startsAt);
+  if (Date.now() < start - 3600000) fail("failed-precondition", `Check-in opens an hour before (${fmtWhen(start - 3600000, x.tz)}).`);
+  if (Date.now() > start + 3 * 3600000) fail("failed-precondition", "Check-in for this one has closed.");
+  const v = ((await plPrivate(id).get()).data() || {}).venue || {};
+  const lat = Number(req.data?.lat), lng = Number(req.data?.lng);
+  if (v.lat && v.lon) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) fail("failed-precondition", "Turn on location so we can see you're at the place.");
+    const km = kmBetween(lat, lng, v.lat, v.lon);
+    if (km > HERE_RADIUS_KM) fail("failed-precondition", `You don't seem to be at ${v.name || x.venueName} yet (${(km * 0.621).toFixed(1)} miles away). Try again when you get there.`);
+  }
+  const key = uid === x.creatorUid ? "creatorHereAt" : "guestHereAt";
+  if (!x[key]) await plRef(id).update({ [key]: Date.now() });
+  const other = uid === x.creatorUid ? x.guestUid : x.creatorUid, myName = uid === x.creatorUid ? x.creatorName : x.guestName;
+  const both = !!(x.creatorHereAt || key === "creatorHereAt") && !!(x.guestHereAt || key === "guestHereAt");
+  await push(other, both ? "You're both here 📍" : `${myName} is here`, both ? `Enjoy ${x.title}!` : `${myName} just checked in at ${x.venueName}.`);
+  return { both, message: both ? "You're both here. Have fun!" : "You're checked in. We let them know." };
+});
+
+/** Everything for the 📍 Plan a Date screen: plans I made (with who's asking) and ones I asked for. */
+exports.myPlans = onCall(async req => {
+  const uid = requireUser(req);
+  const [mine, asked] = await Promise.all([
+    db.collection("plans").where("creatorUid", "==", uid).limit(40).get(),
+    db.collection("planRequests").where("uid", "==", uid).limit(60).get()
+  ]);
+  const now = Date.now(), out = [];
+  const person = async (u) => {
+    const [m, r] = await Promise.all([getMember(u), rtdb.ref(`users/${u}/dateRating`).once("value")]);
+    const rv = r.val() || {};
+    return { datesDone: (m && m.datesDone) || 0, noShows: (m && m.noShows) || 0, strikes: (m && m.strikes) || 0, rating: rv.n ? { avg: rv.avg, n: rv.n } : null };
+  };
+  const place = async (id, x, show) => show ? (((await plPrivate(id).get()).data() || {}).venue || {}) : {};
+  for (const d of mine.docs) {
+    const x = d.data(), start = ms(x.startsAt);
+    if (["canceled", "removed"].includes(x.status) && start < now - 2 * 864e5) continue;
+    if (start < now - 14 * 864e5) continue;
+    const reqs = [];
+    if (["live", "matched"].includes(x.status)) {
+      const q = await db.collection("planRequests").where("planId", "==", d.id).where("status", "in", ["pending", "approved"]).get();
+      for (const r of q.docs) { const z = r.data(); reqs.push({ uid: z.uid, name: z.name, photo: z.photo, note: z.note, status: z.status, at: ms(z.at), ...(await person(z.uid)) }); }
+    }
+    const v = await place(d.id, x, true);
+    out.push({ id: d.id, mine: true, title: x.title, about: x.about, pays: x.pays, status: x.status, startsAt: start, tz: x.tz || "", venueName: x.venueName, city: x.city, address: v.address || "", venuePhone: v.phone || "",
+      fee: x.fee, requests: reqs, guestUid: x.guestUid || null, guestName: x.guestName || "", guestPhoto: x.guestPhoto || "", confirmBy: ms(x.confirmBy), feeReturned: !!x.feeReturned,
+      here: !!x.creatorHereAt, otherHere: !!x.guestHereAt, canRate: !!x.guestUid && ["confirmed", "completed"].includes(x.status) && rateWindow(start) });
+  }
+  for (const d of asked.docs) {
+    const r = d.data(), x = (await plRef(r.planId).get()).data();
+    if (!x) continue;
+    const start = ms(x.startsAt);
+    if (start < now - 14 * 864e5 || (["declined", "filled", "closed", "withdrawn", "passed", "canceled"].includes(r.status) && start < now)) continue;
+    const picked = x.guestUid === uid && ["matched", "confirmed", "completed"].includes(x.status);
+    const v = await place(r.planId, x, picked);
+    out.push({ id: r.planId, mine: false, title: x.title, about: x.about, pays: x.pays, status: picked ? x.status : r.status === "pending" ? "asked" : r.status, startsAt: start, tz: x.tz || "", venueName: x.venueName, city: x.city,
+      address: v.address || "", venuePhone: v.phone || "", creatorUid: x.creatorUid, creatorName: x.creatorName, creatorPhoto: x.creatorPhoto, confirmBy: picked ? ms(x.confirmBy) : 0,
+      here: picked && !!x.guestHereAt, otherHere: picked && !!x.creatorHereAt, canRate: picked && ["confirmed", "completed"].includes(x.status) && rateWindow(start) });
+  }
+  const rated = await ratingsFor(uid, "pd", out.filter(z => z.canRate).map(z => z.id));
+  out.forEach(z => { if (z.canRate) z.myStars = rated[z.id] || 0; });
+  out.sort((a, b) => a.startsAt - b.startsAt);
+  const c = (await creditRef(uid).get()).data() || {};
+  return { plans: out, credit: c.balance || 0, fee: planFeeOf(await getSettings()) };
+});
+
+/** Every 10 minutes: unpaid drafts expire, unanswered picks reopen, dates with no match return the fee, past dates settle. */
+async function planReminders(d, x, now) {
+  const start = ms(x.startsAt);
+  if (x.remindedAt || start - now > REMIND_BEFORE_MS || start < now + 3600000) return;
+  if (!(await claimReminder(d.ref))) return;
+  for (const [to, other] of [[x.creatorUid, x.guestName], [x.guestUid, x.creatorName]]) {
+    await push(to, "Tomorrow: " + x.title, `With ${other}, ${fmtWhen(start, x.tz)} at ${x.venueName}. Tap "I'm here" when you arrive.`, `${APP_URL}/?dates=1&plan=${d.id}`);
+    await sendEmail(to, `Tomorrow: ${x.title}`, { heading: "Your date is tomorrow 📍", intro: `With ${other}.`,
+      rows: [["When", fmtWhen(start, x.tz)], ["Where", `${x.venueName}, ${x.city}`], ["The bill", PAYS[x.pays]]],
+      button: ["Open the date", `${APP_URL}/?dates=1&plan=${d.id}`], after: "Can't make it? Cancel in the app now so they aren't left waiting. Meet only at the place you picked." });
+  }
+}
+async function planHousekeeping(s) {
+  const now = Date.now();
+  const drafts = await db.collection("plans").where("status", "==", "draft").limit(200).get();
+  for (const d of drafts.docs) if (ms(d.data().createdAt) < now - PLAN_PAY_MINUTES * 60000) await d.ref.update({ status: "expired" });
+  // No one picked (or picked but never confirmed) by the time it starts: the fee comes back.
+  for (const st of ["live", "matched"]) {
+    const q = await db.collection("plans").where("status", "==", st).limit(300).get();
+    for (const d of q.docs) {
+      const x = d.data(), start = ms(x.startsAt);
+      if (st === "matched" && ms(x.confirmBy) < now && start > now + 2 * 3600000) {
+        await d.ref.update({ status: "live", guestUid: null, guestName: null, guestPhoto: null, confirmBy: null });
+        await prRef(d.id, x.guestUid).update({ status: "lapsed" }).catch(() => {});
+        await rtdb.ref(`planChat/${d.id}`).set(null);
+        await push(x.creatorUid, "They didn't confirm", `${x.guestName} didn't confirm ${x.title} in time. Pick someone else from your requests.`, `${APP_URL}/?dates=1&plan=${d.id}`);
+        continue;
+      }
+      if (start > now + (st === "matched" ? 3600000 : 0)) continue;
+      const done = await db.runTransaction(async tx => { const cur = (await tx.get(d.ref)).data(); if (cur.status !== st) return false; tx.update(d.ref, { status: "expired", expiredAt: nowTs() }); return true; });
+      if (!done) continue;
+      await closePlanRequests(d.id, x, "canceled");
+      await rtdb.ref(`planChat/${d.id}`).set(null);
+      const back = await refundPlanFee(d.id, x, "Nobody was matched for your date plan");
+      await push(x.creatorUid, "No match this time", `${x.title} didn't find a match${back ? `, so your ${fmtMoney(back)} is back as credit. Try another day or place!` : "."}`, `${APP_URL}/?dates=1`);
+    }
+  }
+  const conf = await db.collection("plans").where("status", "==", "confirmed").limit(300).get();
+  for (const d of conf.docs) {
+    const x = d.data(), start = ms(x.startsAt);
+    if (start > now - SETTLE_AFTER_HOURS * 3600000) { await planReminders(d, x, now); continue; }
+    const done = await db.runTransaction(async tx => { const cur = (await tx.get(d.ref)).data(); if (cur.status !== "confirmed") return false; tx.update(d.ref, { status: "completed", completedAt: nowTs() }); return true; });
+    if (!done) continue;
+    const here = [[x.creatorUid, !!x.creatorHereAt], [x.guestUid, !!x.guestHereAt]];
+    const showed = here.filter(z => z[1]).map(z => z[0]), missed = here.filter(z => !z[1]).map(z => z[0]);
+    // Penalties only when one of them did check in (if neither did, GPS may just have failed).
+    if (showed.length === 1) {
+      const gone = missed[0], stood = showed[0];
+      await addStrike(gone, s, "No-show (Plan a Date)");
+      await db.doc(`members/${gone}`).set({ noShows: FieldValue.increment(1) }, { merge: true });
+      await push(gone, "Missed date", `You didn't check in for ${x.title}. That counts as a strike.`);
+      await creditCoins(stood, s.stoodUpRewardCoins, "Stood up (Plan a Date)", d.id);
+      if (stood === x.creatorUid) await refundPlanFee(d.id, x, "You were stood up, so your date fee is back");
+      await push(stood, "Sorry they didn't make it", `We added ${s.stoodUpRewardCoins} Whisper coin${s.stoodUpRewardCoins === 1 ? "" : "s"}${stood === x.creatorUid ? " and your fee back as credit" : ""}.`);
+    }
+    for (const u of showed) await db.doc(`members/${u}`).set({ datesDone: FieldValue.increment(1) }, { merge: true });
+    if (showed.length === 2) await askForRatings("pd", d.id, x, showed);
+    await d.ref.update({ noShows: showed.length === 1 ? missed : [] });
+  }
+  // Messages are kept 30 days after a date (for reports), then deleted.
+  const old = await db.collection("plans").where("status", "==", "completed").limit(300).get();
+  for (const d of old.docs) {
+    const x = d.data();
+    if (x.chatGone || ms(x.completedAt) > now - 30 * 864e5) continue;
+    await rtdb.ref(`planChat/${d.id}`).set(null);
+    await d.ref.update({ chatGone: true });
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
    RATINGS ⭐  after an M&G (guests rate the host) and after a Connect Me
    (everyone rates the night and the place).
    - Stars are public: a host's average shows on their profile and M&G
@@ -2529,13 +3025,31 @@ async function connectRatable(orderId, uid) {
 
 exports.rateEvent = onCall(async req => {
   const uid = requireUser(req);
-  const kind = req.data?.kind === "cm" ? "cm" : "mg";
+  const kind = ["cm", "pd"].includes(req.data?.kind) ? req.data.kind : "mg";
   const id = str(req.data?.id, 64);
   const stars = Math.round(Number(req.data?.stars));
   if (!(stars >= 1 && stars <= 5)) fail("invalid-argument", "Tap 1 to 5 stars.");
   const text = str(req.data?.text, 600);
   const rref = db.doc(`ratings/${kind}_${id}_${uid}`);
   const me = await whisperProfile(uid);
+  if (kind === "pd") {
+    // 📍 Plan a Date: each person rates the other. Stars show on their requests and plans.
+    const x = (await plRef(id).get()).data();
+    if (!x || !x.guestUid || ![x.creatorUid, x.guestUid].includes(uid) || !["confirmed", "completed"].includes(x.status) || !rateWindow(ms(x.startsAt))) fail("failed-precondition", "You can rate a date you went on, from the end of the night until 2 weeks after.");
+    const other = uid === x.creatorUid ? x.guestUid : x.creatorUid, otherName = uid === x.creatorUid ? x.guestName : x.creatorName;
+    let prev = null;
+    await db.runTransaction(async tx => {
+      prev = (await tx.get(rref)).data() || null;
+      tx.set(rref, { kind, eventId: id, title: x.title, subjectUid: other, subjectName: otherName, by: uid, byName: me.name, stars, text, hidden: false, at: nowTs() });
+    });
+    await rtdb.ref(`users/${other}/dateRating`).transaction(r => {
+      r = r || { sum: 0, n: 0 };
+      r.sum = (r.sum || 0) + stars - (prev?.stars || 0); r.n = (r.n || 0) + (prev ? 0 : 1); r.avg = Math.round((r.sum / r.n) * 10) / 10;
+      return r;
+    });
+    if (stars <= 2) for (const a of ADMIN_UIDS) await push(a, `${stars}★ date rating`, `${me.name} rated ${otherName} (${x.title})${text ? `: “${text.slice(0, 90)}”` : ""}`, `${APP_URL}/admin.html#connect`);
+    return { message: "Thanks! Ratings keep dates safe and fun." };
+  }
   if (kind === "mg") {
     const x = await meetupRatable(id, uid);
     if (!x) fail("failed-precondition", "You can rate an M&G you had a spot at, from the end of the night until 2 weeks after.");
@@ -2583,7 +3097,7 @@ async function refreshVenueRating(key) {
 async function askForRatings(kind, id, x, uids) {
   const link = `${APP_URL}/?dates=1&rate=${kind}:${id}`;
   for (const uid of [...new Set(uids)].filter(Boolean)) {
-    await push(uid, `How was ${x.title}?`, kind === "mg" ? `Tap to rate ${x.official ? "the night" : x.hostName}. It takes 5 seconds.` : "Tap to rate the night and the place. It takes 5 seconds.", link);
+    await push(uid, `How was ${x.title}?`, kind === "mg" ? `Tap to rate ${x.official ? "the night" : x.hostName}. It takes 5 seconds.` : kind === "pd" ? "Tap to rate your date. Only stars are shown; your comment stays private." : "Tap to rate the night and the place. It takes 5 seconds.", link);
   }
 }
 async function ratingsFor(uid, kind, ids) {
@@ -2855,6 +3369,7 @@ async function buildSitemap() {
     { loc: "/", freq: "daily", pri: "1.0", mod: day() },
     { loc: "/connect", freq: "daily", pri: "0.9", mod: day() },
     { loc: "/rooms/", freq: "weekly", pri: "0.8", mod: SEO_PAGES_UPDATED },
+    { loc: "/help/", freq: "monthly", pri: "0.7", mod: SEO_PAGES_UPDATED },
     ...SEO_ROOM_SLUGS.map(s => ({ loc: `/rooms/${s}/`, freq: "weekly", pri: "0.7", mod: SEO_PAGES_UPDATED })),
     { loc: "/about.html", freq: "monthly", pri: "0.6", mod: SEO_PAGES_UPDATED },
     { loc: "/terms.html", freq: "yearly", pri: "0.2", mod: SEO_PAGES_UPDATED },
@@ -2916,6 +3431,13 @@ exports.meetupOG = onRequest({ cors: false }, async (req, res) => {
   } catch (e) { logger.error("meetupOG", e.message); res.redirect(302, `${APP_URL}/?dates=1`); }
 });
 
+exports.planOG = onRequest({ cors: false }, async (req, res) => {
+  const id = (req.path.split("/").filter(Boolean)[1]) || "";
+  try {
+    res.set("Cache-Control", "public, max-age=120, s-maxage=300");
+    res.status(200).send(await share.planPage(id));
+  } catch (e) { logger.error("planOG", e.message); res.redirect(302, `${APP_URL}/?dates=1&plan=${encodeURIComponent(id.replace(/[^A-Za-z0-9_-]/g, ""))}`); }
+});
 exports.dateOG = onRequest({ cors: false }, async (req, res) => {
   try {
     const id = (req.path.split("/").filter(Boolean)[1]) || "";
@@ -2960,5 +3482,5 @@ exports.chatPrune = onSchedule({ schedule: "every 30 minutes", memory: "512MiB" 
 
 // Test hooks (only when running the local test script; never part of a deploy).
 if (process.env.DATES_TEST) {
-  module.exports.__test = { setStripe: s => { _stripe = s; }, handleStripeEvent, housekeeping, settleDate, getSettings, CATEGORIES, landingStats, chatPrune, buildSitemap, dateOGPage, meetupOGPage, share, payAllReady, ringOnce, stopRingFlow, claimDevice, onDispute, onDisputeChanged, onFraudWarning, sentMail, meetupReminders, connectReminders, emailHTML, connectInviteToken: async orderId => ((await coRef(orderId).get()).data()?.seats || []).map(x => x.token) };
+  module.exports.__test = { setStripe: s => { _stripe = s; }, handleStripeEvent, housekeeping, settleDate, getSettings, CATEGORIES, landingStats, chatPrune, buildSitemap, planHousekeeping, planTextOk, dateOGPage, meetupOGPage, share, payAllReady, ringOnce, stopRingFlow, claimDevice, onDispute, onDisputeChanged, onFraudWarning, sentMail, meetupReminders, connectReminders, emailHTML, connectInviteToken: async orderId => ((await coRef(orderId).get()).data()?.seats || []).map(x => x.token) };
 }

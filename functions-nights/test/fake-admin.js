@@ -118,6 +118,7 @@ const firestore = {
   }
 };
 
+let rtPushN = 0;
 function rtGet(path) { return path.split("/").filter(Boolean).reduce((o, k) => (o == null ? undefined : o[k]), rtdbStore); }
 function rtSet(path, v) { const parts = path.split("/").filter(Boolean); let o = rtdbStore; parts.slice(0, -1).forEach(k => { o[k] = o[k] || {}; o = o[k]; }); o[parts.at(-1)] = v; }
 const database = {
@@ -125,6 +126,7 @@ const database = {
     orderByChild: k => ({ equalTo: want => ({ once: async () => { const all = rtGet(path) || {}; const out = {}; Object.keys(all).forEach(id => { if (all[id] && all[id][k] === want) out[id] = clone(all[id]); }); return { val: () => out, exists: () => Object.keys(out).length > 0 }; } }), startAt: min => ({ once: async () => { const all = rtGet(path) || {}; const out = {}; Object.keys(all).forEach(id => { if (all[id] && Number(all[id][k]) >= min) out[id] = clone(all[id]); }); return { val: () => out, exists: () => Object.keys(out).length > 0 }; } }) }),
     once: async () => ({ val: () => clone(rtGet(path)), exists: () => rtGet(path) !== undefined }),
     set: async v => rtSet(path, v),
+    push: async v => { const k = "-k" + String(++rtPushN).padStart(6, "0"); rtSet(path + "/" + k, clone(v)); return { key: k }; },
     transaction: async fn => { const nv = fn(clone(rtGet(path))); if (nv !== undefined) rtSet(path, nv); return { committed: nv !== undefined }; },
     update: async obj => Object.entries(obj).forEach(([k, v]) => {
       const full = [path || "", k].filter(Boolean).join("/");
