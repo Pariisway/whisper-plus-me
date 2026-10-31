@@ -14,6 +14,10 @@
 ═══════════════════════════════════════════════════════════════ */
 const fs = require("fs");
 
+/* Member profile pages (/u/…) are shareable but stay out of Google by default, because
+   members expect a degree of anonymity. Set to true to let creators' profiles be found in search. */
+const INDEX_PROFILES = false;
+
 module.exports = function makeShare({ db, rtdb, APP_URL, logger, ms, fmtMoney }) {
   let _satori = null, _Resvg = null, _fonts = null;
   const lib = () => {
@@ -312,13 +316,29 @@ module.exports = function makeShare({ db, rtdb, APP_URL, logger, ms, fmtMoney })
       else png = await plainCard(story);
     } catch (e) {
       logger.error("shareImage", req.path, e.stack || e.message);
-      res.redirect(302, `${APP_URL}/og-image.png?v=4`); return;
+      res.redirect(302, `${APP_URL}/og-image.jpg?v=5`); return;
     }
     res.set("Content-Type", "image/png");
     res.set("Cache-Control", "public, max-age=600, s-maxage=1800");
     if (story) res.set("Content-Disposition", `inline; filename="whisperplusme-${kind === "m" ? "mg" : "profile"}.png"`);
     res.status(200).send(png);
   }
+
+  /* ---------- structured data so Google can show these as events ---------- */
+  function place(x) {
+    const parts = String(x.city || "").split(",").map(t => t.trim()).filter(Boolean);
+    return { "@type": "Place", name: x.venueName || "Venue", address: { "@type": "PostalAddress", addressLocality: parts[0] || "", addressRegion: parts[1] || "", addressCountry: "US" } };
+  }
+  function eventSchema(x, { url, image, name, desc, price, perWhat, organizer }) {
+    const start = new Date(x.startsAt);
+    return { "@context": "https://schema.org", "@type": "Event", name, description: desc, url, image: [image],
+      startDate: start.toISOString(), endDate: new Date(x.startsAt + 3 * 3600000).toISOString(),
+      eventStatus: "https://schema.org/EventScheduled", eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
+      location: place(x), organizer,
+      offers: { "@type": "Offer", url, price: (price / 100).toFixed(2), priceCurrency: "USD", availability: x.left ? "https://schema.org/InStock" : "https://schema.org/SoldOut", validFrom: new Date(Math.min(Date.now(), x.startsAt)).toISOString(), description: perWhat },
+      isAccessibleForFree: false, typicalAgeRange: x.idCheck ? "21-" : "18-" };
+  }
+  const SITE_ORG = { "@type": "Organization", name: "Whisper+Me", url: APP_URL };
 
   /* ---------- the page people land on: real buttons, styled like the app ---------- */
   const esc = v => String(v == null ? "" : v).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -348,16 +368,20 @@ body{background:radial-gradient(900px 500px at 10% -10%,rgba(123,47,247,.35),tra
 .facts{background:#14121f;border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:14px 16px;margin-top:14px;font-size:15px;display:flex;flex-direction:column;gap:6px}
 .host{display:flex;align-items:center;gap:10px;margin-top:14px}.host img,.host .av{width:46px;height:46px;border-radius:50%;object-fit:cover;background:linear-gradient(135deg,#7b2ff7,#00e3ae);display:flex;align-items:center;justify-content:center;font-weight:900}
 .host small{display:block;color:#b3abcf}
-.foot{text-align:center;color:#8f89a8;font-size:12.5px;margin-top:22px}.foot a{color:#b9a4ff}`;
-  function pageShell({ title, desc, url, image, body }) {
+.foot{text-align:center;color:#8f89a8;font-size:12.5px;margin-top:22px}.foot a{color:#b9a4ff}
+.more{display:flex;flex-wrap:wrap;justify-content:center;gap:8px 16px;margin-top:22px;font-size:14px}.more a{color:#c9bfff;text-decoration:none}`;
+  const ld = obj => obj ? `<script type="application/ld+json">${JSON.stringify(obj).replace(/</g, "\\u003c")}</script>` : "";
+  function pageShell({ title, desc, url, image, body, index = false, schema = null, canonical = "" }) {
     return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>${esc(title)}</title><meta name="description" content="${esc(desc)}"><link rel="canonical" href="${esc(url)}"><meta name="theme-color" content="#0b0a14">
+<title>${esc(title)}</title><meta name="description" content="${esc(desc)}"><link rel="canonical" href="${esc(canonical || url)}"><meta name="theme-color" content="#0b0a14">
+<meta name="robots" content="${index ? "index, follow, max-image-preview:large" : "noindex, follow"}">${ld(schema)}
 <link rel="icon" href="/favicon-32.png"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta property="og:type" content="website"><meta property="og:site_name" content="Whisper+Me"><meta property="og:url" content="${esc(url)}">
 <meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}">
 <meta property="og:image" content="${esc(image)}"><meta property="og:image:type" content="image/png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="${esc(title)}">
 <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${esc(title)}"><meta name="twitter:description" content="${esc(desc)}"><meta name="twitter:image" content="${esc(image)}">
 <style>${PAGE_CSS}</style></head><body><div class="w"><a class="top" href="/"><img src="/icon-192.png" alt="">WHISPER+ME</a>${body}
+<nav class="more"><a href="/connect">💞 Date ideas</a><a href="/rooms/">🎙️ Voice chat rooms</a><a href="/about.html">About</a></nav>
 <div class="foot">Real voices. Real moments. <a href="/">whisperplusme.com</a></div></div>
 <script>document.querySelectorAll("[data-share]").forEach(function(b){b.onclick=function(){var d={title:document.title,url:location.href};if(navigator.share)navigator.share(d).catch(function(){});else if(navigator.clipboard)navigator.clipboard.writeText(location.href).then(function(){b.textContent="✅ Link copied";});};});</script>
 </body></html>`;
@@ -393,7 +417,7 @@ ${mgs ? `<a class="b g" href="/?dates=1">⭐ ${mgs} M&amp;G${mgs === 1 ? "" : "s
 <button class="b s" data-share>↗ Share this profile</button></div>
 ${ig || tw || web ? `<div class="soc">${ig ? `<a href="${esc(ig)}" target="_blank" rel="noopener nofollow" aria-label="Instagram">📸</a>` : ""}${tw ? `<a href="${esc(tw)}" target="_blank" rel="noopener nofollow" aria-label="X">𝕏</a>` : ""}${web ? `<a href="${esc(web)}" target="_blank" rel="noopener nofollow" aria-label="Website">🌐</a>` : ""}</div>` : ""}
 <div class="btns" style="margin-top:14px"><a class="b s" href="/" style="min-height:48px;font-size:15px">✨ New here? Join Whisper+Me free</a></div>`;
-    return pageShell({ title: `${p.name} on Whisper+Me`, desc, url, image: `${APP_URL}/s/u/${uid}/card.png?v=${v}`, body });
+    return pageShell({ title: `${p.name} on Whisper+Me`, desc, url, image: `${APP_URL}/s/u/${uid}/card.png?v=${v}`, body, index: INDEX_PROFILES });
   }
 
   async function meetupPage(id, src) {
@@ -419,7 +443,10 @@ ${ig || tw || web ? `<div class="soc">${ig ? `<a href="${esc(ig)}" target="_blan
 <div class="btns">${m.live && m.left ? `<a class="b p" href="${esc(appUrl)}">🎟️ Get my spot · ${fmtMoney(m.price)}</a>` : `<a class="b p" href="/?dates=1">⭐ See what's coming up</a>`}
 ${m.hostUid ? `<a class="b s" href="/u/${esc(m.hostUid)}">👤 About ${esc(clip(m.hostName, 20))}</a>` : ""}
 <button class="b s" data-share>↗ Bring a friend</button></div>`;
-    return pageShell({ title, desc, url, image: `${APP_URL}/s/m/${id}/card.png?v=${v}`, body });
+    const image = `${APP_URL}/s/m/${id}/card.png?v=${v}`;
+    const schema = m.live ? eventSchema(m, { url, image, name: m.title, desc, price: m.price, perWhat: "One spot",
+      organizer: m.official ? SITE_ORG : { "@type": "Person", name: m.hostName, url: `${APP_URL}/u/${m.hostUid}` } }) : null;
+    return pageShell({ title, desc, url, image, body, index: m.live, schema });
   }
 
   /** /c/{id}: a Connect Me package, for ads and sharing. */
@@ -451,7 +478,10 @@ ${asker ? `<div class="facts" style="font-size:14px"><b>How it works</b><div>1. 
 ${asker ? `<a class="b s" href="/u/${esc(asker.uid)}">👤 See ${esc(asker.first)}'s profile</a>` : ""}
 <button class="b s" data-share>↗ ${asker ? "Share it with a friend" : "Send it to your date"}</button>
 ${asker ? "" : `<a class="b s" href="/connect" style="min-height:48px;font-size:15px">💡 More date ideas</a>`}</div>`;
-    return pageShell({ title, desc: asker ? `${asker.name} wants to go. ${desc}` : desc, url: url + (asker ? "?ask=" + asker.uid : ""), image: `${APP_URL}/s/c/${id}/card.png?v=${v}${asker ? "&ask=" + asker.uid : ""}`, body });
+    const image = `${APP_URL}/s/c/${id}/card.png?v=${v}${asker ? "&ask=" + asker.uid : ""}`;
+    const schema = c.live && !asker ? eventSchema(c, { url, image, name: c.title, desc, price: c.price, perWhat: `Package for ${c.size}`, organizer: SITE_ORG }) : null;
+    // A "take me out" link is personal: shareable, but kept out of search results.
+    return pageShell({ title, desc: asker ? `${asker.name} wants to go. ${desc}` : desc, url: url + (asker ? "?ask=" + asker.uid : ""), canonical: url, image, body, index: c.live && !asker, schema });
   }
 
   /** /connect: every Connect Me package, as one page. With ?ask=uid: "{Name} wants a night out, pick one and take them". */
@@ -460,7 +490,7 @@ ${asker ? "" : `<a class="b s" href="/connect" style="min-height:48px;font-size:
     const asker = await askerData(askUid);
     const deals = await liveConnects(12);
     const askQ = asker ? "&ask=" + encodeURIComponent(asker.uid) : "";
-    const title = asker ? `${asker.name} wants a night out 💞 Take them?` : "No date ideas? Start here · Connect Me";
+    const title = asker ? `${asker.name} wants a night out 💞 Take them?` : "Date Night Ideas Near You: Dinner, Bowling & Shows | Connect Me";
     const desc = asker ? `${asker.name} is asking to be taken out. Pick a night out on Whisper+Me, pay once, and they get the invite.`
       : "Night-out packages at real places near you: dinner, bowling, shows and more. One price, bring who you want.";
     const v = ver(deals.map(d => d.id + d.left).join(","), asker ? asker.uid : "", Math.floor(Date.now() / 36e5));
@@ -472,8 +502,10 @@ ${asker ? "" : `<a class="b s" href="/connect" style="min-height:48px;font-size:
       : `<h1 class="nm" style="margin:6px 0 4px">No date ideas?<br><span style="color:#7ff0d0">Start here.</span></h1><p style="color:#b3abcf;margin:0 0 6px">💞 Connect Me: night-out packages at real places near you. One price, bring who you want.</p>`;
     const body = head + (deals.length ? deals.map(card).join("") : `<div class="facts" style="text-align:center">New nights out are added every week. Check back soon!</div>`)
       + `<div class="btns">${asker ? `<a class="b s" href="/u/${esc(asker.uid)}">👤 See ${esc(asker.first)}'s profile</a>` : ""}<button class="b s" data-share>↗ ${asker ? "Share it with a friend" : "Share date ideas"}</button><a class="b s" href="/?dates=1${tail}" style="min-height:48px;font-size:15px">✨ Open Whisper+Me</a></div>`;
-    return pageShell({ title, desc, url: `${APP_URL}/connect${asker ? "?ask=" + asker.uid : ""}`, image: `${APP_URL}/s/l/connect/card.png?v=${v}${asker ? "&ask=" + asker.uid : ""}`, body });
+    const schema = asker ? null : { "@context": "https://schema.org", "@type": "ItemList", name: "Connect Me date ideas",
+      itemListElement: deals.map((c, i) => ({ "@type": "ListItem", position: i + 1, url: `${APP_URL}/c/${c.id}`, name: c.title })) };
+    return pageShell({ title, desc, url: `${APP_URL}/connect${asker ? "?ask=" + asker.uid : ""}`, canonical: `${APP_URL}/connect`, image: `${APP_URL}/s/l/connect/card.png?v=${v}${asker ? "&ask=" + asker.uid : ""}`, body, index: !asker, schema });
   }
 
-  return { shareImage, profilePage, meetupPage, connectPage, connectListPage, listCard, askerData, connectCard, connectData, profileCard, meetupCard, profileData, meetupData, plainCard };
+  return { liveConnects, shareImage, profilePage, meetupPage, connectPage, connectListPage, listCard, askerData, connectCard, connectData, profileCard, meetupCard, profileData, meetupData, plainCard };
 };

@@ -2,26 +2,29 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 
   <!-- ── Primary SEO ── -->
-  <title>Whisper+Me — Talk. Go Live. Meet Up.</title>
-  <meta name="description" content="Live voice rooms, open mics, 1-on-1 calls, a live map of who's around and real meet &amp; greets. Your people are already here. Free to join, open 24/7.">
-  <meta name="keywords" content="live voice chat, voice rooms, social app, talk to new people, live audio, open mic, meet people, meet and greet, meet fans, creator meetups, voice calls, make friends online">
-  <meta name="robots" content="index, follow">
+  <script>document.documentElement.className += " js";</script>
+  <title>Whisper+Me: Free Voice Chat Rooms, 1-on-1 Calls &amp; Date Night Ideas</title>
+  <meta name="description" content="Talk to real people in free live voice chat rooms, call creators 1-on-1, and meet up in real life with meet &amp; greets and date-night packages. Free, open 24/7.">
+  <meta name="robots" content="index, follow, max-image-preview:large">
   <meta name="author" content="Whisper+Me">
   <link rel="canonical" href="https://whisperplusme.com/">
+  <link rel="alternate" hreflang="en" href="https://whisperplusme.com/">
+  <link rel="alternate" hreflang="x-default" href="https://whisperplusme.com/">
 
   <!-- ── Open Graph ── -->
   <meta property="og:type"         content="website">
   <meta property="og:url"          content="https://whisperplusme.com/">
   <meta property="og:title"        content="Whisper+Me — Talk. Go Live. Meet Up.">
-  <meta property="og:description"  content="Live voice rooms, open mics, 1-on-1 calls, a live map of who's around and real meet &amp; greets. Your people are already here. Free to join, open 24/7.">
+  <meta property="og:description"  content="Talk to real people in free live voice chat rooms, call creators 1-on-1, and meet up in real life with meet &amp; greets and date-night packages. Free, open 24/7.">
   <meta property="fb:app_id"       content="1751576569186397">
-  <meta property="og:image"        content="https://whisperplusme.com/og-image.png?v=4">
+  <meta property="og:image"        content="https://whisperplusme.com/og-image.jpg?v=5">
+  <meta property="og:image:type"   content="image/jpeg">
   <meta property="og:image:width"  content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt"    content="Whisper+Me — Talk. Go live. Meet up.">
+  <meta property="og:image:alt"    content="Whisper+Me: real voices, no judgment. Someone is always here to listen.">
   <meta property="og:site_name"    content="Whisper+Me">
   <meta property="og:locale"       content="en_US">
 
@@ -29,9 +32,9 @@
   <meta name="twitter:card"        content="summary_large_image">
   <meta name="twitter:site"        content="@WhisperPlusMe">
   <meta name="twitter:title"       content="Whisper+Me — Talk. Go Live. Meet Up.">
-  <meta name="twitter:description" content="Live voice rooms, 1-on-1 calls and real meet &amp; greets. Your people are already here.">
-  <meta name="twitter:image"       content="https://whisperplusme.com/og-image.png?v=4">
-  <meta name="twitter:image:alt"   content="Whisper+Me — Talk. Go live. Meet up.">
+  <meta name="twitter:description" content="Free live voice chat rooms, 1-on-1 calls and real meet-ups. Your people are already here.">
+  <meta name="twitter:image"       content="https://whisperplusme.com/og-image.jpg?v=5">
+  <meta name="twitter:image:alt"   content="Whisper+Me: real voices, no judgment.">
 
   <!-- ── Favicon ── -->
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
@@ -49,42 +52,46 @@
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
-    "@type": "WebApplication",
-    "name": "Whisper+Me",
-    "url": "https://whisperplusme.com/",
-    "description": "A live social app: voice rooms, open mics, 1-on-1 calls, a live map and date-night tickets. Open 24/7.",
-    "sameAs": ["https://whisperplusme.com"],
-    "applicationCategory": "SocialNetworkingApplication",
-    "operatingSystem": "Any",
-    "browserRequirements": "Requires JavaScript. Works in Chrome, Safari, Firefox, Edge.",
-    "screenshot": "https://whisperplusme.com/og-image.png?v=4",
-    "featureList": "Live voice rooms, Open mics, 1-on-1 voice calls, Live map, Date-night tickets, Creator earnings",
-    "offers": {
-      "@type": "Offer",
-      "price": "0",
-      "priceCurrency": "USD",
-      "description": "Free to join."
-    },
-    "audience": {
-      "@type": "Audience",
-      "audienceType": "Adults 18+ who want to talk, go live and meet new people"
-    },
-    "creator": {
-      "@type": "Person",
-      "name": "Paris Wade"
-    },
-    "publisher": {
-      "@type": "Organization",
-      "name": "Whisper+Me",
-      "url": "https://whisperplusme.com/"
-    }
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": "https://whisperplusme.com/#org",
+        "name": "Whisper+Me",
+        "alternateName": "WhisperPlusMe",
+        "url": "https://whisperplusme.com/",
+        "logo": { "@type": "ImageObject", "url": "https://whisperplusme.com/icon-512.png", "width": 512, "height": 512 },
+        "email": "whisper.me.support@gmail.com",
+        "founder": { "@type": "Person", "name": "Paris Wade" }
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://whisperplusme.com/#website",
+        "url": "https://whisperplusme.com/",
+        "name": "Whisper+Me",
+        "alternateName": ["WhisperPlusMe", "Whisper Plus Me"],
+        "publisher": { "@id": "https://whisperplusme.com/#org" },
+        "inLanguage": "en"
+      },
+      {
+        "@type": "WebApplication",
+        "name": "Whisper+Me",
+        "url": "https://whisperplusme.com/",
+        "description": "Free live voice chat rooms, 1-on-1 calls with creators, open mics, a live map, M&G meet & greets and Connect Me date-night packages. Open 24/7.",
+        "applicationCategory": "SocialNetworkingApplication",
+        "operatingSystem": "Any (web browser)",
+        "browserRequirements": "Requires JavaScript. Works in Chrome, Safari, Firefox and Edge.",
+        "screenshot": "https://whisperplusme.com/og-image.jpg?v=5",
+        "featureList": ["Live voice chat rooms", "Open mic", "1-on-1 voice calls", "Live map", "M&G meet and greets", "Connect Me date-night packages", "Creator earnings"],
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD", "description": "Free to join." },
+        "audience": { "@type": "PeopleAudience", "suggestedMinAge": 18 },
+        "publisher": { "@id": "https://whisperplusme.com/#org" }
+      }
+    ]
   }
   </script>
 
   <!-- ── Additional SEO ── -->
-  <meta name="facebook-domain-verification" content="1751576569186397">
   <meta name="google-adsense-account" content="ca-pub-1184595877548269">
-  <link rel="alternate" hreflang="en" href="https://whisperplusme.com/">
 
   <!-- ── Google Analytics 4 — Original property ── -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-3FZCXS1T84"></script>
@@ -164,6 +171,34 @@
 
 <!-- MAIN APP: all screens rendered here by app.js -->
 <main id="app" role="main"></main>
+
+<!-- What Whisper+Me is, as plain HTML: shown to browsers and crawlers that don't run JavaScript.
+     The app replaces it with the live landing page as soon as it starts. -->
+<section id="home-static">
+  <h1>Whisper+Me: free voice chat rooms, 1-on-1 calls and real meet-ups</h1>
+  <p>Whisper+Me is a live social app that runs in your browser. Drop into a voice chat room and talk (or just listen), take the open mic, call creators 1-on-1, and meet people in real life at public places. It's free to join and open 24/7. 18+.</p>
+  <h2>Voice chat rooms</h2>
+  <ul>
+    <li><a href="/rooms/general-voice-chat/">General</a>: talk to new people, any time</li>
+    <li><a href="/rooms/vent-room/">Vent &amp; Release</a>: get it off your chest, anonymously</li>
+    <li><a href="/rooms/anxiety-support-chat/">Anxiety &amp; Stress</a> and <a href="/rooms/mental-health-chat/">Mental Health</a>: peer support from people who get it</li>
+    <li><a href="/rooms/night-owls-chat/">Night Owls</a>: for anyone awake at 3am</li>
+    <li><a href="/rooms/grief-support-chat/">Grief &amp; Loss</a>: talk about the person you miss</li>
+    <li><a href="/rooms/open-mic/">Live Voices</a>: an online open mic</li>
+    <li><a href="/rooms/lgbtq-safe-space/">LGBTQ+ Safe Space</a>, <a href="/rooms/astrology-chat/">Astrology</a>, <a href="/rooms/tarot-reading-chat/">Tarot</a> and <a href="/rooms/">more rooms</a></li>
+  </ul>
+  <h2>1-on-1 calls</h2>
+  <p>Call members and creators privately. Creators set their own price and earn $2 for every coin spent on their calls and rooms.</p>
+  <h2>Meet up in real life</h2>
+  <p><b>M&amp;G meet &amp; greets</b> let you meet hosts and new people at real, public venues. <b><a href="/connect">Connect Me</a></b> has ready-made date-night packages (dinner, bowling, shows and more) at one price for 2 or 4. No date ideas? <a href="/connect">Start here</a>.</p>
+  <p><a href="/">Open Whisper+Me</a> · <a href="/about.html">About</a> · <a href="/terms.html">Terms</a> · <a href="/privacy.html">Privacy</a></p>
+</section>
+<style>
+  #home-static{max-width:760px;margin:0 auto;padding:24px 18px 40px;color:#e9e4fb;font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;text-align:left}
+  #home-static h1{font-size:30px;line-height:1.15;margin:0 0 12px}#home-static h2{font-size:20px;margin:22px 0 8px}#home-static a{color:#7ff0d0}
+  .js #home-static{display:none}
+</style>
+
 
 <!-- PROFILE MODAL: outside #app so it overlays everything -->
 <div id="profileModal"
@@ -401,26 +436,13 @@ function showRoomPopup(data){
 function showAdminToast(title, body){
   var t = document.createElement('div');
   t.style.cssText = 'position:fixed;top:20px;right:20px;z-index:99999;background:linear-gradient(90deg,#7b2ff7,#00e3ae);color:#fff;padding:14px 20px;border-radius:14px;font-weight:700;font-size:14px;box-shadow:0 8px 32px rgba(0,0,0,0.4);max-width:300px;';
-  t.innerHTML = '<div style="font-size:15px">' + title + '</div><div style="font-weight:400;font-size:12px;margin-top:4px">' + body + '</div>';
+  var a = document.createElement('div'); a.style.fontSize = '15px'; a.textContent = title;
+  var b = document.createElement('div'); b.style.cssText = 'font-weight:400;font-size:12px;margin-top:4px'; b.textContent = body;
+  t.appendChild(a); t.appendChild(b);
   document.body.appendChild(t);
   setTimeout(function(){ t.remove(); }, 6000);
 }
 </script>
-
-<!-- SEO content for Google crawler -->
-<div id="seo-content" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;" aria-hidden="true">
-  <h2>Whisper+Me — Talk. Go Live. Meet Up.</h2>
-  <p>Whisper+Me is a live social app. Jump into voice rooms, take the open mic, call people 1-on-1, see who's around on the live map and book real meet &amp; greets together.</p>
-  <h2>What you can do</h2>
-  <ul>
-    <li>Live voice rooms — drop in and talk, any time</li>
-    <li>Open mic — go live and build your audience</li>
-    <li>1-on-1 calls — set your price and earn from your calls</li>
-    <li>Live map — see who's online near you</li>
-    <li>Meet &amp; greets — meet creators and new people in person at real places</li>
-  </ul>
-  <p>Free to join. 18+. Open 24/7 at WhisperPlusMe.com.</p>
-</div>
 
 </body>
 </html>

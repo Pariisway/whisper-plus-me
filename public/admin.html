@@ -1326,7 +1326,7 @@ function sbRender() {
   const shade = `<div style="position:absolute;inset:0;background:rgba(8,8,18,${st.overlay == null ? .5 : st.overlay})"></div>`;
   const fake = `<div style="position:absolute;left:50%;top:12%;transform:translateX(-50%);width:34%;height:76%;border-radius:18px;background:#0b0b16;border:2px solid #2a2540"></div><div style="position:absolute;left:0;right:0;top:0;height:9%;background:rgba(5,5,5,.9);color:#e6d6ff;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center">Whisper+Me</div>`;
   let bg;
-  if (m === "default") bg = `<div style="position:absolute;inset:0;background:linear-gradient(rgba(14,14,28,.55),rgba(14,14,28,.7)),url('/bbg.png') center/cover"></div>`;
+  if (m === "default") bg = `<div style="position:absolute;inset:0;background:linear-gradient(rgba(14,14,28,.55),rgba(14,14,28,.7)),url('/bbg.jpg') center/cover"></div>`;
   else if (m === "image" && st.image) bg = `<img src="${h(st.image)}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover">` + shade;
   else if (m === "video" && st.video) bg = `<video src="${h(st.video)}" autoplay muted loop playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>` + shade;
   else if (m === "color") bg = `<div style="position:absolute;inset:0;background:${st.gradient !== false ? `radial-gradient(120% 80% at 15% 10%,${h(st.color2 || "#3a1170")} 0%,transparent 60%),` : ""}${h(st.color || "#0e0e1c")}"></div>`;
@@ -1567,7 +1567,7 @@ const DEFAULT_ROOMS = [
   { id: "sugar", emoji: "🍬", label: "Sugar", desc: "18+ · Sweet arrangements", order: 12 },
   { id: "lgbt_safe", emoji: "🏳️‍🌈", label: "LGBTQ+ Safe Space", desc: "You belong here, always", order: 13 },
   { id: "lgbt_chat", emoji: "💜", label: "Queer Connect", desc: "LGBTQ+ community & friends", order: 14 },
-  { id: "lgbt_youth", emoji: "🌈", label: "Rainbow Youth", desc: "Young LGBTQ+ voices welcome", order: 15 },
+  { id: "lgbt_youth", emoji: "🌈", label: "Rainbow 18–25", desc: "18+ · LGBTQ+ young adults", order: 15 },
   { id: "psychics", emoji: "🔮", label: "Psychic Circle", desc: "Readings, insights & intuition", order: 16 },
   { id: "astrology", emoji: "⭐", label: "Astrology Lounge", desc: "Charts, signs & cosmic energy", order: 17 },
   { id: "tarot", emoji: "🃏", label: "Tarot & Palm Reading", desc: "Cards, palms & divination", order: 18 },

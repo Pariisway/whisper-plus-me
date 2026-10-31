@@ -2821,7 +2821,7 @@ async function dateOGPage(ticketId) {
   const desc = !t ? "Book dinner, concerts, movies and more with someone new. Split it or treat them."
     : live ? `${when}${v.city ? " · " + v.city : ""}. For ${t.size}: ${fmtMoney(t.price)}, or ${each} each if you split it. ${(t.items || []).slice(0, 2).join(", ")}.`
     : `This one's no longer available. See what else is on at Whisper+Me M&G.`;
-  const img = (t && t.imageURL) || `${APP_URL}/og-image.png?v=4`;
+  const img = (t && t.imageURL) || `${APP_URL}/og-image.jpg?v=5`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${htmlEsc(title)} · Whisper+Me M&G</title>
 <meta name="description" content="${htmlEsc(desc)}">
@@ -2840,6 +2840,46 @@ async function dateOGPage(ticketId) {
 const share = require("./share")({ db, rtdb, APP_URL, logger, ms, fmtMoney });
 async function meetupOGPage(meetupId) { return share.meetupPage(meetupId); }
 exports.shareImage = onRequest({ cors: false, memory: "1GiB", cpu: 1, concurrency: 8, timeoutSeconds: 30 }, (req, res) => share.shareImage(req, res));
+
+/* ═══════════════════════════════════════════════════════════════
+   SITEMAP (/sitemap.xml) for Google and Bing: the fixed pages, every topic
+   room page, and every M&G and Connect Me night out that's on sale right now,
+   so new ones show up in search on their own. Rebuilt at most every 30 min.
+═══════════════════════════════════════════════════════════════ */
+const SEO_ROOM_SLUGS = ["general-voice-chat", "open-mic", "meet-new-people", "night-owls-chat", "vent-room", "anxiety-support-chat", "grief-support-chat",
+  "mental-health-chat", "lgbtq-safe-space", "queer-connect", "creators-lounge", "psychic-chat", "astrology-chat", "tarot-reading-chat", "herbal-remedies-chat"];
+const SEO_PAGES_UPDATED = "2026-10-31";
+async function buildSitemap() {
+  const day = t => new Date(t || Date.now()).toISOString().slice(0, 10);
+  const urls = [
+    { loc: "/", freq: "daily", pri: "1.0", mod: day() },
+    { loc: "/connect", freq: "daily", pri: "0.9", mod: day() },
+    { loc: "/rooms/", freq: "weekly", pri: "0.8", mod: SEO_PAGES_UPDATED },
+    ...SEO_ROOM_SLUGS.map(s => ({ loc: `/rooms/${s}/`, freq: "weekly", pri: "0.7", mod: SEO_PAGES_UPDATED })),
+    { loc: "/about.html", freq: "monthly", pri: "0.6", mod: SEO_PAGES_UPDATED },
+    { loc: "/terms.html", freq: "yearly", pri: "0.2", mod: SEO_PAGES_UPDATED },
+    { loc: "/privacy.html", freq: "yearly", pri: "0.2", mod: SEO_PAGES_UPDATED }
+  ];
+  const now = Date.now();
+  try {
+    const q = await db.collection("meetups").where("status", "==", "live").limit(500).get();
+    q.docs.forEach(d => { const x = d.data(); if (!x.hidden && ms(x.startsAt) > now) urls.push({ loc: `/m/${d.id}`, freq: "daily", pri: "0.8", mod: day(ms(x.updatedAt) || ms(x.approvedAt) || ms(x.createdAt)) }); });
+  } catch (e) { logger.warn("sitemap meetups", e.message); }
+  try {
+    (await share.liveConnects(200)).forEach(c => urls.push({ loc: `/c/${c.id}`, freq: "daily", pri: "0.8", mod: day() }));
+  } catch (e) { logger.warn("sitemap connects", e.message); }
+  const x = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`
+    + urls.map(u => `  <url><loc>${x(APP_URL + u.loc)}</loc><lastmod>${u.mod}</lastmod><changefreq>${u.freq}</changefreq><priority>${u.pri}</priority></url>`).join("\n")
+    + `\n</urlset>\n`;
+}
+exports.sitemap = onRequest({ cors: false }, async (req, res) => {
+  try {
+    res.set("Content-Type", "application/xml; charset=utf-8");
+    res.set("Cache-Control", "public, max-age=900, s-maxage=1800");
+    res.status(200).send(await buildSitemap());
+  } catch (e) { logger.error("sitemap", e.message); res.status(500).send("<?xml version=\"1.0\"?><urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"/>"); }
+});
 exports.dealPage = onRequest({ cors: false }, async (req, res) => {
   const parts = req.path.split("/").filter(Boolean);
   const id = parts[0] === "c" ? (parts[1] || "") : ""; // /c/{id} = one package, /connect = all of them
@@ -2914,5 +2954,5 @@ exports.chatPrune = onSchedule({ schedule: "every 30 minutes", memory: "512MiB" 
 
 // Test hooks (only when running the local test script; never part of a deploy).
 if (process.env.DATES_TEST) {
-  module.exports.__test = { setStripe: s => { _stripe = s; }, handleStripeEvent, housekeeping, settleDate, getSettings, CATEGORIES, landingStats, chatPrune, dateOGPage, meetupOGPage, share, payAllReady, ringOnce, stopRingFlow, claimDevice, onDispute, onDisputeChanged, onFraudWarning, sentMail, meetupReminders, connectReminders, emailHTML, connectInviteToken: async orderId => ((await coRef(orderId).get()).data()?.seats || []).map(x => x.token) };
+  module.exports.__test = { setStripe: s => { _stripe = s; }, handleStripeEvent, housekeeping, settleDate, getSettings, CATEGORIES, landingStats, chatPrune, buildSitemap, dateOGPage, meetupOGPage, share, payAllReady, ringOnce, stopRingFlow, claimDevice, onDispute, onDisputeChanged, onFraudWarning, sentMail, meetupReminders, connectReminders, emailHTML, connectInviteToken: async orderId => ((await coRef(orderId).get()).data()?.seats || []).map(x => x.token) };
 }

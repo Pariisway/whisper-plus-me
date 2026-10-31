@@ -2,5 +2,13 @@ User-agent: *
 Allow: /
 Disallow: /admin
 Disallow: /admin.html
+Disallow: /nights/
+Disallow: /api/
+Disallow: /admin-api/
+Disallow: /embed.html
+Disallow: /profile-embed.html
+Disallow: /*?*answer=
+Disallow: /*?*calls=
+Disallow: /*?*coins_success=
 
 Sitemap: https://whisperplusme.com/sitemap.xml

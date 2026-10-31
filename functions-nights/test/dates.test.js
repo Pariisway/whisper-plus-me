@@ -939,6 +939,33 @@ async function test(name, fn) {
     assert.ok((await T.share.profilePage("nobody")).includes("isn't available"));
   });
 
+  await test("Search engines: live M&Gs and Connect Me nights are events in the sitemap; profiles and personal links stay out", async () => {
+    const venue = { name: "Pinz", address: "1 Lane St", city: "St. Louis, MO", phone: "314-555-0101", source: "other" };
+    const mg = await admin({ action: "postMeetup", data: mgData({ title: "Search Night", price: 25, spots: 10, contact: {}, startsAt: Date.now() + 30 * H }) });
+    const deal = await admin({ action: "postConnect", data: { title: "Searchable dinner", category: "Dinner", items: ["Dinner"], venue, startsAt: Date.now() + 50 * H, price: 60, size: 2, quantity: 2 } });
+    const ldOf = html => JSON.parse(html.match(/<script type="application\/ld\+json">(.*?)<\/script>/)[1]);
+    const mp = await T.share.meetupPage(mg.id);
+    assert.ok(mp.includes('name="robots" content="index, follow'), "live M&G can be found in search");
+    const ev = ldOf(mp);
+    assert.deepStrictEqual([ev["@type"], ev.name, ev.offers.price, ev.offers.priceCurrency, ev.location["@type"], ev.eventAttendanceMode],
+      ["Event", "Search Night", "25.00", "USD", "Place", "https://schema.org/OfflineEventAttendanceMode"]);
+    assert.ok(ev.startDate && ev.location.address.addressLocality, "has a date and a city");
+    assert.ok(!JSON.stringify(ev).includes("1 Lane St") && !JSON.stringify(ev).includes("555-"), "private address and phone never published");
+    const cp = await T.share.connectPage(deal.id, "", "");
+    assert.ok(cp.includes('content="index, follow') && ldOf(cp).offers.price === "60.00");
+    seedPeople("seeker");
+    const ask = await T.share.connectPage(deal.id, "", "seeker");
+    assert.ok(ask.includes('content="noindex, follow"') && ask.includes(`<link rel="canonical" href="https://whisperplusme.com/c/${deal.id}">`), "take-me-out links stay out of search");
+    assert.ok((await T.share.profilePage("seeker")).includes('content="noindex, follow"'), "member profiles stay out of search");
+    assert.ok((await T.share.connectListPage("", "")).includes('"@type":"ItemList"'));
+    const sm = await T.buildSitemap();
+    assert.ok(sm.startsWith('<?xml') && sm.includes("<loc>https://whisperplusme.com/</loc>") && sm.includes("/rooms/vent-room/") && sm.includes("<loc>https://whisperplusme.com/connect</loc>"));
+    assert.ok(sm.includes(`/m/${mg.id}<`) && sm.includes(`/c/${deal.id}<`), "live events listed");
+    assert.ok(!sm.includes("/u/"), "no profiles in the sitemap");
+    await admin({ action: "hideMeetup", id: mg.id });
+    assert.ok(!(await T.buildSitemap()).includes(`/m/${mg.id}<`), "paused M&G drops out");
+  });
+
   await test("Landing counter and chat cleanup keep the site fast", async () => {
     const rt = require("firebase-admin").__rtdb;
     rt.presence = { a: { room: "general" }, b: { room: "general" }, c: { room: "x" } };

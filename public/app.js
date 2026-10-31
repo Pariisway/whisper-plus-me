@@ -272,7 +272,7 @@ var CHAT_ROOMS = [
   { id:"sugar",        label:"🍬 Sugar",              desc:"18+ · Sweet arrangements" },
   { id:"lgbt_safe",    label:"🏳️‍🌈 LGBTQ+ Safe Space", desc:"You belong here, always" },
   { id:"lgbt_chat",    label:"💜 Queer Connect",      desc:"LGBTQ+ community & friends" },
-  { id:"lgbt_youth",   label:"🌈 Rainbow Youth",      desc:"Young LGBTQ+ voices welcome" },
+  { id:"lgbt_youth",   label:"🌈 Rainbow 18–25",      desc:"18+ · LGBTQ+ young adults" },
   { id:"psychics",     label:"🔮 Psychic Circle",      desc:"Readings, insights & intuition" },
   { id:"astrology",    label:"⭐ Astrology Lounge",    desc:"Charts, signs & cosmic energy" },
   { id:"tarot",        label:"🃏 Tarot & Palm Reading", desc:"Cards, palms & divination" },

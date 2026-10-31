@@ -78,6 +78,14 @@ body.lp2-on{background:#0b0b16}\
 .lp2-guest{align-self:center;background:none;border:0;color:rgba(255,255,255,.85);font-weight:700;font-size:15px;cursor:pointer;padding:8px}\
 .lp2-guest:hover{color:#fff}\
 .lp2-chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}\
+.lp2-chips a{color:#fff;text-decoration:none;background:rgba(123,47,247,.35);border:1px solid rgba(185,140,255,.45);border-radius:999px;padding:7px 12px;font-size:13px;font-weight:700;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}\
+.lp2-more{position:relative;max-width:760px;width:100%;margin:26px auto 6px;padding:20px 16px;border-radius:22px;background:rgba(10,10,22,.6);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);text-align:center}\
+.lp2-more h2{margin:0 0 4px;font-size:22px;font-weight:900}.lp2-more p{margin:0 0 14px;color:rgba(255,255,255,.75);font-size:14.5px}\
+.lp2-links{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:14px}\
+.lp2-links a{color:#fff;text-decoration:none;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);border-radius:999px;padding:8px 13px;font-size:13.5px;font-weight:600}\
+.lp2-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;text-align:left}\
+.lp2-tiles a{display:block;text-decoration:none;color:#fff;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:12px 14px}\
+.lp2-tiles b{display:block;font-size:15px}.lp2-tiles span{display:block;font-size:13px;color:rgba(255,255,255,.7);margin-top:2px}\
 .lp2-chips span{background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:7px 12px;font-size:13px;font-weight:600;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}\
 .lp2-foot{display:flex;justify-content:center;gap:18px;flex-wrap:wrap;font-size:12.5px;padding-top:6px}\
 .lp2-foot a{color:rgba(255,255,255,.6);text-decoration:none}\
@@ -345,6 +353,20 @@ body.lp2-on{background:#0b0b16}\
       + "<p class='lp2-inv-go'>Sign up free below to get your spot 👇</p>";
   }
 
+  /* ---------- below the fold: what's here, with real links (people and search engines both use them) ---------- */
+  var ROOM_LINKS = [["general-voice-chat", "💬 General"], ["vent-room", "🫂 Vent & Release"], ["anxiety-support-chat", "🌿 Anxiety & Stress"], ["night-owls-chat", "🌙 Night Owls"],
+    ["grief-support-chat", "🕊️ Grief & Loss"], ["mental-health-chat", "💙 Mental Health"], ["open-mic", "🎙️ Open mic"], ["meet-new-people", "🤝 Meet new people"],
+    ["lgbtq-safe-space", "🏳️‍🌈 LGBTQ+ Safe Space"], ["astrology-chat", "⭐ Astrology"], ["tarot-reading-chat", "🃏 Tarot"], ["creators-lounge", "✨ Creators"]];
+  function moreHTML() {
+    return "<section class='lp2-more' aria-label='Explore Whisper+Me'>"
+      + "<h2>Find your people</h2><p>Free voice chat rooms, open 24/7. Talk, or just listen.</p>"
+      + "<div class='lp2-links'>" + ROOM_LINKS.map(function (r) { return "<a href='/rooms/" + r[0] + "/'>" + r[1] + "</a>"; }).join("") + "<a href='/rooms/'>All rooms →</a></div>"
+      + "<div class='lp2-tiles'><a href='/connect'><b>💞 No date ideas? Start here.</b><span>Dinner, bowling, shows and more. One price for 2 or 4.</span></a>"
+      + "<a href='/?dates=1'><b>⭐ Meet &amp; greets</b><span>Meet hosts and new people at real, public places.</span></a>"
+      + "<a href='/about.html'><b>🎙️ What is Whisper+Me?</b><span>Real voices, real people, no judgment.</span></a></div>"
+      + "</section>";
+  }
+
   /* ---------- markup (rendered by app.js when signed out) ---------- */
   function html() {
     return "<div class='lp2" + (fromLink() ? " lp2-fromlink" : "") + "'>"
@@ -367,8 +389,9 @@ body.lp2-on{background:#0b0b16}\
       + "<p class='lp2-terms'>18+ only. By joining you agree to the <a href='/terms.html'>Terms</a> &amp; <a href='/privacy.html'>Privacy</a>.</p>"
       + "</div>"
       + "<button class='lp2-guest' id='lp-guest-btn' onclick='enterAsGuest()'>👀 Peek inside first, no sign-up →</button>"
-      + "<div class='lp2-chips'><span>🎙️ Live rooms</span><span>📞 1-on-1 calls</span><span>🗺️ Live map</span><span>⭐ Meet & greets</span></div>"
+      + "<div class='lp2-chips'><a href='/rooms/'>🎙️ Live rooms</a><span>📞 1-on-1 calls</span><span>🗺️ Live map</span><span>⭐ Meet & greets</span><a href='/connect'>💞 Date ideas</a></div>"
       + "</main>"
+      + moreHTML()
       + "<div class='lp2-foot'><a href='/about.html'>About</a><a href='/terms.html'>Terms</a><a href='/privacy.html'>Privacy</a></div>"
       + "</div>";
   }

@@ -12,7 +12,18 @@ Branch `social-upgrade`. This rebuild turns the front door, the profile, and the
 | **Admin** (`/admin.html`) | One long page of tables, browser pop-ups | MergeChat-style layout: top emoji tabs (🏁 Start here · 📡 Live now · 👥 People · 💰 Money · 🎬 Landing page · 📢 Announce · 💬 Rooms · 🛡️ Safety · ⭐ M&G · 🧾 Activity), "What do you want to do?" tiles, a "Needs your attention" list, "At a glance" numbers, and a "How the site fits together" map. Simple/Full layout switch. Every confirmation is an in-page dialog. The activity log is saved, so it survives a refresh. |
 | **Landing page manager** (new, Admin → 🎬) | none | Upload videos or pictures (or paste links), reorder, remove, shuffle, seconds per picture, darkness slider, sound-button switch, headline and subline, phone/computer preview, then **🚀 Publish**. |
 
-## 🙋 Take me out, date ideas page, tidy repo (latest)
+## 🔎 Search engines (SEO), App Check, review fixes (latest)
+
+- **Topic room pages** `/rooms/` and `/rooms/{slug}/` (static files in `public/rooms/`, style in `public/pages.css`): one page per room (vent, anxiety, grief, night owls, open mic, LGBTQ+, astrology, tarot…) with real content, FAQ, crisis-line note on support rooms, and a "Join free" button to `/?room={id}`. Gang-stalking, 18+ and the 18–25 room have no pages.
+- **Live sitemap** `/sitemap.xml` (function `sitemap`): fixed pages, room pages, and every M&G and Connect Me on sale right now. Submit it once in Google Search Console and Bing Webmaster Tools.
+- **Event data**: live M&G (`/m/`) and Connect Me (`/c/`) pages carry schema.org Event data (date, city, price, sold out) so Google can show them as events. Private addresses never appear. Ended ones, "take me out" links and member profiles are `noindex` (profiles: flip `INDEX_PROFILES` in `share.js`).
+- **Home page**: new title/description, Organization + WebSite + WebApplication data, plain-HTML content for crawlers that don't run JavaScript (replaces the hidden text Google treats as spam), and a "Find your people" section on the landing page linking to rooms and date ideas.
+- **Share picture** `og-image.jpg` 1200×630, 119 KB (was a 2 MB PNG at the wrong size; WhatsApp skips previews over ~300 KB). `og-image.png` replaced by a 271 KB version. Background `bbg.jpg` 44 KB (was 700 KB PNG).
+- **App Check** with the reCAPTCHA Enterprise key on every page that talks to Firebase (`firebase.js`, admin, `/nights`).
+- **Fixes**: profile embed could run a script from a crafted photo link; embeds crashed where storage is blocked; push toasts showed text as HTML; zoom was locked (accessibility); "Rainbow Youth" on an 18+ site renamed "Rainbow 18–25"; About page: removed ad boxes that could never fill, "teenager" wording, and "end-to-end encrypted" claim; Terms no longer carries an old copy of the Privacy Policy; Privacy now discloses analytics, AdSense cookies, Meta and reCAPTCHA.
+- **Removed**: `diagnose.html` (old test page asking for login tokens), static `sitemap.xml`, ~140 unused style rules (old landing page; screens checked pixel-for-pixel).
+
+## 🙋 Take me out, date ideas page, tidy repo
 
 - **Take me out**: Connect Me has "🙋 Ask someone to take me out" (all packages: `/connect?ask={uid}`) and "🙋 Ask to be taken" on each package (`/c/{id}?ask={uid}`). The shared picture and page say "{Name} wants to go" with a "Take {name} out" button. Whoever buys it pays; the asker gets the other spot as an invite right away (push + email) and can Accept or "Not this time" (`declineConnect`), which opens the spot back up for the buyer.
 - **💡 Share date ideas**: `/connect` is a public "No date ideas? Start here" page listing every live package, with its own preview picture (`/s/l/connect/card.png`).

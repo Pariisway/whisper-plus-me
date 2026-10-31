@@ -8,6 +8,19 @@
     ],
     "headers": [
       {
+        "source": "**",
+        "headers": [
+          {
+            "key": "X-Content-Type-Options",
+            "value": "nosniff"
+          },
+          {
+            "key": "Referrer-Policy",
+            "value": "strict-origin-when-cross-origin"
+          }
+        ]
+      },
+      {
         "source": "/",
         "headers": [
           {
@@ -62,15 +75,6 @@
           {
             "key": "Content-Type",
             "value": "text/plain"
-          }
-        ]
-      },
-      {
-        "source": "/sitemap.xml",
-        "headers": [
-          {
-            "key": "Content-Type",
-            "value": "application/xml"
           }
         ]
       }
@@ -148,6 +152,10 @@
       {
         "source": "/api/declineCall",
         "function": "declineCall"
+      },
+      {
+        "source": "/sitemap.xml",
+        "function": "sitemap"
       },
       {
         "source": "**",

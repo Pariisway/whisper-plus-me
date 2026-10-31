@@ -12,6 +12,7 @@ Firebase (Hosting, Realtime Database, Firestore, Cloud Functions, Storage, Messa
 | `public/dates.js` | M&G and Connect Me screens |
 | `public/profile.js` | Profile screen, call log, member card, block/report |
 | `public/landing.js` | Signed-out landing page |
+| `public/rooms/` | Search-engine pages for each topic room (`/rooms/vent-room/` …), styled by `public/pages.css` |
 | `public/install.js` | "Add to Home Screen" prompt |
 | `public/firebase-messaging-sw.js` | Push alerts when the site is closed (calls ring here) |
 | `public/admin.html` | Admin dashboard (`/admin.html`) |
@@ -19,7 +20,7 @@ Firebase (Hosting, Realtime Database, Firestore, Cloud Functions, Storage, Messa
 | `functions-nights/` | Server code you deploy every time: M&G, Connect Me, payouts, call ringing, emails, chargebacks, share pictures (`share.js`). Tests in `test/`. |
 | `functions/` | Older main server code (coins, starting calls, rooms). Rarely deployed. |
 | `database.rules.json`, `firestore.rules`, `storage.rules` | Security rules |
-| `firebase.json` | Hosting, rewrites (`/u/`, `/m/`, `/c/`, `/connect`, `/s/`) and function codebases |
+| `firebase.json` | Hosting, rewrites (`/u/`, `/m/`, `/c/`, `/connect`, `/s/`, `/sitemap.xml`) and function codebases |
 | `docs/CHANGES.md` | What changed in each update, newest first |
 | `docs/DATES.md` | Notes on the older Dates / M&G design |
 

@@ -2,40 +2,25 @@
   "id": "/",
   "name": "Whisper+Me",
   "short_name": "Whisper+Me",
-  "description": "Real voices. Real moments. Live. Connect with real people through anonymous voice calls, live mic sessions, and private member rooms.",
-  "start_url": "/",
+  "description": "Live voice chat rooms, 1-on-1 calls, meet & greets and date-night packages. Talk. Go live. Meet up.",
+  "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",
   "background_color": "#0e0e1c",
-  "theme_color": "#7b2ff7",
+  "theme_color": "#0b0e23",
   "orientation": "portrait",
+  "categories": ["social", "lifestyle", "entertainment"],
+  "lang": "en-US",
   "icons": [
-    {
-      "src": "/favicon-16.png",
-      "sizes": "16x16",
-      "type": "image/png"
-    },
-    {
-      "src": "/favicon-32.png",
-      "sizes": "32x32",
-      "type": "image/png"
-    },
-    {
-      "src": "/apple-touch-icon.png",
-      "sizes": "180x180",
-      "type": "image/png"
-    },
-    {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
+    { "src": "/favicon-32.png", "sizes": "32x32", "type": "image/png" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Date ideas (Connect Me)", "short_name": "Date ideas", "url": "/connect", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Meet & greets", "short_name": "M&G", "url": "/?dates=1", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "My calls", "short_name": "Calls", "url": "/?calls=1", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
   ]
 }

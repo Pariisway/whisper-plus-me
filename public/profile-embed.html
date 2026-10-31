@@ -97,7 +97,7 @@
   function sanitize(str){
     return String(str||"")
       .replace(/&/g,"&amp;").replace(/</g,"&lt;")
-      .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+      .replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
   }
 
   function showError(msg){
@@ -109,7 +109,7 @@
     var name  = user.name  || "A Whisper+Me creator";
     var bio   = user.bio   || "";
     var price = user.price || 1;
-    var photo = user.photo || "";
+    var photo = /^https:\/\//i.test(user.photo || "") ? user.photo : "";
     var callUrl = "https://whisperplusme.com/?user=" + encodeURIComponent(uid);
 
     var html = "<div id='brand'>Whisper<span class='plus'>+</span>Me</div>";

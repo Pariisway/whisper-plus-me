@@ -138,7 +138,7 @@
     nightowls:"Night Owls", grief:"Grief & Loss", mentalhealth:"Mental Health",
     gangstalking:"Gang Stalking Help", voices:"Live Voices", connection:"Real Connection",
     creators:"Creators Lounge", spicy:"Spicy", hotdates:"Hot Dates", sugar:"Sugar",
-    lgbt_safe:"LGBTQ+ Safe Space", lgbt_chat:"Queer Connect", lgbt_youth:"Rainbow Youth",
+    lgbt_safe:"LGBTQ+ Safe Space", lgbt_chat:"Queer Connect", lgbt_youth:"Rainbow 18–25",
     psychics:"Psychic Circle", astrology:"Astrology Lounge", tarot:"Tarot & Palm Reading",
     apothecary:"The Apothecary"
   };
@@ -152,10 +152,11 @@
   }
 
   function guestName(){
-    var g = sessionStorage.getItem("wpm_guest_name");
+    var g = null;
+    try { g = sessionStorage.getItem("wpm_guest_name"); } catch(e) {}
     if(!g){
       g = "Guest" + Math.floor(1000 + Math.random()*9000);
-      sessionStorage.setItem("wpm_guest_name", g);
+      try { sessionStorage.setItem("wpm_guest_name", g); } catch(e) {}
     }
     return g;
   }
