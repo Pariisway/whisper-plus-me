@@ -559,7 +559,7 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
   <h1 class="page-title">💬 Chat rooms</h1>
   <p class="page-sub">The free rooms everyone sees on the Chat screen.</p>
   <section class="card">
-    <h2>Rooms <span class="right"><button class="btn sm" onclick="seedDefaultRooms()" data-adv>Load the 20 default rooms</button><button class="btn sm main" onclick="roomModal()">+ Add a room</button></span></h2>
+    <h2>Rooms <span class="right"><button class="btn sm" onclick="seedDefaultRooms()" data-adv>Load the 16 default rooms</button><button class="btn sm main" onclick="roomModal()">+ Add a room</button></span></h2>
     <p class="help">🔒 <b>Members only</b>: guests can read and type but not use the mic. 🌐 <b>Open mic</b>: anyone can talk.</p>
     <div id="preset-list" class="list"><div class="empty">Loading…</div></div>
   </section>
@@ -1515,13 +1515,9 @@ const SEED_MESSAGES = {
   nightowls: "Up at a weird hour? Same. Say hi. 🌙",
   grief: "However you're carrying it today, there's space for it here. 🕊️",
   mentalhealth: "No-judgment space to talk about what's actually going on. 💙",
-  gangstalking: "Looking for people who get it? Share what's on your mind. 🔍",
   voices: "This room's for talking out loud. Tap Live up top when you're ready. 🎙️",
   connection: "Want a real conversation instead of small talk? Say hello. 🤝",
   creators: "Building something? Swap ideas and support each other here. ✨",
-  spicy: "18+ space to flirt and have fun. Say hi. 🌶️",
-  hotdates: "18+ · Looking for a connection tonight? Introduce yourself. 🔥",
-  sugar: "18+ · Say what you're looking for. 🍬",
   lgbt_safe: "Your space, always. Come as you are. 🏳️‍🌈",
   lgbt_chat: "LGBTQ+ community and friends. Jump in and say hello. 💜",
   lgbt_youth: "Younger LGBTQ+ voices, connect safely. Introduce yourself. 🌈",
@@ -1558,13 +1554,9 @@ const DEFAULT_ROOMS = [
   { id: "nightowls", emoji: "🌙", label: "Night Owls", desc: "For those awake at 3am", order: 3 },
   { id: "grief", emoji: "🕊️", label: "Grief & Loss", desc: "Speak your truth, heal together", order: 4 },
   { id: "mentalhealth", emoji: "💙", label: "Mental Health", desc: "No judgment, just support", order: 5 },
-  { id: "gangstalking", emoji: "🔍", label: "Gang Stalking Help", desc: "Find support, share experiences", order: 6 },
   { id: "voices", emoji: "🎙️", label: "Live Voices", desc: "Hop on mic and be heard", order: 7 },
   { id: "connection", emoji: "🤝", label: "Real Connection", desc: "Meet genuine people", order: 8 },
   { id: "creators", emoji: "✨", label: "Creators Lounge", desc: "Build, share, inspire", order: 9 },
-  { id: "spicy", emoji: "🌶️", label: "Spicy", desc: "18+ · Hot & steamy", order: 10 },
-  { id: "hotdates", emoji: "🔥", label: "Hot Dates", desc: "18+ · Find a date tonight", order: 11 },
-  { id: "sugar", emoji: "🍬", label: "Sugar", desc: "18+ · Sweet arrangements", order: 12 },
   { id: "lgbt_safe", emoji: "🏳️‍🌈", label: "LGBTQ+ Safe Space", desc: "You belong here, always", order: 13 },
   { id: "lgbt_chat", emoji: "💜", label: "Queer Connect", desc: "LGBTQ+ community & friends", order: 14 },
   { id: "lgbt_youth", emoji: "🌈", label: "Rainbow 18–25", desc: "18+ · LGBTQ+ young adults", order: 15 },
@@ -1594,11 +1586,11 @@ function renderPresets() {
     return `<div class="item">${icon}<div class="who"><b>${h(r.label || r.id)}</b><span>${h(r.desc || "")} · #${h(r.id)}${r.builtin ? " · built-in" : ""}</span></div>
       <button class="btn sm ${mo ? "" : "teal"}" onclick="toggleMic(${j(r.id)},${mo})">${mo ? "🔒 Members only" : "🌐 Open mic"}</button>
       <div class="acts">${r.builtin ? `<button class="btn sm" onclick="roomModal(${j(r.id)})">Customize</button>` : `<button class="btn sm" onclick="roomModal(${j(r.id)})">Edit</button>`}<button class="btn sm red" onclick="delRoom(${j(r.id)})">Hide</button></div></div>`;
-  }).join("") : `<div class="empty">No rooms. Tap “Load the 20 default rooms”.</div>`;
+  }).join("") : `<div class="empty">No rooms. Tap “Load the 16 default rooms”.</div>`;
 }
 async function toggleMic(id, wasMemberOnly) { await safely(() => db.ref("roomMemberOnly/" + id).set(!wasMemberOnly), `#${id} mic is now ${wasMemberOnly ? "open to everyone" : "members only"}`); S.memberOnly[id] = !wasMemberOnly; renderPresets(); }
 async function seedDefaultRooms() {
-  if (!await dialog({ title: "Load the 20 default rooms?", body: "Rooms you've already customized stay as they are. Hidden default rooms come back.", ok: "Load them" })) return;
+  if (!await dialog({ title: "Load the 16 default rooms?", body: "Rooms you've already customized stay as they are. Hidden default rooms come back.", ok: "Load them" })) return;
   let added = 0;
   for (const r of DEFAULT_ROOMS) {
     try { await db.ref("hiddenPresetRooms/" + r.id).remove(); if ((await db.ref("presetRooms/" + r.id).once("value")).exists()) continue; await db.ref("presetRooms/" + r.id).set(Object.assign({}, r, { photo: "", displayMode: "emoji", createdAt: Date.now() })); added++; }
@@ -1644,7 +1636,7 @@ async function saveRoom() {
   if (ok !== undefined) { closeModal(); loadPresets(); } else { btn.disabled = false; btn.textContent = "Save room"; }
 }
 async function delRoom(id) {
-  if (!await dialog({ title: "Hide #" + id + "?", body: "It disappears from the Chat screen for everyone. Old messages are kept. You can bring default rooms back with “Load the 20 default rooms”.", ok: "Hide room", danger: true })) return;
+  if (!await dialog({ title: "Hide #" + id + "?", body: "It disappears from the Chat screen for everyone. Old messages are kept. You can bring default rooms back with “Load the 16 default rooms”.", ok: "Hide room", danger: true })) return;
   await safely(async () => { await db.ref("presetRooms/" + id).remove(); await db.ref("hiddenPresetRooms/" + id).set(true); }, "Hid room #" + id);
   loadPresets();
 }

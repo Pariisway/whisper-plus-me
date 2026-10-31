@@ -939,7 +939,7 @@ async function test(name, fn) {
     assert.ok((await T.share.profilePage("nobody")).includes("isn't available"));
   });
 
-  await test("Search engines: live M&Gs and Connect Me nights are events in the sitemap; profiles and personal links stay out", async () => {
+  await test("Search engines: live M&Gs and Connect Me nights are events in the sitemap; real profiles findable, personal links stay out", async () => {
     const venue = { name: "Pinz", address: "1 Lane St", city: "St. Louis, MO", phone: "314-555-0101", source: "other" };
     const mg = await admin({ action: "postMeetup", data: mgData({ title: "Search Night", price: 25, spots: 10, contact: {}, startsAt: Date.now() + 30 * H }) });
     const deal = await admin({ action: "postConnect", data: { title: "Searchable dinner", category: "Dinner", items: ["Dinner"], venue, startsAt: Date.now() + 50 * H, price: 60, size: 2, quantity: 2 } });
@@ -956,12 +956,19 @@ async function test(name, fn) {
     seedPeople("seeker");
     const ask = await T.share.connectPage(deal.id, "", "seeker");
     assert.ok(ask.includes('content="noindex, follow"') && ask.includes(`<link rel="canonical" href="https://whisperplusme.com/c/${deal.id}">`), "take-me-out links stay out of search");
-    assert.ok((await T.share.profilePage("seeker")).includes('content="noindex, follow"'), "member profiles stay out of search");
+    assert.ok((await T.share.profilePage("seeker")).includes('content="noindex, follow"'), "a bare profile (no photo, no bio) stays out of search");
+    rtdb.users.seeker.bio = "Late-night talks"; rtdb.users.seeker.instagram = "seekr";
+    const prof = await T.share.profilePage("seeker");
+    assert.ok(prof.includes('content="index, follow') && ldOf(prof)["@type"] === "ProfilePage" && ldOf(prof).mainEntity.sameAs[0] === "https://instagram.com/seekr", "real profiles can be found");
+    rtdb.users.seeker.banned = true;
+    assert.ok((await T.share.profilePage("seeker")).includes("isn't available"), "banned members' pages are gone");
+    delete rtdb.users.seeker.banned;
     assert.ok((await T.share.connectListPage("", "")).includes('"@type":"ItemList"'));
     const sm = await T.buildSitemap();
     assert.ok(sm.startsWith('<?xml') && sm.includes("<loc>https://whisperplusme.com/</loc>") && sm.includes("/rooms/vent-room/") && sm.includes("<loc>https://whisperplusme.com/connect</loc>"));
     assert.ok(sm.includes(`/m/${mg.id}<`) && sm.includes(`/c/${deal.id}<`), "live events listed");
-    assert.ok(!sm.includes("/u/"), "no profiles in the sitemap");
+    assert.ok(sm.includes("/u/seeker<"), "profiles with a bio or photo are listed");
+    assert.ok(!sm.includes("/u/rando<") || rtdb.users.rando.photo || rtdb.users.rando.bio, "bare profiles are not");
     await admin({ action: "hideMeetup", id: mg.id });
     assert.ok(!(await T.buildSitemap()).includes(`/m/${mg.id}<`), "paused M&G drops out");
   });

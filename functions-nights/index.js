@@ -2843,7 +2843,7 @@ exports.shareImage = onRequest({ cors: false, memory: "1GiB", cpu: 1, concurrenc
 
 /* ═══════════════════════════════════════════════════════════════
    SITEMAP (/sitemap.xml) for Google and Bing: the fixed pages, every topic
-   room page, and every M&G and Connect Me night out that's on sale right now,
+   room page, member profiles, and every M&G and Connect Me night out on sale now,
    so new ones show up in search on their own. Rebuilt at most every 30 min.
 ═══════════════════════════════════════════════════════════════ */
 const SEO_ROOM_SLUGS = ["general-voice-chat", "open-mic", "meet-new-people", "night-owls-chat", "vent-room", "anxiety-support-chat", "grief-support-chat",
@@ -2868,6 +2868,12 @@ async function buildSitemap() {
   try {
     (await share.liveConnects(200)).forEach(c => urls.push({ loc: `/c/${c.id}`, freq: "daily", pri: "0.8", mod: day() }));
   } catch (e) { logger.warn("sitemap connects", e.message); }
+  try { // member profiles with a photo or a bio (the same ones the profile page lets search engines index)
+    const users = (await rtdb.ref("users").once("value")).val() || {};
+    Object.keys(users).filter(uid => { const u = users[uid] || {}; return u.name && !u.banned && (u.photo || u.bio) && /^[A-Za-z0-9_-]{1,128}$/.test(uid); })
+      .sort((a, b) => (Number(users[b].calls) || 0) - (Number(users[a].calls) || 0)).slice(0, 5000)
+      .forEach(uid => urls.push({ loc: `/u/${uid}`, freq: "weekly", pri: "0.5", mod: day(users[uid].lastSeen) }));
+  } catch (e) { logger.warn("sitemap profiles", e.message); }
   const x = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`
     + urls.map(u => `  <url><loc>${x(APP_URL + u.loc)}</loc><lastmod>${u.mod}</lastmod><changefreq>${u.freq}</changefreq><priority>${u.pri}</priority></url>`).join("\n")

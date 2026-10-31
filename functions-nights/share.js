@@ -14,9 +14,10 @@
 ═══════════════════════════════════════════════════════════════ */
 const fs = require("fs");
 
-/* Member profile pages (/u/…) are shareable but stay out of Google by default, because
-   members expect a degree of anonymity. Set to true to let creators' profiles be found in search. */
-const INDEX_PROFILES = false;
+/* Member profile pages (/u/…) can be found on Google, so creators get discovered and the site
+   looks established. Profiles with no photo and no bio, and banned members, are kept out.
+   Set to false to keep every profile out of search. */
+const INDEX_PROFILES = true;
 
 module.exports = function makeShare({ db, rtdb, APP_URL, logger, ms, fmtMoney }) {
   let _satori = null, _Resvg = null, _fonts = null;
@@ -100,6 +101,9 @@ module.exports = function makeShare({ db, rtdb, APP_URL, logger, ms, fmtMoney })
     height: size * 2.6, borderRadius: 999, alignItems: "center", justifyContent: "center", fontSize: size, fontWeight: 800, color: "#fff",
     ...(primary ? { backgroundImage: GRAD } : { background: "rgba(255,255,255,0.06)", border: `3px solid ${C.line}` })
   }, text);
+  const scanRow = (code, where) => h("div", { alignItems: "center", gap: 26 },
+    img(code, { width: 150, height: 150, borderRadius: 20, border: "7px solid #fff" }),
+    h("div", { flexDirection: "column", gap: 6 }, h("div", { fontSize: 34, fontWeight: 800, color: "#fff" }, "Tap the link or scan"), h("div", { fontSize: 27, color: C.muted }, where)));
   const initialCircle = (name, size) => h("div", { width: size, height: size, borderRadius: size, backgroundImage: "linear-gradient(135deg,#7b2ff7,#00e3ae)", alignItems: "center", justifyContent: "center", fontSize: size * 0.45, fontWeight: 900, color: "#fff" }, (String(name || "?").trim()[0] || "?").toUpperCase());
 
   /** The app's profile screen: photo, shade, name and chips. */
@@ -120,7 +124,7 @@ module.exports = function makeShare({ db, rtdb, APP_URL, logger, ms, fmtMoney })
   /* ---------- profile ---------- */
   async function profileData(uid) {
     const u = (await rtdb.ref(`users/${uid}`).once("value")).val();
-    if (!u) return null;
+    if (!u || u.banned) return null;
     let online = false;
     try { online = (await rtdb.ref(`presence/${uid}`).once("value")).exists(); } catch (e) { /* offline */ }
     return { uid, name: clip(u.name || "Whisper+Me member", 40), bio: clip(u.bio || "", 300), photoUrl: u.photo || "", price: Number(u.price) || 1, calls: Number(u.calls) || 0,
@@ -131,8 +135,8 @@ module.exports = function makeShare({ db, rtdb, APP_URL, logger, ms, fmtMoney })
     const pp = { ...p, photo: await dataUrl(p.photoUrl) };
     const callText = p.callsOn ? `📞  Call me · $${p.price * 3}` : "👋  Say hi on Whisper+Me";
     if (!story) {
-      return toPng(h("div", { width: 1200, height: 630, backgroundImage: BG, padding: "44px 56px", gap: 56, alignItems: "center", fontFamily: "Inter", color: C.text },
-        phoneScreen(pp, 340, 542, 1),
+      return toPng(h("div", { width: 1200, height: 630, backgroundImage: BG, padding: "26px 48px", gap: 46, alignItems: "center", fontFamily: "Inter", color: C.text },
+        phoneScreen(pp, 410, 578, 1.08),
         h("div", { flex: 1, flexDirection: "column", gap: 20 },
           brand(icon, 24),
           h("div", { fontSize: 62, fontWeight: 900, lineHeight: 1.05, color: "#fff" }, clip(p.name, 24)),
@@ -141,15 +145,11 @@ module.exports = function makeShare({ db, rtdb, APP_URL, logger, ms, fmtMoney })
           h("div", { flexDirection: "column", gap: 14, marginTop: 8 }, button(callText, 30, true), button("👤  See my profile", 26, false)))), 1200, 630);
     }
     const link = `${APP_URL}/u/${p.uid}`;
-    return toPng(h("div", { width: 1080, height: 1920, backgroundImage: BG, padding: "90px 80px 80px", flexDirection: "column", alignItems: "center", gap: 44, fontFamily: "Inter", color: C.text },
-      brand(icon, 44),
-      phoneScreen(pp, 900, 1080, 2.2),
-      h("div", { width: 900, flexDirection: "column", gap: 24 }, button(callText, 50, true), button("👤  See my profile", 42, false)),
-      h("div", { alignItems: "center", gap: 30, marginTop: 10 },
-        img(await qr(link), { width: 190, height: 190, borderRadius: 24, border: "8px solid #fff" }),
-        h("div", { flexDirection: "column", gap: 8 },
-          h("div", { fontSize: 38, fontWeight: 800, color: "#fff" }, "Tap the link or scan"),
-          h("div", { fontSize: 30, color: C.muted }, "whisperplusme.com")))), 1080, 1920);
+    return toPng(h("div", { width: 1080, height: 1920, backgroundImage: BG, padding: "56px 40px 48px", flexDirection: "column", alignItems: "center", justifyContent: "space-between", fontFamily: "Inter", color: C.text },
+      brand(icon, 40),
+      phoneScreen(pp, 1000, 1250, 2.45),
+      h("div", { width: 1000, flexDirection: "column", gap: 18 }, button(callText, 48, true), button("👤  See my profile", 38, false)),
+      scanRow(await qr(link), "whisperplusme.com")), 1080, 1920);
   }
 
   /* ---------- M&G ---------- */
@@ -185,8 +185,8 @@ module.exports = function makeShare({ db, rtdb, APP_URL, logger, ms, fmtMoney })
       h("div", { gap: 12 * (size / 24), alignItems: "center" }, h("div", { fontWeight: 900, fontSize: size * 1.4, color: "#fff" }, fmtMoney(m.price)), h("div", { color: C.muted }, "per person"),
         m.live && m.left ? chip(`${m.left} spot${m.left === 1 ? "" : "s"} left`, size * 0.8, C.gold) : null, m.idCheck ? chip("🪪 21+ ID", size * 0.8, C.gold) : null));
     if (!story) {
-      return toPng(h("div", { width: 1200, height: 630, backgroundImage: BG, padding: "44px 56px", gap: 52, alignItems: "center", fontFamily: "Inter", color: C.text },
-        poster(m, 400, 542, 1, pic),
+      return toPng(h("div", { width: 1200, height: 630, backgroundImage: BG, padding: "26px 44px", gap: 42, alignItems: "center", fontFamily: "Inter", color: C.text },
+        poster(m, 470, 578, 1.08, pic),
         h("div", { flex: 1, flexDirection: "column", gap: 20 },
           brand(icon, 22),
           h("div", { fontSize: 50, fontWeight: 900, lineHeight: 1.08, color: "#fff" }, clip(m.title, 52)),
@@ -194,14 +194,12 @@ module.exports = function makeShare({ db, rtdb, APP_URL, logger, ms, fmtMoney })
           h("div", { flexDirection: "column", gap: 12, marginTop: 6 }, button(buy, 28, true), button("↗  Bring a friend", 24, false)))), 1200, 630);
     }
     const link = `${APP_URL}/m/${m.id}`;
-    return toPng(h("div", { width: 1080, height: 1920, backgroundImage: BG, padding: "90px 80px 80px", flexDirection: "column", alignItems: "center", gap: 40, fontFamily: "Inter", color: C.text },
-      brand(icon, 44),
-      poster(m, 920, 860, 2, pic),
-      h("div", { width: 920, flexDirection: "column", gap: 26 }, host(36), facts(36)),
-      h("div", { width: 920, flexDirection: "column", gap: 22 }, button(buy, 46, true)),
-      h("div", { alignItems: "center", gap: 30, marginTop: 6 },
-        img(await qr(link), { width: 180, height: 180, borderRadius: 24, border: "8px solid #fff" }),
-        h("div", { flexDirection: "column", gap: 8 }, h("div", { fontSize: 36, fontWeight: 800, color: "#fff" }, "Tap the link or scan"), h("div", { fontSize: 28, color: C.muted }, "whisperplusme.com")))), 1080, 1920);
+    return toPng(h("div", { width: 1080, height: 1920, backgroundImage: BG, padding: "56px 40px 48px", flexDirection: "column", alignItems: "center", justifyContent: "space-between", fontFamily: "Inter", color: C.text },
+      brand(icon, 40),
+      poster(m, 1000, 1010, 2.1, pic),
+      h("div", { width: 1000, flexDirection: "column", gap: 20 }, host(36), facts(36)),
+      h("div", { width: 1000, flexDirection: "column" }, button(buy, 46, true)),
+      scanRow(await qr(link), "whisperplusme.com")), 1080, 1920);
   }
 
   /* ---------- Connect Me package (the ad link: /c/{id}) ---------- */
@@ -237,8 +235,8 @@ module.exports = function makeShare({ db, rtdb, APP_URL, logger, ms, fmtMoney })
         c.rating && c.rating.n ? chip(`⭐ ${Number(c.rating.avg).toFixed(1)}`, size * 0.8, C.star) : null, c.idCheck ? chip("🪪 21+", size * 0.8, C.gold) : null));
     const pitch = (size) => asker ? askRow(asker, askPic, size) : h("div", { fontSize: size, color: "#ff9cc2", fontWeight: 700 }, `Night out for ${c.size} · bring who you want`);
     if (!story) {
-      return toPng(h("div", { width: 1200, height: 630, backgroundImage: BG, padding: "44px 56px", gap: 52, alignItems: "center", fontFamily: "Inter", color: C.text },
-        poster(c, 400, 542, 1, pic),
+      return toPng(h("div", { width: 1200, height: 630, backgroundImage: BG, padding: "26px 44px", gap: 42, alignItems: "center", fontFamily: "Inter", color: C.text },
+        poster(c, 470, 578, 1.08, pic),
         h("div", { flex: 1, flexDirection: "column", gap: 18 },
           brand(icon, 22),
           h("div", { fontSize: 48, fontWeight: 900, lineHeight: 1.08, color: "#fff" }, clip(c.title, 52)),
@@ -246,14 +244,12 @@ module.exports = function makeShare({ db, rtdb, APP_URL, logger, ms, fmtMoney })
           h("div", { flexDirection: "column", gap: 12, marginTop: 6 }, button(buy, 28, true), button(asker ? "↗  Share it with a friend" : "↗  Send to your date", 24, false)))), 1200, 630);
     }
     const link = `${APP_URL}/c/${c.id}${asker ? "?ask=" + asker.uid : ""}`;
-    return toPng(h("div", { width: 1080, height: 1920, backgroundImage: BG, padding: "90px 80px 80px", flexDirection: "column", alignItems: "center", gap: 40, fontFamily: "Inter", color: C.text },
-      brand(icon, 44),
-      poster(c, 920, 860, 2, pic),
-      h("div", { width: 920, flexDirection: "column", gap: 26 }, pitch(36), facts(36)),
-      h("div", { width: 920, flexDirection: "column", gap: 22 }, button(buy, 46, true)),
-      h("div", { alignItems: "center", gap: 30, marginTop: 6 },
-        img(await qr(link), { width: 180, height: 180, borderRadius: 24, border: "8px solid #fff" }),
-        h("div", { flexDirection: "column", gap: 8 }, h("div", { fontSize: 36, fontWeight: 800, color: "#fff" }, "Tap the link or scan"), h("div", { fontSize: 28, color: C.muted }, "whisperplusme.com")))), 1080, 1920);
+    return toPng(h("div", { width: 1080, height: 1920, backgroundImage: BG, padding: "56px 40px 48px", flexDirection: "column", alignItems: "center", justifyContent: "space-between", fontFamily: "Inter", color: C.text },
+      brand(icon, 40),
+      poster(c, 1000, asker ? 900 : 960, 2.1, pic),
+      h("div", { width: 1000, flexDirection: "column", gap: 20 }, pitch(36), facts(36)),
+      h("div", { width: 1000, flexDirection: "column" }, button(buy, 46, true)),
+      scanRow(await qr(link), "whisperplusme.com")), 1080, 1920);
   }
 
   /* ---------- Connect Me as a whole: "No date ideas? Start here" ---------- */
@@ -269,28 +265,35 @@ module.exports = function makeShare({ db, rtdb, APP_URL, logger, ms, fmtMoney })
     const pics = await Promise.all(deals.map(c => dataUrl(c.imageUrl)));
     const askPic = asker ? await dataUrl(asker.photoUrl) : "";
     const W = story ? 1080 : 1200, H = story ? 1920 : 630, s = story ? 1.7 : 1;
-    const tile = (c, i) => h("div", { width: story ? 290 : 250, height: story ? 400 : 300, borderRadius: 26 * s, overflow: "hidden", position: "relative", backgroundImage: `linear-gradient(135deg, hsl(${c.hue},60%,32%), hsl(${(c.hue + 40) % 360},65%,16%) 70%, #0b0b16)` },
-      pics[i] ? img(pics[i], { position: "absolute", top: 0, left: 0, width: story ? 290 : 250, height: story ? 400 : 300, objectFit: "cover" }) : null,
-      h("div", { position: "absolute", top: 0, left: 0, width: story ? 290 : 250, height: story ? 400 : 300, backgroundImage: "linear-gradient(180deg, rgba(0,0,0,0) 30%, rgba(0,0,0,0.9) 100%)" }),
-      h("div", { position: "absolute", left: 16 * s, right: 16 * s, bottom: 16 * s, flexDirection: "column", gap: 4 },
-        h("div", { fontSize: 22 * s, fontWeight: 900, color: "#fff", lineHeight: 1.1 }, clip(c.title, 34)),
-        h("div", { fontSize: 16 * s, color: "#ff9cc2", fontWeight: 700 }, `${fmtMoney(c.price)} for ${c.size}`)));
+    // tile(c, i, w, h, k): a package picture with its name and price; k scales the text
+    const tile = (c, i, tw, th, k) => h("div", { width: tw, height: th, borderRadius: 26 * k, overflow: "hidden", position: "relative", flex: "none", backgroundImage: `linear-gradient(135deg, hsl(${c.hue},60%,32%), hsl(${(c.hue + 40) % 360},65%,16%) 70%, #0b0b16)` },
+      pics[i] ? img(pics[i], { position: "absolute", top: 0, left: 0, width: tw, height: th, objectFit: "cover" }) : null,
+      h("div", { position: "absolute", top: 0, left: 0, width: tw, height: th, backgroundImage: "linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,0.9) 100%)" }),
+      h("div", { position: "absolute", left: 18 * k, right: 18 * k, bottom: 18 * k, flexDirection: "column", gap: 4 * k },
+        h("div", { fontSize: 24 * k, fontWeight: 900, color: "#fff", lineHeight: 1.1 }, clip(c.title, 40)),
+        h("div", { fontSize: 18 * k, color: "#ff9cc2", fontWeight: 700 }, `${fmtMoney(c.price)} for ${c.size}`)));
+    // stories: one big picture on top, two below (or fewer, bigger ones)
+    const storyTiles = () => {
+      const n = deals.length, G = 20, TW = 1000, TH = 900;
+      if (n === 1) return tile(deals[0], 0, TW, TH, 2);
+      if (n === 2) return h("div", { flexDirection: "column", gap: G }, tile(deals[0], 0, TW, (TH - G) / 2, 1.8), tile(deals[1], 1, TW, (TH - G) / 2, 1.8));
+      return h("div", { flexDirection: "column", gap: G }, tile(deals[0], 0, TW, 500, 1.9),
+        h("div", { gap: G }, tile(deals[1], 1, (TW - G) / 2, TH - 500 - G, 1.45), tile(deals[2], 2, (TW - G) / 2, TH - 500 - G, 1.45)));
+    };
     const head = asker
       ? h("div", { flexDirection: "column", alignItems: story ? "center" : "flex-start", gap: 14 * s }, askRow(asker, askPic, 28 * s), h("div", { fontSize: 50 * s, fontWeight: 900, color: "#fff", lineHeight: 1.05, textAlign: story ? "center" : "left" }, "Take me out? 💞"), h("div", { fontSize: 24 * s, color: C.muted }, "Pick a night out. It's all planned for you."))
       : h("div", { flexDirection: "column", alignItems: story ? "center" : "flex-start", gap: 12 * s }, h("div", { fontSize: 26 * s, color: "#ff9cc2", fontWeight: 800 }, "💞 CONNECT ME"), h("div", { fontSize: 52 * s, fontWeight: 900, color: "#fff", lineHeight: 1.05, textAlign: story ? "center" : "left" }, "No date ideas?"), h("div", { fontSize: 52 * s, fontWeight: 900, lineHeight: 1.05, color: "#7ff0d0" }, "Start here."), h("div", { fontSize: 24 * s, color: C.muted, textAlign: story ? "center" : "left" }, "Dinner, bowling, shows and more. One price, bring who you want."));
     const btn = button(asker ? `💞  Take ${asker.first} out` : "💞  See date ideas", 28 * s, true);
     if (!story) {
-      return toPng(h("div", { width: W, height: H, backgroundImage: BG, padding: "44px 56px", gap: 40, alignItems: "center", fontFamily: "Inter", color: C.text },
+      return toPng(h("div", { width: W, height: H, backgroundImage: BG, padding: "26px 44px", gap: 34, alignItems: "center", fontFamily: "Inter", color: C.text },
         h("div", { flex: 1, flexDirection: "column", gap: 22 }, brand(icon, 22), head, btn),
-        deals.length ? h("div", { gap: 14, alignItems: "center" }, deals.slice(0, 2).map(tile)) : null), W, H);
+        deals.length ? h("div", { gap: 14, alignItems: "center" }, deals.slice(0, 2).map((c, i) => tile(c, i, deals.length === 1 ? 420 : 290, 578, 1.15))) : null), W, H);
     }
-    return toPng(h("div", { width: W, height: H, backgroundImage: BG, padding: "90px 70px 80px", flexDirection: "column", alignItems: "center", gap: 46, fontFamily: "Inter", color: C.text },
-      brand(icon, 44), head,
-      deals.length ? h("div", { gap: 20 }, deals.slice(0, 3).map(tile)) : null,
-      h("div", { width: 900, flexDirection: "column" }, btn),
-      h("div", { alignItems: "center", gap: 30 },
-        img(await qr(`${APP_URL}/connect${asker ? "?ask=" + asker.uid : ""}`), { width: 180, height: 180, borderRadius: 24, border: "8px solid #fff" }),
-        h("div", { flexDirection: "column", gap: 8 }, h("div", { fontSize: 36, fontWeight: 800, color: "#fff" }, "Tap the link or scan"), h("div", { fontSize: 28, color: C.muted }, "whisperplusme.com/connect")))), W, H);
+    return toPng(h("div", { width: W, height: H, backgroundImage: BG, padding: "56px 40px 48px", flexDirection: "column", alignItems: "center", justifyContent: deals.length ? "space-between" : "center", gap: deals.length ? 0 : 60, fontFamily: "Inter", color: C.text },
+      brand(icon, 40), head,
+      deals.length ? storyTiles() : null,
+      h("div", { width: 1000, flexDirection: "column" }, btn),
+      scanRow(await qr(`${APP_URL}/connect${asker ? "?ask=" + asker.uid : ""}`), "whisperplusme.com/connect")), W, H);
   }
 
   /* ---------- fallback picture (unknown profile / M&G) ---------- */
@@ -417,7 +420,13 @@ ${mgs ? `<a class="b g" href="/?dates=1">⭐ ${mgs} M&amp;G${mgs === 1 ? "" : "s
 <button class="b s" data-share>↗ Share this profile</button></div>
 ${ig || tw || web ? `<div class="soc">${ig ? `<a href="${esc(ig)}" target="_blank" rel="noopener nofollow" aria-label="Instagram">📸</a>` : ""}${tw ? `<a href="${esc(tw)}" target="_blank" rel="noopener nofollow" aria-label="X">𝕏</a>` : ""}${web ? `<a href="${esc(web)}" target="_blank" rel="noopener nofollow" aria-label="Website">🌐</a>` : ""}</div>` : ""}
 <div class="btns" style="margin-top:14px"><a class="b s" href="/" style="min-height:48px;font-size:15px">✨ New here? Join Whisper+Me free</a></div>`;
-    return pageShell({ title: `${p.name} on Whisper+Me`, desc, url, image: `${APP_URL}/s/u/${uid}/card.png?v=${v}`, body, index: INDEX_PROFILES });
+    const image = `${APP_URL}/s/u/${uid}/card.png?v=${v}`;
+    const index = INDEX_PROFILES && !!(p.photoUrl || p.bio);
+    const sameAs = [ig, tw, web].filter(Boolean);
+    const schema = { "@context": "https://schema.org", "@type": "ProfilePage", url, name: `${p.name} on Whisper+Me`, isPartOf: { "@type": "WebSite", name: "Whisper+Me", url: APP_URL },
+      mainEntity: { "@type": "Person", name: p.name, description: p.bio || undefined, image: p.photoUrl || undefined, url, sameAs: sameAs.length ? sameAs : undefined,
+        interactionStatistic: { "@type": "InteractionCounter", interactionType: "https://schema.org/CommunicateAction", userInteractionCount: p.calls } } };
+    return pageShell({ title: `${p.name} on Whisper+Me: talk 1-on-1`, desc, url, image, body, index, schema: index ? schema : null });
   }
 
   async function meetupPage(id, src) {

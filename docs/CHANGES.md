@@ -12,7 +12,13 @@ Branch `social-upgrade`. This rebuild turns the front door, the profile, and the
 | **Admin** (`/admin.html`) | One long page of tables, browser pop-ups | MergeChat-style layout: top emoji tabs (🏁 Start here · 📡 Live now · 👥 People · 💰 Money · 🎬 Landing page · 📢 Announce · 💬 Rooms · 🛡️ Safety · ⭐ M&G · 🧾 Activity), "What do you want to do?" tiles, a "Needs your attention" list, "At a glance" numbers, and a "How the site fits together" map. Simple/Full layout switch. Every confirmation is an in-page dialog. The activity log is saved, so it survives a refresh. |
 | **Landing page manager** (new, Admin → 🎬) | none | Upload videos or pictures (or paste links), reorder, remove, shuffle, seconds per picture, darkness slider, sound-button switch, headline and subline, phone/computer preview, then **🚀 Publish**. |
 
-## 🔎 Search engines (SEO), App Check, review fixes (latest)
+## 🖼️ Bigger share pictures, searchable profiles, rooms removed (latest)
+
+- **Share pictures**: "Share as a picture" stories now fill the whole 1080×1920 frame (no empty band at the bottom); photos are larger on every story and on link previews. The "Take me out" / date-ideas story shows one big package with two below.
+- **Profiles in Google**: `/u/{uid}` pages with a photo or bio can be indexed (ProfilePage data, Instagram/X/website linked) and are listed in `/sitemap.xml`. Bare and banned profiles stay out; banned members' pages now say "isn't available". Privacy Policy says so.
+- **Rooms removed** from the built-in list, link-in-bio page and embeds: Gang Stalking Help, Spicy, Hot Dates, Sugar.
+
+## 🔎 Search engines (SEO), App Check, review fixes
 
 - **Topic room pages** `/rooms/` and `/rooms/{slug}/` (static files in `public/rooms/`, style in `public/pages.css`): one page per room (vent, anxiety, grief, night owls, open mic, LGBTQ+, astrology, tarot…) with real content, FAQ, crisis-line note on support rooms, and a "Join free" button to `/?room={id}`. Gang-stalking, 18+ and the 18–25 room have no pages.
 - **Live sitemap** `/sitemap.xml` (function `sitemap`): fixed pages, room pages, and every M&G and Connect Me on sale right now. Submit it once in Google Search Console and Bing Webmaster Tools.
