@@ -501,6 +501,51 @@
       var cs2 = p.querySelector(".dt-cats"); if (cs2) { cs2.style.scrollBehavior = "auto"; cs2.scrollLeft = lft; cs2.style.scrollBehavior = ""; Dates.catScroll(cs2); }
     }
     var q = $i("datesPanel"); if (q) q.innerHTML = panelInner();
+    if ($i("myEv")) drawMy();
+  }
+
+  /* ---------- My Meet & Greet list ---------- */
+  var MY = { view: "now", open: "", hidden: {}, hiddenLoaded: false };
+  function myItems() {
+    var now = Date.now(), out = [];
+    S.mine.forEach(function (m) {
+      var key = (m.host ? "mh_" : "mt_") + m.id;
+      var cur = m.host ? ["draft", "pending", "changes", "live", "review", "paying"].indexOf(m.status) > -1 : (m.status === "live" && m.startsAt > now - 6 * 3600000) || (m.canRate && !m.myStars);
+      var st = m.host ? (ST[m.status] || ["warn", m.status]) : m.status === "live" && m.startsAt > now - 6 * 3600000 ? ["ok", m.guestCheckedIn ? "Checked in" : "You're going"] : m.status === "canceled" ? ["bad", "Called off"] : m.canRate && !m.myStars ? ["warn", "Rate it ★"] : ["purple", "Done"];
+      out.push({ key: key, kind: m.host ? "⭐ Hosting" : "⭐ M&G", title: m.title, at: m.startsAt, st: st, now: cur, box: function () { return m.host ? hostBox(m) : ticketBox(m); } });
+    });
+    S.myCon.forEach(function (o) {
+      var key = "cm_" + o.id, cur = (o.status === "paid" || o.invite) && o.startsAt > now - 6 * 3600000 || (o.canRate && !o.myStars);
+      var st = o.invite ? ["purple", "Invite"] : o.status === "paid" && o.startsAt > now - 6 * 3600000 ? ["ok", o.here ? "Checked in" : "Booked"] : o.status === "canceled" ? ["bad", "Called off"] : o.canRate && !o.myStars ? ["warn", "Rate it ★"] : ["purple", "Done"];
+      out.push({ key: key, kind: "💞 Connect Me", title: o.title, at: o.startsAt, st: st, now: cur, box: function () { return conBox(o); } });
+    });
+    var PL = { draft: ["warn", "Fee not paid"], live: ["ok", "Open"], matched: ["purple", "Waiting to confirm"], confirmed: ["ok", "It's a date"], asked: ["purple", "You asked"], completed: ["purple", "Done"],
+      expired: ["bad", "No match"], canceled: ["bad", "Called off"], removed: ["bad", "Removed"], declined: ["bad", "Not this time"], filled: ["bad", "Filled"], closed: ["bad", "Called off"], withdrawn: ["bad", "Taken back"], passed: ["bad", "You passed"], lapsed: ["bad", "Not confirmed"] };
+    (window.Plan && window.Plan.mineList ? window.Plan.mineList() : []).forEach(function (x) {
+      var key = "pd_" + x.id, cur = ["draft", "live", "matched", "confirmed", "asked"].indexOf(x.status) > -1 || (x.canRate && !x.myStars);
+      out.push({ key: key, kind: x.mine ? "📍 Your date" : "📍 Date you asked for", title: x.title, at: x.startsAt, st: x.canRate && !x.myStars ? ["warn", "Rate it ★"] : PL[x.status] || ["warn", x.status], now: cur, box: function () { return window.Plan.boxFor(x.id); } });
+    });
+    return out.filter(function (e) { return !MY.hidden[e.key]; }).sort(function (a, b) { return a.now ? a.at - b.at : b.at - a.at; });
+  }
+  function drawMy() {
+    var el = $i("myEv"); if (!el) return;
+    var all = myItems(), list = all.filter(function (e) { return MY.view === "now" ? e.now : !e.now; });
+    var nNow = all.filter(function (e) { return e.now; }).length, nPast = all.length - nNow;
+    var loading = !S.loadedMine || (window.Plan && window.Plan.mineLoaded && !window.Plan.mineLoaded());
+    el.innerHTML = "<h3 style='margin:0 0 4px'>🎟️ My Meet &amp; Greet</h3><p style='margin:0 0 10px;color:#9a8fb5;font-size:13px'>Your M&amp;Gs, Connect Me nights and dates. Tap one to see it.</p>"
+      + "<div class='dt-seg' role='tablist' style='margin:0 0 10px'><button aria-pressed='" + (MY.view === "now") + "' onclick=\"Dates.myView('now')\">Coming up (" + nNow + ")</button><button aria-pressed='" + (MY.view === "past") + "' onclick=\"Dates.myView('past')\">Past &amp; called off (" + nPast + ")</button></div>"
+      + (list.length ? list.map(function (e) {
+          var open = MY.open === e.key;
+          return "<div data-ev='" + e.key + "' style='border:1px solid rgba(255,255,255," + (open ? ".22" : ".08") + ");border-radius:14px;margin-bottom:8px;overflow:hidden;background:rgba(255,255,255,.03)'>"
+            + "<button onclick=\"Dates.myOpen('" + e.key + "')\" aria-expanded='" + open + "' style='display:flex;gap:10px;align-items:center;width:100%;background:none;border:0;color:#fff;text-align:left;padding:11px 12px;cursor:pointer'>"
+            + "<span style='flex:1;min-width:0'><small style='display:block;color:#9a8fb5;font-size:11px;font-weight:800;letter-spacing:.05em'>" + esc(e.kind.toUpperCase()) + "</small><b style='display:block;font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>" + esc(e.title) + "</b><small style='color:#b3abcf;font-size:12px'>" + esc(when(e.at)) + "</small></span>"
+            + "<span class='dt-pill " + e.st[0] + "'>" + esc(e.st[1]) + "</span><span aria-hidden='true' style='color:#9a8fb5'>" + (open ? "▴" : "▾") + "</span></button>"
+            + (open ? "<div style='padding:0 8px 10px'>" + e.box() + (e.now ? "" : "<button class='dt-btn ghost' style='width:100%;margin-top:8px' onclick=\"Dates.myHide('" + e.key + "',this)\">🗑 Remove from my list</button>") + "</div>" : "")
+            + "</div>";
+        }).join("")
+        : "<div class='dt-rules' style='text-align:center'>" + (loading ? "Loading…" : MY.view === "now" ? "Nothing coming up. Find an M&amp;G, a Connect Me night, or plan a date on the ⭐ M&amp;G screen." : "Nothing here.") + "</div>")
+      + (MY.view === "past" && list.length ? "<button class='dt-btn ghost' onclick='Dates.myClearPast()'>🗑 Clear all past &amp; called off</button>" : "")
+      + "<div class='dt-actions'><button class='dt-btn' style='flex:1' onclick='closeProfileModal();setActive(4)'>⭐ Go to M&amp;G</button><button class='dt-btn ghost' style='flex:1' onclick='closeProfileModal()'>Close</button></div>";
   }
 
   /* ---------- modal helpers (uses Whisper+me's profile modal) ---------- */
@@ -757,6 +802,34 @@
       openModal("<h3>🎟️ My tickets</h3>" + creditBox() + (t.length || c.length ? t.map(ticketBox).join("") + c.map(conBox).join("") : "<div class='dt-rules'>No tickets yet. Pick an M&G or a Connect Me package: the address and your code show up here right away.</div>")
         + "<button class='dt-btn ghost' onclick='closeProfileModal()'>Close</button>");
       if (!S.loadedMine) loadMine();
+    },
+    /* 🎟️ MY MEET & GREET (Profile → More): every M&G ticket, M&G you host, Connect Me and
+       Plan a Date in one list. Tap one to see it with all its buttons (call off, cancel,
+       I'm here, rate…). Finished or called-off ones can be removed from the list; that only
+       hides them for you (Whisper+Me keeps the records). */
+    myEvents: function (view) {
+      if (!me()) { if (window.promptGuestUpgrade) window.promptGuestUpgrade("My Meet & Greet"); return; }
+      MY.view = view || MY.view || "now";
+      start(); loadMine();
+      if (window.Plan && window.Plan.load) window.Plan.load();
+      if (!MY.hiddenLoaded) {
+        firebase.database().ref("userPrivate/" + S.uid + "/hiddenEvents").once("value").then(function (s) { MY.hidden = s.val() || {}; MY.hiddenLoaded = true; drawMy(); }, function () { MY.hiddenLoaded = true; });
+      }
+      openModal("<div id='myEv'></div>");
+      drawMy();
+    },
+    myView: function (v) { MY.view = v; MY.open = ""; drawMy(); },
+    myOpen: function (key) { MY.open = MY.open === key ? "" : key; drawMy(); var el = document.querySelector("[data-ev='" + key + "']"); if (el && MY.open && el.scrollIntoView) el.scrollIntoView({ block: "nearest", behavior: "smooth" }); },
+    myHide: function (key, btn) {
+      if (!confirm("Remove this from your list? It only disappears for you.")) return;
+      MY.hidden[key] = Date.now(); MY.open = ""; drawMy();
+      firebase.database().ref("userPrivate/" + S.uid + "/hiddenEvents/" + key).set(Date.now()).catch(function () { toast("Couldn't remove it. Try again.", "error"); });
+    },
+    myClearPast: function () {
+      var past = myItems().filter(function (e) { return !e.now; });
+      if (!past.length || !confirm("Remove all " + past.length + " finished and called-off events from your list? They only disappear for you.")) return;
+      var upd = {}; past.forEach(function (e) { MY.hidden[e.key] = Date.now(); upd[e.key] = Date.now(); }); drawMy();
+      firebase.database().ref("userPrivate/" + S.uid + "/hiddenEvents").update(upd).catch(function () { toast("Couldn't clear them. Try again.", "error"); });
     },
     shareMeetup: function (id) {
       var m = findM(id) || {};

@@ -1243,45 +1243,44 @@ window.showProfileModal = function(uid){
 
 window.closeProfileModal = function(){
   var modal = document.getElementById("profileModal");
-  if(modal) modal.style.display = "none";
+  if(modal){
+    modal.style.display = "none";
+    /* stop the How-it-works video (or any video) when the box closes */
+    modal.querySelectorAll("video").forEach(function(v){ try{ v.pause(); }catch(e){} });
+  }
 };
 
-/* ── HOW IT WORKS ──
-   Shown automatically right after signup, and reachable any time from
-   the Dashboard. Real annotated screenshots of the actual app —
-   circled + numbered — not a generic mockup. */
-var HOW_IT_WORKS_STEPS = [
-  { img:"/howitworks-1.png", title:"Pick a room",           text:"Browse free chat rooms by topic — General, Night Owls, Vent & Release, and more. No sign-up needed just to look around." },
-  { img:"/howitworks-2.png", title:"Go live with your mic", text:"Tap Live to speak out loud to everyone in the room — free for signed-up members, no coins required." },
-  { img:"/howitworks-3.png", title:"Host your own room",    text:"Create a paid room, set your own entry cost, and earn coins every time someone joins to talk with you." },
-  { img:"/howitworks-4.png", title:"Add a profile photo",   text:"Profiles with a photo get far more calls. Tap your picture on the 👤 Profile tab." }
-];
-
+/* ── HOW IT WORKS ── shown right after signup, and from 👤 Profile → More. */
+/* The "How Whisper+Me works" button opens a video. Admin → 🎬 Landing page →
+   "How it works button" changes its words, the video, or hides it (landing/howItWorks). */
+var HIW_DEFAULT = { on: true, label: "How Whisper+Me works", title: "How Whisper+Me works", video: "/media/how-it-works.mp4", poster: "/media/how-it-works.jpg", note: "A 3-minute tour: rooms, calls, M&G, Connect Me and Plan a Date." };
+window.__hiw = Object.assign({}, HIW_DEFAULT);
+try{
+  firebase.database().ref("landing/howItWorks").on("value", function(s){
+    window.__hiw = Object.assign({}, HIW_DEFAULT, s.val() || {});
+    if(typeof active !== "undefined" && active === 3 && window.Profile && window.Profile.refresh) window.Profile.refresh();
+  }, function(){});
+}catch(e){}
+function hiwUrl(u, fallback){ u = String(u || ""); return /^(https:\/\/|\/)/.test(u) ? u : fallback; }
 window.showHowItWorks = function(){
   var modal = document.getElementById("profileModal");
   var body  = document.getElementById("profileModalBody");
   if(!modal || !body) return;
-
-  var html = "<div style='padding:22px 20px'>"
-    + "<div style='font-size:18px;font-weight:800;color:#fff;margin-bottom:4px;text-align:center'>How Whisper+Me Works</div>"
-    + "<div style='font-size:12px;color:#888;margin-bottom:18px;text-align:center'>Four things to know before you dive in</div>";
-
-  HOW_IT_WORKS_STEPS.forEach(function(s, i){
-    html += "<div style='margin-bottom:20px'>"
-      + "<img src='" + s.img + "' alt='" + sanitize(s.title) + "' "
-      + "style='width:100%;height:auto;border-radius:12px;border:1px solid rgba(123,47,247,0.3);display:block;margin-bottom:8px;'>"
-      + "<div style='font-size:13.5px;font-weight:700;color:#f0e9ff;margin-bottom:2px'>" + (i+1) + ". " + s.title + "</div>"
-      + "<div style='font-size:12px;color:#aaa;line-height:1.5'>" + s.text + "</div>"
-      + "</div>";
-  });
-
-  html += "<button onclick='closeProfileModal()' style='width:100%;margin-top:6px;padding:14px;"
-    + "border:none;border-radius:20px;background:linear-gradient(90deg,#7b2ff7,#00e3ae);"
-    + "color:#fff;font-size:14px;font-weight:800;cursor:pointer;'>Got it — let's go</button>"
-    + "</div>";
-
-  body.innerHTML = html;
+  var c = window.__hiw || HIW_DEFAULT;
+  var video = hiwUrl(c.video, HIW_DEFAULT.video), poster = hiwUrl(c.poster, "");
+  body.innerHTML = "<button onclick='closeProfileModal()' aria-label='Close' style='position:absolute;top:10px;right:12px;background:rgba(0,0,0,.5);border:none;color:#fff;font-size:20px;cursor:pointer;z-index:3;width:36px;height:36px;border-radius:50%'>✕</button>"
+    + "<div style='padding:18px 16px 16px'>"
+    + "<div style='font-size:18px;font-weight:800;color:#fff;margin:0 40px 4px 0'>" + sanitize(c.title || HIW_DEFAULT.title) + "</div>"
+    + (c.note ? "<div style='font-size:12.5px;color:#9a8fb5;margin-bottom:12px'>" + sanitize(c.note) + "</div>" : "")
+    + "<video id='hiwVideo' src='" + sanitize(video) + "'" + (poster ? " poster='" + sanitize(poster) + "'" : "") + " controls playsinline preload='metadata' "
+    + "style='display:block;width:100%;max-height:68vh;border-radius:14px;background:#000;margin:0 auto'></video>"
+    + "<div style='display:flex;gap:8px;margin-top:12px'>"
+    + "<a href='/help/' target='_blank' rel='noopener' style='flex:1;text-align:center;padding:12px;border-radius:18px;background:rgba(255,255,255,.08);color:#fff;text-decoration:none;font-weight:700;font-size:13px'>📖 Guide with pictures</a>"
+    + "<button onclick='closeProfileModal()' style='flex:1;padding:12px;border:none;border-radius:18px;background:linear-gradient(90deg,#7b2ff7,#00e3ae);color:#fff;font-size:13px;font-weight:800;cursor:pointer'>Got it, let's go</button>"
+    + "</div></div>";
   modal.style.display = "flex";
+  var v = document.getElementById("hiwVideo");
+  if(v){ var p = v.play(); if(p && p.catch) p.catch(function(){}); }
 };
 
 
@@ -3390,6 +3389,7 @@ window.connectStripe = async function(){
     });
     var data = await res.json();
     if(!res.ok){ showToast(data.error||"Stripe connect failed","error"); return; }
+    try{ sessionStorage.setItem("wpmBackTo", "wallet"); }catch(e){}
     window.location.href = data.url;
   } catch(e){ showToast("Could not connect Stripe","error"); }
 };
@@ -3404,7 +3404,10 @@ window.openStripeDashboard = async function(){
     });
     var data = await res.json();
     if(!res.ok){ showToast(data.error||"Error","error"); return; }
-    window.open(data.url, "_blank");
+    /* Same tab, like buying coins: Back (or Stripe's link to Whisper+Me) comes
+       back here and reopens Profile → Wallet, instead of leaving an extra tab. */
+    try{ sessionStorage.setItem("wpmBackTo", "wallet"); }catch(e){}
+    window.location.href = data.url;
   } catch(e){ showToast("Could not open Stripe dashboard","error"); }
 };
 

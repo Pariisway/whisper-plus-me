@@ -254,7 +254,11 @@
   var Plan = {
     phoneHTML: phoneHTML,
     panelHTML: panelHTML,
-    load: load,
+    load: function () { return load(); },
+    /* for "My Meet & Greet" (Profile → More): your dates and the box with their buttons */
+    mineList: function () { return P.mine.slice(); },
+    mineLoaded: function () { return P.mineLoaded; },
+    boxFor: function (id) { var x = P.mine.filter(function (z) { return z.id === id; })[0]; return x ? box(x) : ""; },
     closeModal: closeModal,
     openPending: openPending,
     setNear: function (on) {

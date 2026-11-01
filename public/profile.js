@@ -136,6 +136,7 @@
 .pl-right{flex:none;text-align:right;font-size:12px;color:#8f89a8}\
 .pl-right b{display:block;font-size:13px;color:#fff}\
 .pl-cb{flex:none;width:40px;height:40px;min-height:0;border-radius:50%;border:0;background:rgba(0,227,174,.14);color:#00e3ae;font-size:17px;cursor:pointer;padding:0;margin:0}\
+.pl-cb.pl-del{width:34px;height:34px;background:rgba(255,255,255,.06);color:#c9c3dc;font-size:14px;margin-left:4px}\
 .pl-more{width:100%;margin-top:8px}\
 .pf-tab i{display:inline-block;min-width:18px;height:18px;line-height:18px;border-radius:9px;background:#ff4d6d;color:#fff;font-style:normal;font-size:11px;margin-left:4px;padding:0 5px}\
 @media (max-width:420px){.pf-chips{grid-template-columns:repeat(2,1fr)}.pf-tab{font-size:12px}}\
@@ -217,7 +218,12 @@
   }
 
   /* ---------- call log (Profile → Calls) ---------- */
-  var log = { uid: "", rows: null, at: 0, loading: false, all: false, missedOnly: false, err: "" };
+  var log = { uid: "", rows: null, at: 0, loading: false, all: false, missedOnly: false, err: "", clearedAt: 0, hide: {} };
+  /* Calls you deleted or cleared only disappear from YOUR log (userPrivate/{uid}/callLog);
+     the call records themselves stay, so Whisper+Me can still look into payments and reports. */
+  function visibleRows() {
+    return (log.rows || []).filter(function (c) { return (c.createdAt || 0) > (log.clearedAt || 0) && !log.hide[c.id]; });
+  }
   function seenKey() { return "wpmCallLogSeen_" + myUid(); }
   function lsGet(k) { try { return Number(localStorage.getItem(k) || 0); } catch (e) { return 0; } }
   function lsSet(k, v) { try { localStorage.setItem(k, String(v)); } catch (e) {} }
@@ -231,7 +237,7 @@
   function unseenMissed() {
     if (!log.rows || log.uid !== myUid()) return 0;
     var seen = lsGet(seenKey()), uid = myUid();
-    return log.rows.filter(function (c) { return callKind(c, uid) === "missed" && (c.createdAt || 0) > seen; }).length;
+    return visibleRows().filter(function (c) { return callKind(c, uid) === "missed" && (c.createdAt || 0) > seen; }).length;
   }
   function loadLog(force) {
     var uid = myUid();
@@ -241,8 +247,12 @@
     var ref = firebase.database().ref("calls");
     Promise.all([
       ref.orderByChild("from").equalTo(uid).limitToLast(60).once("value"),
-      ref.orderByChild("to").equalTo(uid).limitToLast(60).once("value")
+      ref.orderByChild("to").equalTo(uid).limitToLast(60).once("value"),
+      firebase.database().ref("userPrivate/" + uid + "/callLog").once("value").catch(function () { return null; })
     ]).then(function (snaps) {
+      var mine = (snaps[2] && snaps[2].val()) || {};
+      log.clearedAt = Number(mine.clearedAt) || 0; log.hide = mine.hide || {};
+      snaps = snaps.slice(0, 2);
       var rows = {};
       snaps.forEach(function (s) { s.forEach(function (c) { var v = c.val(); if (v && v.createdAt) rows[c.key] = Object.assign({ id: c.key }, v); }); });
       log.rows = Object.keys(rows).map(function (k) { return rows[k]; }).sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); }).slice(0, 100);
@@ -289,6 +299,7 @@
       + "<div class='pl-sub'><span class='" + kk[2] + "'>" + kk[0] + " " + kk[1] + "</span> · " + esc(when(c.createdAt)) + "</div></div>"
       + (right ? "<div class='pl-right'>" + right + "</div>" : "")
       + (canCall ? "<button class='pl-cb' data-uid='" + esc(other) + "' aria-label='Call " + esc(name) + " back' title='Call back' onclick='startCallFromBtn(this)'>📞</button>" : "")
+      + (k !== "ringing" && k !== "live" ? "<button class='pl-cb pl-del' aria-label='Delete this call from my log' title='Delete' onclick=\"Profile.logDelete(" + jsAttr(c.id) + ")\">🗑</button>" : "")
       + "</div>";
   }
   function logCard() {
@@ -298,12 +309,13 @@
     var head = "<div class='pl-head'><b>🕘 Call log</b><div class='pl-f'>"
       + "<button class='" + (log.missedOnly ? "" : "on") + "' onclick='Profile.logFilter(false)'>All</button>"
       + "<button class='" + (log.missedOnly ? "on" : "") + "' onclick='Profile.logFilter(true)'>Missed</button>"
-      + "<button onclick='Profile.logRefresh()' aria-label='Refresh' title='Refresh'>↻</button></div></div>";
+      + "<button onclick='Profile.logRefresh()' aria-label='Refresh' title='Refresh'>↻</button>"
+      + (log.rows && visibleRows().length ? "<button onclick='Profile.logClear()' title='Clear my call log'>Clear all</button>" : "") + "</div></div>";
     if (!log.rows || log.uid !== uid) return "<div class='pf-card' id='pf-log'>" + head + "<div class='pf-muted'>Loading your calls…</div></div>";
-    var rows = log.rows.filter(function (c) { return !log.missedOnly || callKind(c, uid) === "missed"; });
+    var rows = visibleRows().filter(function (c) { return !log.missedOnly || callKind(c, uid) === "missed"; });
     var shown = log.all ? rows : rows.slice(0, 6);
     var body = rows.length ? shown.map(function (c) { return logRow(c, uid); }).join("")
-      : "<div class='pf-muted'>" + (log.err ? esc(log.err) : log.missedOnly ? "No missed calls. 🎉" : "No calls yet. When you call someone or someone calls you, it shows up here.") + "</div>";
+      : "<div class='pf-muted'>" + (log.err ? esc(log.err) : log.missedOnly ? "No missed calls. 🎉" : (log.rows || []).length ? "Your call log is clear. New calls show up here." : "No calls yet. When you call someone or someone calls you, it shows up here.") + "</div>";
     return "<div class='pf-card' id='pf-log'>" + head + body
       + (rows.length > shown.length ? "<button class='pf-btn pl-more' onclick='Profile.logAll()'>Show all " + rows.length + " calls</button>" : "")
       + "</div>";
@@ -339,10 +351,10 @@
   function paneMore() {
     var uid = myUid();
     return "<div class='pf-list'>"
-      + "<button onclick='showHowItWorks()'>❓ How Whisper+Me works</button>"
+      + (window.__hiw && window.__hiw.on === false ? "" : "<button onclick='showHowItWorks()'>▶️ " + esc((window.__hiw && window.__hiw.label) || "How Whisper+Me works") + "</button>")
       + "<button onclick='showInfoModal(\"earn\")'>💰 Earn money &amp; grow your audience</button>"
       + "<button onclick='showInfoModal(\"setup\")'>🪄 Profile tips</button>"
-      + "<button onclick='setActive(4)'>⭐ My M&G</button>"
+      + "<button onclick='window.Dates ? Dates.myEvents() : setActive(4)'>🎟️ My Meet &amp; Greet</button>"
       + (window.Install && !window.Install.isInstalled() ? "<button onclick='Install.show()'>📲 Add Whisper+Me to my Home Screen</button>" : "")
       + "<button onclick=\"showEmbedCode(" + jsAttr(uid) + ",'profile')\">🧩 Put my profile on my website</button>"
       + "</div>"
@@ -428,6 +440,21 @@
     logFilter: function (missed) { log.missedOnly = !!missed; rerenderPanel(); },
     logAll: function () { log.all = true; rerenderPanel(); },
     logRefresh: function () { loadLog(true); },
+    logDelete: function (id) {
+      var uid = myUid(); if (!uid || !id) return;
+      log.hide[id] = Date.now(); P.refresh();
+      firebase.database().ref("userPrivate/" + uid + "/callLog/hide/" + id).set(Date.now()).catch(function () { delete log.hide[id]; P.refresh(); showToast("Couldn't delete it. Try again.", "error"); });
+    },
+    logClear: function () {
+      var uid = myUid(); if (!uid) return;
+      var go = function () {
+        var prev = log.clearedAt; log.clearedAt = Date.now(); P.refresh();
+        firebase.database().ref("userPrivate/" + uid + "/callLog").set({ clearedAt: log.clearedAt }).then(function () { log.hide = {}; showToast("Call log cleared", "success"); },
+          function () { log.clearedAt = prev; P.refresh(); showToast("Couldn't clear it. Try again.", "error"); });
+      };
+      if (window.wpmConfirm) window.wpmConfirm("Clear your call log?", "Every call disappears from your log. Your coins and earnings don't change.", go);
+      else if (confirm("Clear your call log? Every call disappears from your log. Your coins and earnings don't change.")) go();
+    },
     openLog: function () { if (typeof setActive === "function") setActive(3); P.tab("calls"); },
     missedCount: function () { return unseenMissed(); },
     dirty: function () { dirty = true; },
@@ -583,6 +610,23 @@
   };
 
   window.Profile = P;
+
+  /* Back from Stripe (payouts setup or the Stripe dashboard): land on 👤 Profile → Wallet. */
+  function backToWallet() {
+    var want = null; try { want = sessionStorage.getItem("wpmBackTo"); } catch (e) {}
+    if (want !== "wallet") return;
+    try { sessionStorage.removeItem("wpmBackTo"); } catch (e) {}
+    var tries = 0, t = setInterval(function () {
+      tries++;
+      var u = firebase.auth().currentUser;
+      if (u && !u.isAnonymous && window.setActive && document.getElementById("mainStage")) {
+        clearInterval(t);
+        setTimeout(function () { if (typeof active === "undefined" || active !== 3) window.setActive(3); P.tab("wallet"); }, 300);
+      } else if (tries > 80) clearInterval(t);
+    }, 250);
+  }
+  backToWallet();
+  window.addEventListener("pageshow", function (e) { if (e.persisted) backToWallet(); }); // the browser's Back restored the old page
   window.showProfileModal = function (uid) { if (uid) P.showMember(uid); };
 })();
 /* If the app already drew the Profile screen before this file loaded, draw it again. */

@@ -48,7 +48,8 @@ body = f"""
 <section class="pg-hero"><div class="pg-emoji" aria-hidden="true">📖</div><h1>How to use Whisper+Me</h1>
 <p class="pg-lead">Everything on the site, step by step, with pictures. Talk in live voice rooms, call people 1-on-1, earn from your calls, and meet up in real life with M&amp;G, Connect Me and Plan a Date.</p>
 <div class="pg-ctas"><a class="pg-btn" href="/">🎙️ Open Whisper+Me</a><a class="pg-btn ghost" href="#plan-a-date">📍 Plan a Date guide</a></div>
-<p class="pg-note">The pictures use example people and places.</p></section>
+<p class="pg-note">The pictures use example people and places.</p>
+<video class="hp-video" src="/media/how-it-works.mp4" poster="/media/how-it-works.jpg" controls playsinline preload="none" aria-label="3-minute video tour of Whisper+Me"></video></section>
 
 <nav class="hp-toc" aria-label="On this page">{"".join(f'<a href="#{i}"><span aria-hidden="true">{e}</span>{t}</a>' for i, e, t in TOC)}</nav>
 
@@ -241,6 +242,7 @@ CSS = """
 .hp-q p{margin:8px 0 2px;color:rgba(255,255,255,.86)}
 .pg h3{font-size:18px;margin:22px 0 6px;color:#7ff0d0}
 .pg-card{scroll-margin-top:12px}
+.hp-video{display:block;width:min(340px,100%);aspect-ratio:9/16;margin:18px auto 0;border-radius:22px;border:3px solid #24213a;background:#000;box-shadow:0 10px 30px rgba(0,0,0,.45)}
 """
 
 page = f"""<!doctype html>
