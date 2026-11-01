@@ -528,6 +528,31 @@
     setCatIdx: function (i) { S.cat = CATS[i] || "All"; refresh(); },
     setMode: function (m) { S.mode = m === "cm" || m === "pd" ? m : "mg"; S.cat = "All"; refresh(); if (m === "pd" && window.Plan) window.Plan.load(); },
     refresh: function () { refresh(); },
+    /* 🗺️ What's happening, for the map: live M&Gs, Connect Me packages and open Plan a Dates
+       that have a map spot. Fetched once a minute at most (the map asks each time it opens). */
+    mapEvents: function () {
+      if (Dates._mapCache && Date.now() - Dates._mapCache.at < 60000) return Promise.resolve(Dates._mapCache.list);
+      var u = anyUser(); if (!u) return Promise.resolve([]);
+      return ensureFirestore().then(function () {
+        var f = db(), now = Date.now();
+        var get = function (col, lim) { return f.collection(col).where("status", "==", "live").where("hidden", "==", false).orderBy("startsAt").limit(lim).get().then(function (q) { return q.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }); }, function () { return []; }); };
+        return Promise.all([get("meetups", 80), get("connects", 60), get("plans", 150)]).then(function (r) {
+          var list = [];
+          r[0].forEach(function (m) { if (m.lat != null && ms(m.startsAt) > now && left(m) > 0) list.push({ kind: "mg", id: m.id, title: m.title, lat: m.lat, lng: m.lon, at: ms(m.startsAt), place: m.venueName, city: m.city, pic: m.imageURL || m.hostPhoto || "", who: m.official ? "Whisper+Me" : m.hostName, price: money(m.price) + " a spot" }); });
+          r[1].forEach(function (c) { if (c.lat != null && ms(c.startsAt) > now && (c.quantity - c.sold - c.held) > 0) list.push({ kind: "cm", id: c.id, title: c.title, lat: c.lat, lng: c.lon, at: ms(c.startsAt), place: c.venueName, city: c.city, pic: c.imageURL || "", who: "Connect Me", price: money(c.price) + " for " + c.size }); });
+          r[2].forEach(function (x) { if (x.lat != null && ms(x.startsAt) > now + 3 * 3600000) list.push({ kind: "pd", id: x.id, title: x.title, lat: x.lat, lng: x.lon, at: ms(x.startsAt), tz: x.tz || "", place: x.venueName, city: x.city, pic: x.creatorPhoto || "", who: x.creatorName, price: x.pays === "me" ? String(x.creatorName || "").split(" ")[0] + " treats" : x.pays === "each" ? "Each pays their own" : "Split the bill", mine: x.creatorUid === u.uid }); });
+          Dates._mapCache = { at: Date.now(), list: list };
+          return list;
+        });
+      }, function () { return []; });
+    },
+    /* Opens one of those from the map. */
+    openFromMap: function (kind, id) {
+      try { sessionStorage.setItem(kind === "mg" ? "wpmMeetup" : kind === "cm" ? "wpmDeal" : "wpmPlan", id); } catch (e) {}
+      S.mode = kind === "cm" ? "cm" : kind === "pd" ? "pd" : "mg";
+      if (window.setActive) window.setActive(4);
+      setTimeout(refresh, 300);
+    },
     needsBirthYear: function () { return !S.anon && S.member === null; },
     forgetMember: function () { S.member = null; },
 

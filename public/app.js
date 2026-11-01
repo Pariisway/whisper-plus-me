@@ -776,7 +776,9 @@ function renderStage(){
         return "<div class='" + shellCls + "' id='phone-shell-" + i + "' "
           + "data-peek-label='" + (peekLabels[s] || "") + "' "
           + "style='" + carouselShellStyle(offset) + "' "
-          + "onclick='if(" + i + "!==active)window.setActive(" + i + ")'>"
+          /* Tapping a side phone brings it to the front. (Not the front one: a button inside it,
+             like "See it" on a map pin or Call, may have just switched screens itself.) */
+          + "onclick='if(" + i + "!==active&&!this.classList.contains(\"phone-shell-visible\"))window.setActive(" + i + ")'>"
           + "<div class='phone-notch'>"
           + "<div class='phone-notch-speaker'></div>"
           + "<div class='phone-notch-cam'></div>"
@@ -1082,6 +1084,7 @@ function contentPanel(){
           + (locOn ? "Your pin is visible to members — auto-off in 25 min"
                    : "Your location is hidden")
           + "</div>"
+      + mapLegendHTML()
       + "</div>";
   }
 
@@ -1310,9 +1313,113 @@ function createMapOnce(){
   mapInstance = new mapboxgl.Map({
     container: mapContainer,
     style: "mapbox://styles/mapbox/dark-v11",
-    center: [-74.5, 40],
-    zoom: 10
+    center: mapStartCenter(),
+    zoom: 9.5
   });
+}
+/* Start where the person is (if their pin was on before), else St. Louis. */
+function mapStartCenter(){
+  var mu = (currentUser && (window.allUsers || {})[currentUser.uid]) || window.me || {};
+  if(mu.lat && mu.lng) return [mu.lng, mu.lat];
+  try{ var c = JSON.parse(localStorage.getItem("wpmNear") || "null"); if(c && c.lat) return [c.lng, c.lat]; }catch(e){}
+  return [-90.2, 38.63];
+}
+
+/* ═══════════════════════════════════════════
+   🗺️ WHAT'S ON NEAR YOU: pins for M&Gs, Connect Me nights and Plan a Dates
+═══════════════════════════════════════════ */
+var MAP_KINDS = {
+  mg: { icon: "⭐", label: "M&G", color: "#ffc94d" },
+  cm: { icon: "💞", label: "Connect Me", color: "#e0457b" },
+  pd: { icon: "📍", label: "Dates", color: "#00e3ae" }
+};
+window.__mapShow = window.__mapShow || { mg: true, cm: true, pd: true, people: true };
+var eventMarkers = {}, mapEventList = [];
+(function(){
+  var st = document.createElement("style");
+  st.textContent = ".ev-pin{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-size:19px;cursor:pointer;background:#14121f;border:3px solid var(--c);box-shadow:0 0 0 0 var(--c),0 3px 12px rgba(0,0,0,.6);animation:evPulse 2.6s ease-out infinite;position:relative}"
+    + ".ev-pin img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%;opacity:.55}.ev-pin span{position:relative;filter:drop-shadow(0 1px 2px #000)}"
+    + "@keyframes evPulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--c) 55%,transparent),0 3px 12px rgba(0,0,0,.6)}70%{box-shadow:0 0 0 14px transparent,0 3px 12px rgba(0,0,0,.6)}100%{box-shadow:0 0 0 0 transparent,0 3px 12px rgba(0,0,0,.6)}}"
+    + "@media (prefers-reduced-motion:reduce){.ev-pin{animation:none}}"
+    + ".map-legend{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:4px}"
+    + ".map-legend button{border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:#ddd;border-radius:999px;padding:7px 12px;font-size:12.5px;font-weight:700;cursor:pointer;min-height:36px}"
+    + ".map-legend button[aria-pressed=true]{border-color:var(--c);background:color-mix(in srgb,var(--c) 18%,transparent);color:#fff}"
+    + ".map-legend b{font-weight:800;margin-left:4px;opacity:.8}"
+    + ".map-next{width:100%;max-width:420px;display:flex;flex-direction:column;gap:6px;margin-top:6px}"
+    + ".map-next button{display:flex;gap:10px;align-items:center;text-align:left;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-left:3px solid var(--c);border-radius:12px;padding:9px 12px;color:#fff;cursor:pointer;font-size:13px}"
+    + ".map-next small{display:block;color:#9a8fb5;font-size:11.5px;margin-top:1px}";
+  document.head.appendChild(st);
+})();
+function mapWhen(t, tz){
+  var o = { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" };
+  try{ if(tz){ new Intl.DateTimeFormat("en-US", { timeZone: tz }); o.timeZone = tz; } }catch(e){}
+  return new Date(t).toLocaleString("en-US", o);
+}
+function mapLegendHTML(){
+  var counts = { mg: 0, cm: 0, pd: 0 };
+  mapEventList.forEach(function(e){ counts[e.kind]++; });
+  var people = Object.keys(window.allUsers || {}).filter(function(k){ var u = window.allUsers[k]; return u && u.lat && u.lng; }).length;
+  var chips = Object.keys(MAP_KINDS).map(function(k){
+    var m = MAP_KINDS[k];
+    return "<button style='--c:" + m.color + "' aria-pressed='" + !!window.__mapShow[k] + "' onclick=\"mapToggle('" + k + "')\">" + m.icon + " " + m.label + "<b>" + counts[k] + "</b></button>";
+  }).join("") + "<button style='--c:#7b2ff7' aria-pressed='" + !!window.__mapShow.people + "' onclick=\"mapToggle('people')\">👤 People<b>" + people + "</b></button>";
+  var soon = mapEventList.filter(function(e){ return window.__mapShow[e.kind]; }).sort(function(a, b){ return a.at - b.at; }).slice(0, 4);
+  var list = soon.length ? "<div class='map-next'><div style='font-size:11px;font-weight:800;letter-spacing:.1em;color:#9a8fb5;text-transform:uppercase;text-align:left'>Coming up</div>" + soon.map(function(e){
+      var m = MAP_KINDS[e.kind];
+      return "<button style='--c:" + m.color + "' onclick=\"mapFocus('" + e.kind + "','" + sanitize(e.id) + "')\"><span style='font-size:20px'>" + m.icon + "</span><span><b>" + sanitize(e.title) + "</b><small>" + sanitize(mapWhen(e.at, e.tz)) + " · " + sanitize(e.place) + (e.city ? ", " + sanitize(String(e.city).split(",")[0]) : "") + "</small></span></button>";
+    }).join("") + "</div>"
+    : "<div style='font-size:12.5px;color:#9a8fb5;margin-top:6px'>Nothing on the map yet. <a href='#' onclick='window.Dates&&Dates.openFromMap(\"pd\",\"\");return false' style='color:#00e3ae'>Plan a date</a> and it shows up here.</div>";
+  return "<div class='map-legend' role='group' aria-label='Show on the map'>" + chips + "</div>" + list;
+}
+window.mapToggle = function(k){
+  window.__mapShow[k] = !window.__mapShow[k];
+  refreshMapMarkers(); drawEventPins();
+  var c = document.querySelector(".map-controls"); if(c && active === 2) c.outerHTML = contentPanel();
+};
+window.mapFocus = function(kind, id){
+  var e = mapEventList.filter(function(x){ return x.kind === kind && x.id === id; })[0];
+  if(!e || !mapInstance) return;
+  mapInstance.flyTo({ center: [e.lng, e.lat], zoom: 14, speed: 1.4 });
+  var mk = eventMarkers[kind + ":" + id];
+  if(mk) setTimeout(function(){ if(!mk.getPopup().isOpen()) mk.togglePopup(); }, 900);
+  var stage = document.getElementById("mapMount"); if(stage && stage.scrollIntoView) stage.scrollIntoView({ behavior: "smooth", block: "center" });
+};
+function loadMapEvents(){
+  if(!window.Dates || !window.Dates.mapEvents) return;
+  window.Dates.mapEvents().then(function(list){
+    mapEventList = list || [];
+    drawEventPins();
+    var c = document.querySelector(".map-controls"); if(c && active === 2) c.outerHTML = contentPanel();
+  });
+}
+function drawEventPins(){
+  if(!mapInstance || !window.mapboxgl) return;
+  var seen = {}, spot = {};
+  mapEventList.forEach(function(e){
+    var key = e.kind + ":" + e.id;
+    if(!window.__mapShow[e.kind]) return;
+    seen[key] = true;
+    if(eventMarkers[key]) return;
+    /* Several things at the same place: fan them out a little. */
+    var sk = e.lat.toFixed(3) + "," + e.lng.toFixed(3), n = spot[sk] = (spot[sk] || 0) + 1;
+    var lat = e.lat + (n > 1 ? Math.sin(n * 2.1) * 0.0007 : 0), lng = e.lng + (n > 1 ? Math.cos(n * 2.1) * 0.0009 : 0);
+    var m = MAP_KINDS[e.kind];
+    var el = document.createElement("div");
+    el.className = "ev-pin"; el.style.setProperty("--c", m.color);
+    el.setAttribute("role", "button"); el.setAttribute("aria-label", m.label + ": " + e.title);
+    el.innerHTML = (e.pic ? "<img src='" + sanitize(e.pic) + "' alt='' loading='lazy'>" : "") + "<span>" + m.icon + "</span>";
+    var html = "<div style='background:#0f0f18;color:#fff;border-radius:14px;overflow:hidden;min-width:210px;max-width:250px;border:1px solid " + m.color + "55'>"
+      + (e.pic ? "<img src='" + sanitize(e.pic) + "' alt='' style='width:100%;height:96px;object-fit:cover;display:block'>" : "")
+      + "<div style='padding:10px 12px'>"
+      + "<div style='font-size:10.5px;font-weight:800;letter-spacing:.08em;color:" + m.color + "'>" + m.icon + " " + (e.kind === "pd" ? "PLAN A DATE" : e.kind === "cm" ? "CONNECT ME" : "M&amp;G MEET &amp; GREET") + "</div>"
+      + "<div style='font-size:15px;font-weight:800;margin:2px 0'>" + sanitize(e.title) + "</div>"
+      + "<div style='font-size:12px;color:#bbb;line-height:1.4'>" + sanitize(mapWhen(e.at, e.tz)) + "<br>📍 " + sanitize(e.place) + (e.city ? ", " + sanitize(String(e.city).split(",")[0]) : "") + "<br>" + (e.kind === "pd" ? "with " + sanitize(e.who) + " · " : "") + sanitize(e.price) + "</div>"
+      + "<button onclick=\"Dates.openFromMap('" + e.kind + "','" + sanitize(e.id) + "')\" style='margin-top:9px;width:100%;padding:9px;border-radius:16px;border:none;background:linear-gradient(90deg,#7b2ff7," + m.color + ");color:#fff;font-weight:800;font-size:12.5px;cursor:pointer;min-height:38px'>"
+      + (e.kind === "pd" ? (e.mine ? "See who's interested" : "🙋 I'm interested") : e.kind === "cm" ? "💞 See the package" : "🎟️ Get a spot") + "</button></div></div>";
+    var popup = new mapboxgl.Popup({ offset: 24, closeButton: true, closeOnClick: true, maxWidth: "260px" }).setHTML(html);
+    eventMarkers[key] = new mapboxgl.Marker(el).setLngLat([lng, lat]).setPopup(popup).addTo(mapInstance);
+  });
+  Object.keys(eventMarkers).forEach(function(k){ if(!seen[k]){ eventMarkers[k].remove(); delete eventMarkers[k]; } });
 }
 /* Mapbox is lazy-loaded on first map tab open — no eager init needed */
 
@@ -1333,6 +1440,7 @@ function attachMapToUI(){
     }, 120);
   }
   refreshMapMarkers();
+  loadMapEvents();
 }
 
 function bootMap(){
@@ -1344,7 +1452,7 @@ function bootMap(){
 
 function refreshMapMarkers(){
   if(!mapInstance) return;
-  var users = window.allUsers || {};
+  var users = window.__mapShow && window.__mapShow.people === false ? {} : (window.allUsers || {});
   var myUid = currentUser ? currentUser.uid : null;
   var posMap = {};
 
@@ -2222,14 +2330,15 @@ window.startCallFromBtn = async function(btn){
     persistCall(callId, targetUser);
 
     var callRef = firebase.database().ref("calls/" + callId);
-    /* Ring their phone again every 9 seconds while it's still ringing (rings 2-4).
+    /* Ring their phone again every 5 seconds while it's still ringing (rings 2-8),
+       so a closed app's alert keeps sounding like a phone instead of one text-message ding.
        The server checks the call is still ringing before each one. */
     var ringN = 0, stillRinging = true;
     var ringTimer = setInterval(function(){
       ringN++;
-      if(!stillRinging || window.__activeCallId !== callId || ringN > 3){ clearInterval(ringTimer); return; }
+      if(!stillRinging || window.__activeCallId !== callId || ringN > 7){ clearInterval(ringTimer); return; }
       try{ firebase.functions().httpsCallable("ringAgain")({ callId: callId, n: ringN }).catch(function(){}); }catch(e){}
-    }, 9000);
+    }, 5000);
     callRef.on("value", async function(snap){
       var call = snap.val(); if(!call) return;
       if(call.status !== "ringing") stillRinging = false;

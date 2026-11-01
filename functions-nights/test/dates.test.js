@@ -998,6 +998,7 @@ async function test(name, fn) {
     assert.deepStrictEqual([x1.status, x1.paidWith, x1.venueName, x1.city], ["live", "card", "Taco Town", "Los Angeles, CA"]);
     assert.ok(!("address" in x1) && !("phone" in x1), "street address and phone stay private");
     assert.strictEqual(x1.tz, "America/Los_Angeles", "the place's time zone is kept");
+    assert.deepStrictEqual([x1.lat, x1.lon], [34.05, -118.25], "open dates get a map pin");
     assert.ok(/[AP]M P[SD]T/.test(sess.line_items[0].price_data.product_data.description || ""), "times show in the place's own zone: " + sess.line_items[0].price_data.product_data.description);
     // the share page: who, what, where (city only), free to ask, not indexed
     const pg = await T.share.planPage(p1.id);
@@ -1097,6 +1098,13 @@ async function test(name, fn) {
     assert.ok(ad.plans.some(z => z.id === p5.id) && ad.flags.length >= 3, "admin sees plans and blocked attempts");
     await call("nightsAdminAction", "v6aIXY12MDY9ci1wWJmCiLOAKoG2", { action: "removePlan", id: p5.id, reason: "Test", data: { refund: true } });
     assert.deepStrictEqual([doc("plans/" + p5.id).status, doc("credits/pcre").balance], ["removed", 499]);
+    // 🗺️ map pins: a place typed in by hand (no spot yet) is looked up once, never again
+    const p7 = await call("createPlan", "pg2", plan({ title: "Typed-in place", startsAt: Date.now() + 50 * H, venue: { name: "Corner Cafe", address: "9 Elm St", city: "Austin, TX", phone: "512-555-0101" } }));
+    await completeLastCheckout("pg2");
+    assert.strictEqual(doc("plans/" + p7.id).lat, null);
+    await T.mapPins();
+    assert.strictEqual(doc("plans/" + p7.id).geoTried, true, "looked up once (no network in tests)");
+    await call("cancelPlan", "pg2", { planId: p7.id });
     // the admin can change the listing fee, even to free
     await assert.rejects(call("nightsAdminAction", "v6aIXY12MDY9ci1wWJmCiLOAKoG2", { action: "savePlanFee", data: { planFee: 99999 } }), /between/);
     await call("nightsAdminAction", "v6aIXY12MDY9ci1wWJmCiLOAKoG2", { action: "savePlanFee", data: { planFee: 0 } });

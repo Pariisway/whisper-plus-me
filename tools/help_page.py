@@ -59,7 +59,7 @@ body = f"""
        ("Add it to your home screen", "On Android or a computer, tap <em>Install</em> when it's offered. On iPhone, tap the Share button in Safari, then <em>Add to Home Screen</em>."),
        ("Turn on notifications", "Allow notifications so you hear when someone calls you, picks you for a date, or a meet-up is tomorrow."))}
 {shots(("01-landing", "The front page: log in, sign up or continue with Google."))}
-<p><b>Getting around:</b> the bar at the bottom has five screens: <b>📱 Phone</b> (people you can call), <b>💬 Chat</b> (voice rooms), <b>⭐ M&amp;G</b> (meet-ups, Connect Me and Plan a Date), <b>🗺️ Map</b> and <b>👤 Profile</b>. On a phone you can also swipe left and right between them.</p>
+<p><b>Getting around:</b> the bar at the bottom has five screens: <b>📱 Phone</b> (people you can call), <b>💬 Chat</b> (voice rooms), <b>⭐ M&amp;G</b> (meet-ups, Connect Me and Plan a Date), <b>🗺️ Map</b> (what's on near you) and <b>👤 Profile</b>. On a phone you can also swipe left and right between them.</p>
 </section>
 
 <section class="pg-card" id="rooms"><h2>🎙️ Voice chat rooms</h2>
@@ -70,7 +70,7 @@ body = f"""
        ("Share a room", "Every room card has a 🔗 Share button that sends a link straight into that room."))}
 {shots(("03-room-list", "Room cards: tap one to join, or share it."))}
 <p><b>Member rooms:</b> under the main rooms, members can open their own room for up to 10 people. The owner sets an entry price of 1 to 10 coins and earns those coins. Sessions last 3 minutes. You can have one room open at a time.</p>
-<p><b>The map (🗺️):</b> tap <em>Location ON</em> to show your pin to other members nearby. It turns itself off after 25 minutes, and your exact spot is never shown.</p>
+<p><b>The map (🗺️):</b> shows what's happening around you. ⭐ gold pins are M&amp;Gs, 💞 pink pins are Connect Me nights, 📍 green pins are open Plan a Dates, and photos are members who turned their location on. Tap a pin to see it, then tap the button to get a spot or say you're interested. The buttons under the map turn each kind on or off, and <em>Coming up</em> lists the next few things on the map. Tap <em>Location ON</em> to show your own pin to members nearby. It turns itself off after 25 minutes.</p>
 <p>See every room and what it's for on the <a href="/rooms/">voice chat rooms page</a>.</p>
 </section>
 

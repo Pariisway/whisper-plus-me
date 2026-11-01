@@ -997,6 +997,7 @@ async function housekeeping() {
   await meetupHousekeeping(s);
   await connectHousekeeping(s);
   await planHousekeeping(s);
+  await mapPins();
 }
 exports.datesHousekeeping = onSchedule({ schedule: "every 10 minutes", ...withStripe }, housekeeping);
 
@@ -1531,7 +1532,8 @@ function cleanMeetup(d, { official = false } = {}) {
 function publicFields(c, host) {
   let hue = 0; c.title.split("").forEach(ch => { hue = (hue * 31 + ch.charCodeAt(0)) % 360; });
   return { title: c.title, about: c.about, category: c.category, items: c.items, imageURL: c.imageURL || host.photo || "", hue,
-    startsAt: fromMs(c.startsAt), price: c.price, spots: c.spots, venueName: c.venue.name, city: c.venue.city, idCheck: !!c.idCheck };
+    startsAt: fromMs(c.startsAt), price: c.price, spots: c.spots, venueName: c.venue.name, city: c.venue.city, idCheck: !!c.idCheck,
+    lat: round3(c.venue.lat), lon: round3(c.venue.lon) }; // for the 🗺️ map pin (the place's name is public anyway; the street address isn't)
 }
 const ID_MSG = "This one is 21+ with ID checked at the door. Confirm you'll bring a valid photo ID.";
 /** 21+ events: the buyer (or invited guest) has to confirm they'll bring a photo ID. */
@@ -2142,7 +2144,7 @@ async function postConnect(req, id, data) {
   const c = cleanConnect(data);
   let hue = 0; c.title.split("").forEach(ch => { hue = (hue * 31 + ch.charCodeAt(0)) % 360; });
   const vk = venueKey(c.venue), vr = (await db.doc(`connectVenues/${vk}`).get()).data();
-  const pub = { title: c.title, about: c.about, category: c.category, items: c.items, imageURL: c.imageURL, hue, startsAt: fromMs(c.startsAt), price: c.price, size: c.size, quantity: c.quantity, venueName: c.venue.name, city: c.venue.city,
+  const pub = { title: c.title, about: c.about, category: c.category, items: c.items, imageURL: c.imageURL, hue, startsAt: fromMs(c.startsAt), price: c.price, size: c.size, quantity: c.quantity, venueName: c.venue.name, city: c.venue.city, lat: round3(c.venue.lat), lon: round3(c.venue.lon),
     venueKey: vk, venueRating: vr && vr.n ? { avg: avgOf(vr), n: vr.n } : null, idCheck: c.idCheck };
   if (!id) {
     const ref = db.collection("connects").doc();
@@ -2559,6 +2561,35 @@ const PAYS = { me: "I'll treat", split: "We split it", each: "Each pays our own"
 const plRef = id => db.doc(`plans/${id}`);
 const plPrivate = id => db.doc(`plans/${id}/private/info`);
 const prRef = (planId, uid) => db.doc(`planRequests/${planId}_${uid}`);
+
+/* 🗺️ MAP PINS: every live M&G, Connect Me package and open Plan a Date gets a
+   map spot (rounded to about a block). Places picked from the search already
+   have one; places typed in by hand are looked up here (free OpenStreetMap
+   search), a few at a time, once each. */
+async function geocode(v) {
+  if (process.env.DATES_TEST || typeof fetch !== "function") return null;
+  const q = [v.name, v.address, v.city].filter(Boolean).join(", ");
+  try {
+    const r = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=1&lang=en`, { headers: { "User-Agent": "whisperplusme.com map pins" }, signal: AbortSignal.timeout(6000) });
+    const c = ((((await r.json()).features || [])[0] || {}).geometry || {}).coordinates;
+    return c && Number.isFinite(c[1]) ? { lat: c[1], lon: c[0] } : null;
+  } catch (e) { return null; }
+}
+async function mapPins() {
+  let budget = 15;
+  for (const [col, priv] of [["meetups", mtPrivate], ["connects", cnPrivate], ["plans", plPrivate]]) {
+    const q = await db.collection(col).where("status", "==", "live").limit(300).get();
+    for (const d of q.docs) {
+      const x = d.data();
+      if (budget <= 0) return;
+      if (x.lat != null || x.geoTried) continue;
+      budget--;
+      const v = ((await priv(d.id).get()).data() || {}).venue || {};
+      const g = Number.isFinite(v.lat) && Number.isFinite(v.lon) ? { lat: v.lat, lon: v.lon } : await geocode(v);
+      await d.ref.update(g ? { lat: round3(g.lat), lon: round3(g.lon) } : { geoTried: true });
+    }
+  }
+}
 
 /* What gets blocked: money for someone's time, and meeting somewhere private. */
 const MONEY_TALK = /(\$\s?\d|\d\s?(dollars|bucks|usd)\b|cash\s?app|\$[a-z]{2,}|venmo|zelle|paypal|apple\s?pay|\bchime\b|western union|gift\s?cards?|\bgenerous\b|(?<!flower |floral )\barrangements?\b|\ballowance\b|\bdonations?\b|\broses\b|sugar\s?(daddy|baby|babies|mama|momma)|\bppm\b|pay\s?per|per\s?(hour|hr|night|meet|date)\b|\bhourly\b|\bgfe\b|\bincall\b|\boutcall\b|\bescort|companionship|\bpay (me|you)\b|\bfee\b|\btip (me|you)\b)/i;
@@ -3111,12 +3142,12 @@ async function ratingsFor(uid, kind, ids) {
    - A data-only push goes to every device they turned alerts on for.
      The service worker (public/firebase-messaging-sw.js) shows it with
      Answer / Decline, a long vibration, and stays up until they act.
-   - It re-rings every 9 seconds (4 times) while the call is still ringing.
+   - It re-rings every 5 seconds (8 rings in all) while the call is still ringing.
    - When the call stops ringing, the alert is taken down; if they never
      answered it and didn't decline, they get "Missed call from …".
    (Replaces notifyIncomingCall in the default functions codebase.)
 ═══════════════════════════════════════════════════════════════ */
-const RING_EVERY_MS = 9000, RINGS = 4;
+const RING_EVERY_MS = 5000, RINGS = 8; // about 40 seconds of ringing
 const sleep = ms => new Promise(r => setTimeout(r, process.env.DATES_TEST ? 0 : ms));
 function callAlert(callId, call, n, extra = {}) {
   const name = String(call.callerName || "Someone").slice(0, 40);
@@ -3131,7 +3162,7 @@ function callAlert(callId, call, n, extra = {}) {
    Google re-sends a database event when a function is slow to finish, and the
    old version re-rang on every re-send, even after the call had ended.
    - ring 1 is sent the moment the call is created (callRing)
-   - rings 2-4 are asked for by the caller's app every 9 seconds (ringAgain)
+   - rings 2-8 are asked for by the caller's app every 5 seconds (ringAgain)
    - every ring re-reads the call first and is claimed once, so a repeat never rings twice
    - each alert carries an expiry, so a late one is shown as "missed", never as ringing */
 const CALL_RING_MS = 50000;
@@ -3154,7 +3185,7 @@ async function ringOnce(callId, n) {
 exports.callRing = onValueCreated({ ref: "/calls/{callId}", region: "us-central1", memory: "256MiB" }, async event => {
   await ringOnce(event.params.callId, 0);
 });
-/** The caller's app asks for rings 2, 3 and 4 while it's still ringing. */
+/** The caller's app asks for rings 2 to 8 while it's still ringing. */
 exports.ringAgain = onCall(async req => {
   const uid = requireUser(req);
   const callId = str(req.data?.callId, 64), n = Math.round(Number(req.data?.n));
@@ -3483,5 +3514,5 @@ exports.chatPrune = onSchedule({ schedule: "every 30 minutes", memory: "512MiB" 
 
 // Test hooks (only when running the local test script; never part of a deploy).
 if (process.env.DATES_TEST) {
-  module.exports.__test = { setStripe: s => { _stripe = s; }, handleStripeEvent, housekeeping, settleDate, getSettings, CATEGORIES, landingStats, chatPrune, buildSitemap, planHousekeeping, planTextOk, dateOGPage, meetupOGPage, share, payAllReady, ringOnce, stopRingFlow, claimDevice, onDispute, onDisputeChanged, onFraudWarning, sentMail, meetupReminders, connectReminders, emailHTML, connectInviteToken: async orderId => ((await coRef(orderId).get()).data()?.seats || []).map(x => x.token) };
+  module.exports.__test = { setStripe: s => { _stripe = s; }, handleStripeEvent, housekeeping, settleDate, getSettings, CATEGORIES, landingStats, chatPrune, buildSitemap, planHousekeeping, planTextOk, mapPins, dateOGPage, meetupOGPage, share, payAllReady, ringOnce, stopRingFlow, claimDevice, onDispute, onDisputeChanged, onFraudWarning, sentMail, meetupReminders, connectReminders, emailHTML, connectInviteToken: async orderId => ((await coRef(orderId).get()).data()?.seats || []).map(x => x.token) };
 }
