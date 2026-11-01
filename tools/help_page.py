@@ -141,10 +141,10 @@ body = f"""
 <h3>Step 2: People ask to go</h3>
 <p>Your date shows on the 📍 Plan list. People nearby see it under <b>Near me</b> (about 25 miles), and anyone can find it under <b>Everywhere</b>. Tap <b>↗ Share</b> to post it on your Stories or send it to someone: the link opens straight to your date.</p>
 {shots(("pd1-list", "Open dates near you, with who pays and how many people are interested."), ("pd3-detail", "What people see when they open your date: they tap “I'm interested” for free."))}
-<p><b>If you're the one asking:</b> open a date, add a short hello if you like, and tap <b>🙋 I'm interested</b>. It's free. You'll get a notification if you're picked. You can have up to 5 requests waiting at once, and you can take one back any time.</p>
+<p><b>If you're the one asking:</b> open a date, add a short hello if you like, and tap <b>🙋 I'm interested</b>. It's free. You'll get a notification if you're picked. You can have up to 5 requests waiting at once, and you can take one back any time. If two people pick you for around the same time, the first one you confirm is your date: the other goes back to them, and your other requests for that time are taken back for you (dates need to be at least 4 hours apart). If a date is more than about 80 miles from where you are, you tick a box saying you'll be in town that day, and the person who posted it sees roughly how far away you are.</p>
 
 <h3>Step 3: Pick who goes</h3>
-{steps(("Look under 📍 Your dates", "Below the list, your date shows <em>Who's interested</em>: each person's photo, their star rating from past dates, how many dates they've been on, and any no-shows. Tap a photo to see their profile."),
+{steps(("Look under 📍 Your dates", "Below the list, your date shows <em>Who's interested</em>: each person's photo, about how far away they are, their star rating from past dates, how many dates they've been on, and any no-shows. Tap a photo to see their profile."),
        ("Tap Pick (or No)", "Pick one person. They have 12 hours to confirm (less if the date is soon)."),
        ("They confirm", "Once they tap <em>✅ Confirm</em>, it's a date. Everyone else who asked is told it's filled. If they pass or don't answer in time, you can pick someone else."))}
 {shots(("pd2a-requests", "Who's interested: pick the person you want to go with."))}
@@ -263,13 +263,13 @@ page = f"""<!doctype html>
 <meta property="og:url" content="{URL}">
 <meta property="og:title" content="{html.escape(TITLE)}">
 <meta property="og:description" content="{html.escape(DESC)}">
-<meta property="og:image" content="https://whisperplusme.com/og-image.jpg?v=5">
+<meta property="og:image" content="https://whisperplusme.com/og-image.jpg?v=6">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="{html.escape(TITLE)}">
 <meta name="twitter:description" content="{html.escape(DESC)}">
-<meta name="twitter:image" content="https://whisperplusme.com/og-image.jpg?v=5">
+<meta name="twitter:image" content="https://whisperplusme.com/og-image.jpg?v=6">
 <link rel="stylesheet" href="/pages.css">
 <style>{CSS}</style>
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-3FZCXS1T84"></script>

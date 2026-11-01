@@ -168,13 +168,13 @@ def shell(title, desc, path, body, ld, extra_head=""):
 <meta property="og:url" content="{url}">
 <meta property="og:title" content="{e(title)}">
 <meta property="og:description" content="{e(desc)}">
-<meta property="og:image" content="{SITE}/og-image.jpg?v=5">
+<meta property="og:image" content="{SITE}/og-image.jpg?v=6">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="{e(title)}">
 <meta name="twitter:description" content="{e(desc)}">
-<meta name="twitter:image" content="{SITE}/og-image.jpg?v=5">
+<meta name="twitter:image" content="{SITE}/og-image.jpg?v=6">
 <link rel="stylesheet" href="/pages.css">
 {extra_head}{GA}
 {jsonld(ld)}

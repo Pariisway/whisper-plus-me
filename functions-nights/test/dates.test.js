@@ -1117,6 +1117,57 @@ async function test(name, fn) {
     assert.strictEqual((await call("myPlans", "pg3", {})).fee, 499);
   });
 
+  await test("Plan a Date: no double-booking (first confirm wins, the other pick reopens, clashing asks are blocked)", async () => {
+    seedPeople("dA", "dB", "dC", "dE", "dG", "dH");
+    ["dA", "dB", "dC", "dE", "dG", "dH"].forEach(u => { rtdb.users[u].photo = "https://x.test/" + u + ".jpg"; rtdb.users[u].email = u + "@x.com"; });
+    const venue = { name: "Taco Town", address: "12 Main St", city: "Austin, TX", phone: "512-555-0100", lat: 30.27, lon: -97.74 };
+    const T0 = Date.now() + 72 * H;
+    const post = async (u, title, at) => { const r = await call("createPlan", u, { title, pays: "split", venue, startsAt: at, birthYear: 1990 }); await completeLastCheckout(u); return r.id; };
+    const a = await post("dA", "Tacos", T0), b = await post("dB", "Bowling", T0 + 1 * H), c = await post("dC", "Brunch", T0 + 30 * H), g = await post("dE", "Karaoke", T0 + 3 * H);
+    for (const id of [a, b, c, g]) await call("requestPlan", "dG", { planId: id, birthYear: 1991 });
+    await call("requestPlan", "dH", { planId: b, birthYear: 1993 });
+    // both A and B pick dG around the same time (allowed: nothing is confirmed yet)
+    await call("answerPlanRequest", "dA", { planId: a, uid: "dG", approve: true });
+    await call("answerPlanRequest", "dB", { planId: b, uid: "dG", approve: true });
+    assert.deepStrictEqual([doc("plans/" + a).status, doc("plans/" + b).status], ["matched", "matched"]);
+    const gReq = doc("plans/" + g).requests;
+    // dG confirms A first: B goes back to its creator, the 3-hours-later request is taken back, the next-day one stays
+    await call("confirmPlan", "dG", { planId: a, yes: true });
+    assert.strictEqual(doc("plans/" + a).status, "confirmed");
+    assert.deepStrictEqual([doc("plans/" + b).status, doc("plans/" + b).guestUid], ["live", null], "the clashing pick reopens");
+    assert.strictEqual(doc("planRequests/" + b + "_dG").status, "passed");
+    assert.strictEqual(doc("planRequests/" + g + "_dG").status, "withdrawn", "a request 3 hours later is taken back");
+    assert.strictEqual(doc("plans/" + g).requests, gReq - 1);
+    assert.strictEqual(doc("planRequests/" + c + "_dG").status, "pending", "a date 30 hours later is fine");
+    await assert.rejects(call("confirmPlan", "dG", { planId: b, yes: true }), /nothing to confirm/);
+    // B picks dH instead; dH confirms
+    await call("answerPlanRequest", "dB", { planId: b, uid: "dH", approve: true });
+    await call("confirmPlan", "dH", { planId: b, yes: true });
+    // booked people can't post or ask for dates that clash
+    await assert.rejects(call("createPlan", "dG", { title: "Sushi", pays: "split", venue, startsAt: T0 - 1 * H }), /already have a date around then/);
+    await assert.rejects(call("requestPlan", "dH", { planId: g }), /already have a date around then/);
+    // a creator can't pick someone who's already booked then
+    await call("requestPlan", "dH", { planId: c });
+    await call("answerPlanRequest", "dC", { planId: c, uid: "dH", approve: true }); // 29h apart: fine
+    assert.strictEqual(doc("plans/" + c).guestUid, "dH");
+    // posting next to your own date clashes; far enough apart is fine
+    await assert.rejects(call("createPlan", "dE", { title: "Late show", pays: "split", venue, startsAt: T0 + 5 * H }), /already have a date around then/);
+    // someone far away has to say they'll be in town; the creator sees how far
+    seedPeople("dJ", "dK"); rtdb.users.dJ.photo = "https://x.test/dJ.jpg"; rtdb.users.dK.photo = "https://x.test/dK.jpg"; rtdb.users.dK.email = "dK@x.com";
+    const k = await post("dK", "Museum", T0 + 50 * H);
+    const la = { lat: 34.05, lng: -118.24, birthYear: 1994 };
+    await assert.rejects(call("requestPlan", "dJ", { planId: k, ...la }), /about 1\d{3} miles from you\. Only ask if you'll be in Austin/);
+    await call("requestPlan", "dJ", { planId: k, ...la, traveling: true });
+    const fromLA = doc("planRequests/" + k + "_dJ");
+    assert.ok(fromLA.distKm > 1800 && fromLA.distKm < 2000 && fromLA.traveling === true, "distance kept for the creator: " + fromLA.distKm);
+    await call("requestPlan", "dJ", { planId: g, lat: 30.3, lng: -97.7 }).catch(() => {}); // next door: no box needed
+    const near = (await call("myPlans", "dE", {})).plans.find(x => x.id === g);
+    assert.ok(near && near.requests.some(r => r.uid === "dJ" && r.distKm != null && r.distKm < 10), "the creator sees they're close");
+    const z = await post("dE", "Late show", T0 + 8 * H);
+    await call("requestPlan", "dA", { planId: z }); // dA's own Tacos is 8 hours earlier
+    assert.strictEqual(doc("planRequests/" + z + "_dA").status, "pending");
+  });
+
   await test("Landing counter and chat cleanup keep the site fast", async () => {
     const rt = require("firebase-admin").__rtdb;
     rt.presence = { a: { room: "general" }, b: { room: "general" }, c: { room: "x" } };

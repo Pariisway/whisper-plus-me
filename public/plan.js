@@ -155,7 +155,9 @@
   var ST = { draft: ["warn", "Fee not paid"], live: ["ok", "Open"], matched: ["purple", "Waiting to confirm"], confirmed: ["ok", "It's a date"], completed: ["purple", "Done"], expired: ["bad", "No match"], canceled: ["bad", "Called off"], removed: ["bad", "Removed"],
     asked: ["purple", "You asked"], declined: ["bad", "Not this time"], filled: ["bad", "Filled"], closed: ["bad", "Called off"], withdrawn: ["bad", "Taken back"], passed: ["bad", "You passed"], lapsed: ["bad", "Not confirmed"] };
   function reqRow(x, r) {
-    var facts = [r.rating ? stars(r.rating) : "New to dates", r.datesDone ? r.datesDone + " date" + (r.datesDone === 1 ? "" : "s") : "", r.noShows ? "<span style='color:#ff8a80'>" + r.noShows + " no-show" + (r.noShows === 1 ? "" : "s") + "</span>" : ""].filter(Boolean).join(" · ");
+    var mi = r.distKm == null ? null : Math.round(r.distKm * 0.621);
+    var far = mi == null ? "" : mi > 80 ? "<span style='color:#ffba49'>📍 " + mi.toLocaleString() + " mi away" + (r.traveling ? " · says they'll be in town" : "") + "</span>" : "📍 " + (mi < 1 ? "nearby" : mi + " mi away");
+    var facts = [far, r.rating ? stars(r.rating) : "New to dates", r.datesDone ? r.datesDone + " date" + (r.datesDone === 1 ? "" : "s") : "", r.noShows ? "<span style='color:#ff8a80'>" + r.noShows + " no-show" + (r.noShows === 1 ? "" : "s") + "</span>" : ""].filter(Boolean).join(" · ");
     return "<div class='pd-req'>" + "<button style='background:none;border:0;padding:0;cursor:pointer' onclick=\"Plan.profile('" + esc(r.uid) + "')\" aria-label='See profile'>" + avatar(r, 44) + "</button>"
       + "<div class='t'><b>" + esc(r.name) + "</b><span class='f'>" + facts + "</span>" + (r.note ? "<q>" + esc(r.note) + "</q>" : "") + "</div>"
       + (r.status === "pending" && x.status === "live" ? "<div class='a'><button class='dt-btn teal' onclick=\"Plan.answer('" + x.id + "','" + esc(r.uid) + "',true,this)\">Pick</button><button class='dt-btn ghost' onclick=\"Plan.answer('" + x.id + "','" + esc(r.uid) + "',false,this)\">No</button></div>"
@@ -277,6 +279,9 @@
       var mine = x.creatorUid === P.uid, anon = !me(), pays = PAYS[x.pays] || PAYS.split;
       var asked = P.mine.filter(function (z) { return z.id === id && !z.mine; })[0];
       var ny = !anon && !mine && needYear();
+      /* Far away right now? They have to say they'll be in town that day. */
+      var miAway = P.where && x.lat != null ? Math.round(kmBetween(P.where.lat, P.where.lng, x.lat, x.lon) * 0.621) : null;
+      var far = !anon && !mine && miAway != null && miAway > 80;
       openModal("<div style='margin:-18px -18px 0;border-radius:14px 14px 0 0;overflow:hidden'><div class='dt-poster' style='height:150px;background:" + grad(hue(x.title)) + "'>" + (x.creatorPhoto ? "<img src='" + esc(x.creatorPhoto) + "' alt=''>" : "")
         + "<div class='k'><span>📍 " + esc(x.city) + esc(distLabel(x)) + (x.requests ? " · " + x.requests + " interested" : "") + "</span></div><b style='font-size:22px'>" + esc(x.title) + "</b></div></div>"
         + "<div class='dt-row' style='justify-content:flex-start;gap:10px;flex-wrap:nowrap'><button style='background:none;border:0;padding:0;cursor:pointer' onclick=\"Plan.profile('" + esc(x.creatorUid) + "')\">" + avatar({ name: x.creatorName, photo: x.creatorPhoto }, 46) + "</button><div><b>" + esc(x.creatorName) + "</b> " + stars(x.creatorRating) + "<br><small style='color:#9a8fb5'>is planning this date</small></div></div>"
@@ -287,13 +292,28 @@
           : asked ? "<div class='dt-rules' style='text-align:center'>You asked for this one. We'll tell you if you're picked.</div>"
           : (ny ? birthYearField("pdYear") : "")
             + (anon ? "" : "<div><div class='lbl'>Say hi <small>(optional)</small></div><input class='dt-in' id='pdNote' maxlength='200' placeholder='Love tacos! I can do 7.'></div>")
+            + (far ? "<div class='dt-warn' style='font-size:13px'>📍 This date is about <b>" + miAway.toLocaleString() + " miles</b> from you.</div><label class='dt-check'><input type='checkbox' id='pdTravel'> <span>I'll be in " + esc((x.city || "town").split(",")[0]) + " on " + esc(when(x.startsAt, x.tz).split(" · ")[0]) + ". (" + esc(x.creatorName) + " sees how far away you are.)</span></label>" : "")
             + "<div id='pdErr' class='dt-err'></div><button class='dt-btn big teal' id='pdAsk'>" + (anon ? "Sign up free to ask" : "🙋 I'm interested") + "</button>"
             + "<p class='dt-fine'>Asking is free. If you're picked, you confirm, then meet at the place and each pay it directly. Never send money to someone you're meeting.</p>")
         + "<div class='dt-actions'><button class='dt-btn ghost' style='flex:1' onclick=\"Plan.share('" + x.id + "')\">↗ Share</button>" + (mine || anon ? "" : "<button class='dt-btn ghost' style='flex:1' onclick=\"Plan.report('" + esc(x.creatorUid) + "')\">🚩 Report</button>") + "</div>");
       var b = $i("pdAsk");
       if (b) b.onclick = function () {
         if (anon) { try { sessionStorage.setItem("wpmPlan", x.id); } catch (e) {} if (window.promptGuestUpgrade) window.promptGuestUpgrade("Asking for a date"); return; }
+        /* Don't know where they are yet: ask once, so the creator can see how far away they are. */
+        if (!P.where && !P.askedGeo && navigator.geolocation) {
+          P.askedGeo = true; var note0 = ($i("pdNote") || {}).value || "", btn0 = b; btn0.disabled = true;
+          navigator.geolocation.getCurrentPosition(function (pos) {
+            P.where = { lat: Math.round(pos.coords.latitude * 100) / 100, lng: Math.round(pos.coords.longitude * 100) / 100, at: Date.now() };
+            try { localStorage.setItem("wpmNear", JSON.stringify(P.where)); } catch (e) {}
+            var mi = x.lat != null ? kmBetween(P.where.lat, P.where.lng, x.lat, x.lon) * 0.621 : 0;
+            if (mi > 80) { Plan.open(x.id); var n = $i("pdNote"); if (n) n.value = note0; return; } // show the "I'll be in town" box first
+            btn0.disabled = false; btn0.click();
+          }, function () { btn0.disabled = false; btn0.click(); }, { timeout: 8000, maximumAge: 600000 });
+          return;
+        }
         var data = { planId: x.id, note: ($i("pdNote") || {}).value || "" };
+        if (P.where) { data.lat = Math.round(P.where.lat * 100) / 100; data.lng = Math.round(P.where.lng * 100) / 100; }
+        if (far) { if (!$i("pdTravel").checked) { $i("pdErr").textContent = "Tick the box if you'll be there that day."; return; } data.traveling = true; }
         if (ny) { data.birthYear = +($i("pdYear") || {}).value; if (!data.birthYear) { $i("pdErr").textContent = "Pick your birth year first."; return; } }
         busy(b, fn("requestPlan", data)).then(function (r) { closeModal(); toast(r.message); load(); }, function (e) { if (!yearRetry(e, function () { Plan.open(x.id); })) $i("pdErr").textContent = e.message; });
       };

@@ -319,7 +319,7 @@ module.exports = function makeShare({ db, rtdb, APP_URL, logger, ms, fmtMoney })
       else png = await plainCard(story);
     } catch (e) {
       logger.error("shareImage", req.path, e.stack || e.message);
-      res.redirect(302, `${APP_URL}/og-image.jpg?v=5`); return;
+      res.redirect(302, `${APP_URL}/og-image.jpg?v=6`); return;
     }
     res.set("Content-Type", "image/png");
     res.set("Cache-Control", "public, max-age=600, s-maxage=1800");
@@ -465,7 +465,7 @@ ${m.hostUid ? `<a class="b s" href="/u/${esc(m.hostUid)}">👤 About ${esc(clip(
     const url = `${APP_URL}/p/${id}`;
     const open = x && x.status === "live" && !x.hidden && ms(x.startsAt) > Date.now() + 3 * 3600000;
     if (!open) {
-      return pageShell({ title: "Plan a Date on Whisper+Me", desc: "Plan a date anywhere at a real public place, and pick who you go with. Asking is free.", url, image: `${APP_URL}/og-image.jpg?v=5`,
+      return pageShell({ title: "Plan a Date on Whisper+Me", desc: "Plan a date anywhere at a real public place, and pick who you go with. Asking is free.", url, image: `${APP_URL}/og-image.jpg?v=6`,
         body: `<div class="facts" style="text-align:center">This date isn't open anymore.</div><div class="btns"><a class="b p" href="/?dates=1&plan=none">📍 See open dates</a></div>` });
     }
     let tz = "America/Chicago"; try { if (x.tz) { new Intl.DateTimeFormat("en-US", { timeZone: x.tz }); tz = x.tz; } } catch (e) { /* default */ }

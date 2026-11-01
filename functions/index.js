@@ -1046,7 +1046,7 @@ exports.profileOG = onRequest({ cors: false }, async (req, res) => {
 
   let name  = "a member";
   let bio   = "Come talk to me on Whisper+Me";
-  let photo = "https://whisperplusme.com/og-image.jpg?v=5";
+  let photo = "https://whisperplusme.com/og-image.jpg?v=6";
   let price = 1;
   const url = "https://whisperplusme.com/u/" + uid;
   let calls = 0;
@@ -1144,14 +1144,14 @@ exports.joinOG = onRequest({ cors: false }, async (req, res) => {
   <meta property="og:url"           content="${esc(dest)}">
   <meta property="og:title"         content="${esc(title)}">
   <meta property="og:description"   content="${esc(desc)}">
-  <meta property="og:image"         content="https://whisperplusme.com/og-image.jpg?v=5">
+  <meta property="og:image"         content="https://whisperplusme.com/og-image.jpg?v=6">
   <meta property="og:image:width"   content="1200">
   <meta property="og:image:height"  content="630">
   <meta property="og:site_name"     content="Whisper+Me">
   <meta name="twitter:card"         content="summary_large_image">
   <meta name="twitter:title"        content="${esc(title)}">
   <meta name="twitter:description"  content="${esc(desc)}">
-  <meta name="twitter:image"        content="https://whisperplusme.com/og-image.jpg?v=5">
+  <meta name="twitter:image"        content="https://whisperplusme.com/og-image.jpg?v=6">
   <script>window.location.href = "${dest}";</script>
 </head>
 <body>
@@ -1230,7 +1230,7 @@ exports.roomOG = onRequest({ cors: false }, async (req, res) => {
      into a 1200x630 banner slot. Rooms without a photo keep the
      original branded banner image. */
   const usingRoomPhoto = !!roomPhoto;
-  const image      = usingRoomPhoto ? roomPhoto : "https://whisperplusme.com/og-image.jpg?v=5";
+  const image      = usingRoomPhoto ? roomPhoto : "https://whisperplusme.com/og-image.jpg?v=6";
   const imgWidth   = usingRoomPhoto ? "400"  : "1200";
   const imgHeight  = usingRoomPhoto ? "400"  : "630";
   const twitterCard = usingRoomPhoto ? "summary" : "summary_large_image";

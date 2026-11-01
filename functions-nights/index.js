@@ -2633,6 +2633,8 @@ exports.createPlan = onCall(withStripe, async req => {
   }
   const mine = await db.collection("plans").where("creatorUid", "==", uid).where("status", "in", ["live", "matched", "confirmed"]).get();
   if (mine.size >= PLAN_MAX_LIVE) fail("resource-exhausted", `You can have ${PLAN_MAX_LIVE} date plans up at a time.`);
+  const clash = await planClash(uid, c.startsAt, null);
+  if (clash) fail("failed-precondition", clashMsg(clash));
   const me = await whisperProfile(uid);
   if (!me.photo) fail("failed-precondition", "Add a profile photo first (👤 Profile). People want to see who they're meeting.");
   const fee = planFeeOf(s);
@@ -2701,19 +2703,26 @@ exports.requestPlan = onCall(async req => {
   if (x.creatorUid === uid) fail("failed-precondition", "That's your own date.");
   if (ms(x.startsAt) < Date.now() + 3 * 3600000) fail("failed-precondition", "It's too close to the time to ask now.");
   if (await blockedEitherWay(uid, x.creatorUid)) fail("permission-denied", "You can't ask for this one.");
+  const clash = await planClash(uid, ms(x.startsAt), id);
+  if (clash) fail("failed-precondition", clashMsg(clash));
   const bad = planTextOk(note, "note");
   if (bad) { await planFlag(uid, "request", note, id); fail("invalid-argument", bad); }
   const me = await whisperProfile(uid);
   if (!me.photo) fail("failed-precondition", "Add a profile photo first (👤 Profile). People want to see who they're meeting.");
   const open = await db.collection("planRequests").where("uid", "==", uid).where("status", "==", "pending").get();
   if (open.size >= PLAN_MAX_REQUESTS) fail("resource-exhausted", `You have ${PLAN_MAX_REQUESTS} requests waiting. Wait for an answer, or take one back.`);
+  /* How far away they are right now (the app sends a rough spot, about a mile), so the
+     creator can tell who's local. Someone far away has to say they'll be in town. */
+  const lat = Number(req.data?.lat), lng = Number(req.data?.lng);
+  const distKm = Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && x.lat != null ? Math.round(kmBetween(lat, lng, x.lat, x.lon)) : null;
+  if (distKm != null && distKm > PLAN_FAR_KM && req.data?.traveling !== true) fail("failed-precondition", `This date is about ${Math.round(distKm * 0.621)} miles from you. Only ask if you'll be in ${String(x.city || "town").split(",")[0]} that day.`);
   const ref = prRef(id, uid);
   await db.runTransaction(async tx => {
     const cur = (await tx.get(ref)).data();
     const p = (await tx.get(plRef(id))).data();
     if (cur) fail("already-exists", cur.status === "pending" ? "You already asked. We'll tell you if they say yes." : "You already asked for this one.");
     if (!p || p.status !== "live") fail("failed-precondition", "This date isn't open anymore.");
-    tx.set(ref, { planId: id, uid, creatorUid: x.creatorUid, name: me.name, photo: me.photo, note, status: "pending", startsAt: x.startsAt, at: nowTs() });
+    tx.set(ref, { planId: id, uid, creatorUid: x.creatorUid, name: me.name, photo: me.photo, note, status: "pending", startsAt: x.startsAt, at: nowTs(), distKm, traveling: !!req.data?.traveling });
     tx.update(plRef(id), { requests: FieldValue.increment(1) });
   });
   await push(x.creatorUid, `${me.name} is interested 📍`, `${x.title}: tap to see who's asking and pick someone.`, `${APP_URL}/?dates=1&plan=${id}`);
@@ -2725,6 +2734,11 @@ exports.answerPlanRequest = onCall({ secrets: [GMAIL_PASS] }, async req => {
   const uid = requireUser(req);
   const id = str(req.data?.planId, 64), who = str(req.data?.uid, 128), yes = req.data?.approve === true;
   const pref = plRef(id), rref = prRef(id, who);
+  if (yes) {
+    const pre = (await pref.get()).data();
+    const clash = pre && pre.creatorUid === uid ? await planClash(who, ms(pre.startsAt), id) : null;
+    if (clash) fail("failed-precondition", `${(await whisperProfile(who)).name || "They"} already has a date around then, so they can't make this one. Pick someone else.`);
+  }
   let x, r;
   await db.runTransaction(async tx => {
     x = (await tx.get(pref)).data(); r = (await tx.get(rref)).data();
@@ -2752,6 +2766,57 @@ exports.answerPlanRequest = onCall({ secrets: [GMAIL_PASS] }, async req => {
 });
 
 /** Turn down everyone still waiting, with a kind note. */
+/* ⏰ NO DOUBLE-BOOKING: two dates less than PLAN_GAP_HOURS apart clash.
+   - You can't post a date, or ask for one, that clashes with a date you're
+     already going on (or one you posted).
+   - A creator can't pick someone who already has a confirmed date then.
+   - If two people pick you around the same time, the first one you confirm wins:
+     the other pick goes back to its creator, and your other requests for that
+     time are taken back for you. */
+const PLAN_GAP_HOURS = 4;
+const PLAN_FAR_KM = 130; // about 80 miles: farther than that, they have to say they'll be in town
+async function planClash(uid, start, exceptId, { pendingPicks = false } = {}) {
+  const gap = PLAN_GAP_HOURS * 3600000;
+  const [mine, asGuest] = await Promise.all([
+    db.collection("plans").where("creatorUid", "==", uid).limit(60).get(),
+    db.collection("plans").where("guestUid", "==", uid).limit(60).get()
+  ]);
+  for (const d of [...mine.docs, ...asGuest.docs]) {
+    if (d.id === exceptId) continue;
+    const x = d.data(), own = x.creatorUid === uid;
+    const busy = own ? ["live", "matched", "confirmed"].includes(x.status) : x.status === "confirmed" || (pendingPicks && x.status === "matched");
+    if (busy && Math.abs(ms(x.startsAt) - start) < gap) return { id: d.id, title: x.title, startsAt: ms(x.startsAt), tz: x.tz, own };
+  }
+  return null;
+}
+const clashMsg = (c, who = "You") => `${who} already ${who === "You" ? "have" : "has"} a date around then: ${c.title}, ${fmtWhen(c.startsAt, c.tz)}. Dates need to be at least ${PLAN_GAP_HOURS} hours apart.`;
+/** After someone confirms a date: their other picks and requests around the same time are let go. */
+async function releaseClashes(uid, start, keepId) {
+  const gap = PLAN_GAP_HOURS * 3600000;
+  const picks = await db.collection("plans").where("guestUid", "==", uid).limit(60).get();
+  for (const d of picks.docs) {
+    const x = d.data();
+    if (d.id === keepId || x.status !== "matched" || Math.abs(ms(x.startsAt) - start) >= gap) continue;
+    const ok = await db.runTransaction(async tx => {
+      const cur = (await tx.get(d.ref)).data();
+      if (!cur || cur.status !== "matched" || cur.guestUid !== uid) return false;
+      tx.update(d.ref, { status: "live", guestUid: null, guestName: null, guestPhoto: null, confirmBy: null });
+      tx.update(prRef(d.id, uid), { status: "passed", answeredAt: nowTs(), why: "booked another date" });
+      return true;
+    });
+    if (!ok) continue;
+    await rtdb.ref(`planChat/${d.id}`).set(null);
+    await push(x.creatorUid, "They can't make it", `${x.guestName} confirmed another date at that time, so ${x.title} is open again. Pick someone else from your requests.`, `${APP_URL}/?dates=1&plan=${d.id}`);
+  }
+  const reqs = await db.collection("planRequests").where("uid", "==", uid).where("status", "==", "pending").get();
+  for (const d of reqs.docs) {
+    const r = d.data();
+    if (r.planId === keepId || Math.abs(ms(r.startsAt) - start) >= gap) continue;
+    await d.ref.update({ status: "withdrawn", answeredAt: nowTs(), why: "booked another date" });
+    await plRef(r.planId).update({ requests: FieldValue.increment(-1) }).catch(() => {});
+  }
+}
+
 async function closePlanRequests(id, x, why, except) {
   const q = await db.collection("planRequests").where("planId", "==", id).where("status", "==", "pending").get();
   for (const d of q.docs) {
@@ -2766,6 +2831,11 @@ exports.confirmPlan = onCall({ secrets: [GMAIL_PASS] }, async req => {
   const uid = requireUser(req);
   const id = str(req.data?.planId, 64), yes = req.data?.yes !== false;
   const pref = plRef(id);
+  if (yes) {
+    const pre = (await pref.get()).data();
+    const clash = pre && pre.guestUid === uid ? await planClash(uid, ms(pre.startsAt), id) : null;
+    if (clash) fail("failed-precondition", clashMsg(clash) + (clash.own ? " Call that one off first, or tap Can't make it here." : " Back out of that one first, or tap Can't make it here."));
+  }
   let x;
   await db.runTransaction(async tx => {
     x = (await tx.get(pref)).data();
@@ -2783,6 +2853,7 @@ exports.confirmPlan = onCall({ secrets: [GMAIL_PASS] }, async req => {
     return { message: "No problem. We let them know." };
   }
   await closePlanRequests(id, x, "filled", uid);
+  await releaseClashes(uid, ms(x.startsAt), id);
   const v = ((await plPrivate(id).get()).data() || {}).venue || {};
   const place = [v.name || x.venueName, v.address, v.city || x.city].filter(Boolean).join(", ");
   const start = ms(x.startsAt);
@@ -2929,7 +3000,7 @@ exports.myPlans = onCall(async req => {
     const reqs = [];
     if (["live", "matched"].includes(x.status)) {
       const q = await db.collection("planRequests").where("planId", "==", d.id).where("status", "in", ["pending", "approved"]).get();
-      for (const r of q.docs) { const z = r.data(); reqs.push({ uid: z.uid, name: z.name, photo: z.photo, note: z.note, status: z.status, at: ms(z.at), ...(await person(z.uid)) }); }
+      for (const r of q.docs) { const z = r.data(); reqs.push({ uid: z.uid, name: z.name, photo: z.photo, note: z.note, status: z.status, at: ms(z.at), distKm: z.distKm == null ? null : z.distKm, traveling: !!z.traveling, ...(await person(z.uid)) }); }
     }
     const v = await place(d.id, x, true);
     out.push({ id: d.id, mine: true, title: x.title, about: x.about, pays: x.pays, status: x.status, startsAt: start, tz: x.tz || "", venueName: x.venueName, city: x.city, address: v.address || "", venuePhone: v.phone || "",
@@ -3367,7 +3438,7 @@ async function dateOGPage(ticketId) {
   const desc = !t ? "Book dinner, concerts, movies and more with someone new. Split it or treat them."
     : live ? `${when}${v.city ? " · " + v.city : ""}. For ${t.size}: ${fmtMoney(t.price)}, or ${each} each if you split it. ${(t.items || []).slice(0, 2).join(", ")}.`
     : `This one's no longer available. See what else is on at Whisper+Me M&G.`;
-  const img = (t && t.imageURL) || `${APP_URL}/og-image.jpg?v=5`;
+  const img = (t && t.imageURL) || `${APP_URL}/og-image.jpg?v=6`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${htmlEsc(title)} · Whisper+Me M&G</title>
 <meta name="description" content="${htmlEsc(desc)}">
@@ -3514,5 +3585,5 @@ exports.chatPrune = onSchedule({ schedule: "every 30 minutes", memory: "512MiB" 
 
 // Test hooks (only when running the local test script; never part of a deploy).
 if (process.env.DATES_TEST) {
-  module.exports.__test = { setStripe: s => { _stripe = s; }, handleStripeEvent, housekeeping, settleDate, getSettings, CATEGORIES, landingStats, chatPrune, buildSitemap, planHousekeeping, planTextOk, mapPins, dateOGPage, meetupOGPage, share, payAllReady, ringOnce, stopRingFlow, claimDevice, onDispute, onDisputeChanged, onFraudWarning, sentMail, meetupReminders, connectReminders, emailHTML, connectInviteToken: async orderId => ((await coRef(orderId).get()).data()?.seats || []).map(x => x.token) };
+  module.exports.__test = { setStripe: s => { _stripe = s; }, handleStripeEvent, housekeeping, settleDate, getSettings, CATEGORIES, landingStats, chatPrune, buildSitemap, planHousekeeping, planTextOk, mapPins, planClash, dateOGPage, meetupOGPage, share, payAllReady, ringOnce, stopRingFlow, claimDevice, onDispute, onDisputeChanged, onFraudWarning, sentMail, meetupReminders, connectReminders, emailHTML, connectInviteToken: async orderId => ((await coRef(orderId).get()).data()?.seats || []).map(x => x.token) };
 }
