@@ -3121,7 +3121,8 @@ const sleep = ms => new Promise(r => setTimeout(r, process.env.DATES_TEST ? 0 : 
 function callAlert(callId, call, n, extra = {}) {
   const name = String(call.callerName || "Someone").slice(0, 40);
   return {
-    data: { type: "incoming_call", callId, callerUid: String(call.from || ""), // never "from": FCM rejects that key callerName: name, callerPhoto: String(call.callerPhoto || "").slice(0, 500),
+    // (the caller's id goes in "callerUid", never "from": FCM rejects that key)
+    data: { type: "incoming_call", callId, callerUid: String(call.from || ""), callerName: name, callerPhoto: String(call.callerPhoto || "").slice(0, 500),
       price: String(call.price || 1), title: `📞 ${name} is calling`, body: "Tap to answer on Whisper+Me", url: APP_URL, ring: String(n), ...extra },
     webpush: { headers: { Urgency: "high", TTL: "45" }, fcmOptions: { link: APP_URL } }
   };

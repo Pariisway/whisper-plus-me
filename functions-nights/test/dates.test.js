@@ -775,6 +775,7 @@ async function test(name, fn) {
     assert.deepStrictEqual([...new Set(sent.map(m => m.token))].sort(), ["tok-laptop", "tok-phone"], "both live devices ring");
     assert.ok(sent.every(m => !m.notification && m.data.type === "incoming_call" && m.webpush.headers.Urgency === "high"), "data-only, high priority");
     assert.ok(sent.every(m => Number(m.data.exp) > Date.now() && m.data.dk), "alerts expire and carry a decline key");
+    assert.ok(sent.every(m => m.data.callerName === "Amy" && m.data.callerUid === "amy" && /Amy is calling/.test(m.data.title)), "the alert says who's calling");
     assert.ok(!rtdb.fcmTokens.bob.devices.old, "dead device forgotten");
     // hung up: no more rings, ever (this was the "keeps dinging" bug)
     rtdb.calls.c1.status = "ended";
