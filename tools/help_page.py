@@ -97,6 +97,7 @@ body = f"""
 </section>
 
 <section class="pg-card" id="mg"><h2>⭐ M&amp;G (meet &amp; greet)</h2>
+<p class="pg-note" style="text-align:left">Want the short version to share? <a href="/meet/">whisperplusme.com/meet</a> explains M&amp;G, Connect Me and Plan a Date in one page.</p>
 <p>M&amp;Gs are meet-ups at real public places: dinner, bowling, brunch and more. Each one is hosted by a member or by Whisper+Me, and you buy one spot per person. You must be 21+.</p>
 <h3>Going to an M&amp;G</h3>
 {steps(("Open ⭐ M&amp;G", "Browse by category (Dinner, Activities, Concerts…). Each card shows the host, the day, the place and the price."),
@@ -282,7 +283,7 @@ page = f"""<!doctype html>
 {body}
 </main>
 <footer class="pg-foot">
-<nav aria-label="More from Whisper+Me"><a href="/help/">How to use</a><a href="/rooms/">Voice chat rooms</a><a href="/connect">Date ideas</a><a href="/about.html">About</a><a href="/terms.html">Terms</a><a href="/privacy.html">Privacy</a></nav>
+<nav aria-label="More from Whisper+Me"><a href="/meet/">Meet up</a><a href="/help/">How to use</a><a href="/rooms/">Voice chat rooms</a><a href="/connect">Date ideas</a><a href="/about.html">About</a><a href="/terms.html">Terms</a><a href="/privacy.html">Privacy</a></nav>
 <p>© 2026 Whisper+Me · Real voices. Real moments. · 18+</p>
 </footer>
 </body>

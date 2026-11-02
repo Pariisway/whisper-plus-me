@@ -185,7 +185,7 @@ def shell(title, desc, path, body, ld, extra_head=""):
 {body}
 </main>
 <footer class="pg-foot">
-<nav aria-label="More from Whisper+Me"><a href="/help/">How to use</a><a href="/rooms/">Voice chat rooms</a><a href="/connect">Date ideas</a><a href="/about.html">About</a><a href="/terms.html">Terms</a><a href="/privacy.html">Privacy</a></nav>
+<nav aria-label="More from Whisper+Me"><a href="/meet/">Meet up</a><a href="/help/">How to use</a><a href="/rooms/">Voice chat rooms</a><a href="/connect">Date ideas</a><a href="/about.html">About</a><a href="/terms.html">Terms</a><a href="/privacy.html">Privacy</a></nav>
 <p>© {datetime.date.today().year} Whisper+Me · Real voices. Real moments. · 18+</p>
 </footer>
 </body>

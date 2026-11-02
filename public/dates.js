@@ -307,7 +307,8 @@
     var list = pool.filter(function (m) { return S.cat === "All" || m.category === S.cat; });
     var n = upcomingTickets().length;
     var head = "<div class='dt-head'><div>" + (pd ? "<h2>📍 Plan a Date</h2><small>Anywhere · you pick who goes</small>" : cm ? "<h2>💞 Connect Me</h2><small>Night-out packages · invite who you want</small>" : "<h2>⭐ M&G</h2><small>Meet & Greet · meet people in person</small>") + "</div>"
-      + (S.anon ? "" : "<button class='dt-mybtn' onclick='Dates.showTickets()'>🎟️ My tickets" + (n ? "<b>" + n + "</b>" : "") + "</button>") + "</div>"
+      + "<div style='display:flex;gap:6px;align-items:center'><button class='dt-mybtn dt-share' onclick='Dates.shareSide()' aria-label='Share the meet-up side of Whisper+Me' title='Share'>↗</button>"
+      + (S.anon ? "" : "<button class='dt-mybtn' onclick='Dates.showTickets()'>🎟️ My tickets" + (n ? "<b>" + n + "</b>" : "") + "</button>") + "</div></div>"
       + "<div class='dt-seg' role='tablist'><button aria-pressed='" + (!cm && !pd) + "' onclick=\"Dates.setMode('mg')\">⭐ M&G</button><button aria-pressed='" + cm + "' onclick=\"Dates.setMode('cm')\">💞 Connect Me</button><button aria-pressed='" + pd + "' onclick=\"Dates.setMode('pd')\">📍 Plan</button></div>";
     if (pd) return head + (window.Plan ? window.Plan.phoneHTML() : "<div class='dt-empty'>Loading…</div>");
     var askRow = cm ? "<div class='dt-askrow'>" + (S.anon ? "" : "<button onclick='Dates.takeMeOut()'>🙋 Ask someone to take me out</button>") + "<button class='alt' onclick='Dates.shareIdeas()'>💡 Share date ideas</button></div>" : "";
@@ -803,6 +804,13 @@
         + "<button class='dt-btn ghost' onclick='closeProfileModal()'>Close</button>");
       if (!S.loadedMine) loadMine();
     },
+    /* ↗ Share the whole meet-up side (whisperplusme.com/meet) with a picture for Stories. */
+    shareSide: function () {
+      var url = "https://whisperplusme.com/meet/" + (S.uid ? "?ref=" + encodeURIComponent(S.uid.slice(0, 12)) : "");
+      var text = "Meet up in real life: meet & greets, date nights for 2 at one price, or plan your own date and pick who goes. Free to join.";
+      if (window.openShareSheet) window.openShareSheet("Meet up in real life · Whisper+Me", text, url, null, null, "/meet");
+      else if (navigator.share) navigator.share({ title: "Whisper+Me", text: text, url: url }).catch(function () {});
+    },
     /* 🎟️ MY MEET & GREET (Profile → More): every M&G ticket, M&G you host, Connect Me and
        Plan a Date in one list. Tap one to see it with all its buttons (call off, cancel,
        I'm here, rate…). Finished or called-off ones can be removed from the list; that only
@@ -1049,6 +1057,7 @@
         if (sid && back !== "back") fn("confirmCheckout", { sid: sid }).then(function () { loadMine(); }, function () {});
         if (back === "meetup") { setTimeout(loadMine, 2500); setTimeout(function () { loadMine(); if (upcomingTickets().length) Dates.showTickets(); }, 5000); }
         if (back === "hostdeposit") setTimeout(loadMine, 2500);
+        if (back === "pd" || back === "cm") { S.mode = back; refresh(); if (back === "pd" && window.Plan) window.Plan.load(); } // links from whisperplusme.com/meet
         if (back === "plan") { S.mode = "pd"; refresh(); if (window.Plan) { setTimeout(window.Plan.load, 2500); setTimeout(window.Plan.load, 5000); } }
         if (back === "connect") { S.mode = "cm"; refresh(); setTimeout(loadMine, 2500); setTimeout(loadMine, 5000); }
       } else if (tries > 60) clearInterval(t);

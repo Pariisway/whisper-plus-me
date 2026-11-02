@@ -384,7 +384,7 @@ body{background:radial-gradient(900px 500px at 10% -10%,rgba(123,47,247,.35),tra
 <meta property="og:image" content="${esc(image)}"><meta property="og:image:type" content="image/png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="${esc(title)}">
 <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${esc(title)}"><meta name="twitter:description" content="${esc(desc)}"><meta name="twitter:image" content="${esc(image)}">
 <style>${PAGE_CSS}</style></head><body><div class="w"><a class="top" href="/"><img src="/icon-192.png" alt="">WHISPER+ME</a>${body}
-<nav class="more"><a href="/connect">💞 Date ideas</a><a href="/rooms/">🎙️ Voice chat rooms</a><a href="/help/">📖 How to use</a><a href="/about.html">About</a></nav>
+<nav class="more"><a href="/meet/">⭐ Meet up</a><a href="/connect">💞 Date ideas</a><a href="/rooms/">🎙️ Voice chat rooms</a><a href="/help/">📖 How to use</a><a href="/about.html">About</a></nav>
 <div class="foot">Real voices. Real moments. <a href="/">whisperplusme.com</a></div></div>
 <script>document.querySelectorAll("[data-share]").forEach(function(b){b.onclick=function(){var d={title:document.title,url:location.href};if(navigator.share)navigator.share(d).catch(function(){});else if(navigator.clipboard)navigator.clipboard.writeText(location.href).then(function(){b.textContent="✅ Link copied";});};});</script>
 </body></html>`;

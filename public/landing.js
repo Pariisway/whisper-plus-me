@@ -363,7 +363,7 @@ body.lp2-on{background:#0b0b16}\
       + "<h2>Find your people</h2><p>Free voice chat rooms, open 24/7. Talk, or just listen.</p>"
       + "<div class='lp2-links'>" + ROOM_LINKS.map(function (r) { return "<a href='/rooms/" + r[0] + "/'>" + r[1] + "</a>"; }).join("") + "<a href='/rooms/'>All rooms →</a></div>"
       + "<div class='lp2-tiles'><a href='/connect'><b>💞 No date ideas? Start here.</b><span>Dinner, bowling, shows and more. One price for 2 or 4.</span></a>"
-      + "<a href='/?dates=1'><b>⭐ Meet &amp; greets</b><span>Meet hosts and new people at real, public places.</span></a>"
+      + "<a href='/meet/'><b>⭐ Meet up in real life</b><span>Meet &amp; greets, date nights, or plan your own date.</span></a>"
       + "<a href='/help/'><b>📖 How it all works</b><span>Rooms, calls, M&amp;G, Connect Me and Plan a Date, with pictures.</span></a></div>"
       + "</section>";
   }

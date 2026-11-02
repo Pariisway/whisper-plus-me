@@ -3465,7 +3465,7 @@ exports.shareImage = onRequest({ cors: false, memory: "1GiB", cpu: 1, concurrenc
 ═══════════════════════════════════════════════════════════════ */
 const SEO_ROOM_SLUGS = ["general-voice-chat", "open-mic", "meet-new-people", "night-owls-chat", "vent-room", "anxiety-support-chat", "grief-support-chat",
   "mental-health-chat", "lgbtq-safe-space", "queer-connect", "creators-lounge", "psychic-chat", "astrology-chat", "tarot-reading-chat", "herbal-remedies-chat"];
-const SEO_PAGES_UPDATED = "2026-10-31";
+const SEO_PAGES_UPDATED = "2026-11-01";
 async function buildSitemap() {
   const day = t => new Date(t || Date.now()).toISOString().slice(0, 10);
   const urls = [
@@ -3473,6 +3473,7 @@ async function buildSitemap() {
     { loc: "/connect", freq: "daily", pri: "0.9", mod: day() },
     { loc: "/rooms/", freq: "weekly", pri: "0.8", mod: SEO_PAGES_UPDATED },
     { loc: "/help/", freq: "monthly", pri: "0.7", mod: SEO_PAGES_UPDATED },
+    { loc: "/meet/", freq: "weekly", pri: "0.9", mod: SEO_PAGES_UPDATED },
     ...SEO_ROOM_SLUGS.map(s => ({ loc: `/rooms/${s}/`, freq: "weekly", pri: "0.7", mod: SEO_PAGES_UPDATED })),
     { loc: "/about.html", freq: "monthly", pri: "0.6", mod: SEO_PAGES_UPDATED },
     { loc: "/terms.html", freq: "yearly", pri: "0.2", mod: SEO_PAGES_UPDATED },

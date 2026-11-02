@@ -28,6 +28,7 @@ Key facts:
 
 ## Meet up in real life
 
+- [Meet up in real life](https://whisperplusme.com/meet/): M&G, Connect Me and Plan a Date explained, with pictures and a short video
 - [Connect Me date ideas](https://whisperplusme.com/connect): every date-night package on sale now, with dates, places and prices
 - Live M&G pages are at https://whisperplusme.com/m/{id} and Connect Me packages at https://whisperplusme.com/c/{id}; all current ones are listed in the [sitemap](https://whisperplusme.com/sitemap.xml)
 
