@@ -66,7 +66,7 @@ const DEFAULT_SETTINGS = {
   autoApproveVenues: false,
   hostFee: 10,                // % the site keeps from each hosted M&G spot
   hostPayoutHours: 72,        // hosts are paid this long after their M&G starts (time for buyers to report a problem)
-  planFee: 499                // 📍 Plan a Date listing fee (cents), paid by the person who posts the date
+  planCoins: 1                // 📍 Plan a Date: coins it costs to post a date (given back if nobody is matched)
 };
 const CATEGORIES = ["Dinner", "Activities", "Concerts", "Movies", "Other"];
 const HOST_PAY_MINUTES = 35;
@@ -900,6 +900,7 @@ async function onDispute(d) {
     dueBy: d.evidence_details?.due_by ? d.evidence_details.due_by * 1000 : null, at: nowTs(), actions };
   await ref.set(rec); // claim it first so a repeat can't run twice
   if (p.uid && await freezeAccount(p.uid, "Card dispute (chargeback)")) actions.push("Account frozen");
+  if (p.uid && await partners.reverseFor(p.uid, "Chargeback")) actions.push("Their partner's pending earnings from them were cancelled");
   if (p.product === "coins" && p.uid) {
     const coins = p.qty || Math.round(d.amount / 100 / COIN_USD);
     const r = await clawBackCoins(p.uid, coins);
@@ -998,6 +999,7 @@ async function housekeeping() {
   await connectHousekeeping(s);
   await planHousekeeping(s);
   await mapPins();
+  await partners.release();
 }
 exports.datesHousekeeping = onSchedule({ schedule: "every 10 minutes", ...withStripe }, housekeeping);
 
@@ -1186,6 +1188,14 @@ exports.nightsAdminAction = onCall(withStripe, async req => {
     case "hideConnect":
     case "showConnect": { await cnRef(id).update({ hidden: action === "hideConnect" }); await log(req, action, id); return { message: action === "hideConnect" ? "Paused" : "Back on sale" }; }
     case "endConnect": { await cnRef(id).update({ status: "ended" }); await log(req, action, id); return { message: "Stopped selling. Packages already bought still happen." }; }
+    case "approveConnect": case "rejectConnect": { // a partner's package
+      const x = (await cnRef(id).get()).data();
+      if (!x || x.status !== "review") fail("failed-precondition", "It isn't waiting for review.");
+      const ok = action === "approveConnect";
+      await cnRef(id).update(ok ? { status: "live", approvedAt: nowTs(), changesNote: FieldValue.delete() } : { status: "changes", changesNote: str(reason, 300) || "Please check the details." });
+      if (x.partnerUid) await push(x.partnerUid, ok ? `“${x.title}” is on sale 💞` : `Your package needs a change`, ok ? "Share it! You're paid when each date happens." : str(reason, 300) || "Open your partner board to see what to change.", `${APP_URL}/partner/`);
+      await log(req, action, id, x.title); return { message: ok ? "On sale" : "Sent back to the partner" };
+    }
     case "cancelConnect": { const n = await cancelConnectDeal(id, str(reason, 200) || "It was canceled."); await log(req, action, id, reason); return { message: `Canceled. ${n} buyer(s) got their money back as credit.` }; }
     case "connectCheckIn": { const r = await connectCheckInCode(data.code || id); await log(req, action, r.title, r.guest); return { ...r, message: (r.already ? "Already checked in: " : "✅ Checked in: ") + r.guest }; }
     case "connectOrders": {
@@ -1297,13 +1307,13 @@ exports.nightsAdminAction = onCall(withStripe, async req => {
       const flags = [];
       for (const d of f.docs) { const x = d.data(); flags.push({ id: d.id, ...x, at: ms(x.at), name: (await whisperProfile(x.uid)).name }); }
       return { plans: q.docs.map(d => { const x = d.data(); return { id: d.id, title: x.title, about: x.about, status: x.status, hidden: !!x.hidden, creatorUid: x.creatorUid, creatorName: x.creatorName, guestName: x.guestName || "",
-        venueName: x.venueName, city: x.city, startsAt: ms(x.startsAt), createdAt: ms(x.createdAt), requests: x.requests || 0, fee: x.fee || 0, paidWith: x.paidWith || "", feeReturned: !!x.feeReturned, noShows: x.noShows || [] }; }), flags };
+        venueName: x.venueName, city: x.city, startsAt: ms(x.startsAt), createdAt: ms(x.createdAt), requests: x.requests || 0, fee: x.fee || 0, coins: x.coins || 0, paidWith: x.paidWith || "", feeReturned: !!x.feeReturned, noShows: x.noShows || [] }; }), flags };
     }
-    case "savePlanFee": {
-      const v = Math.round(Number(data.planFee));
-      if (!(v >= 0 && v <= 5000)) fail("invalid-argument", "Pick a fee between $0 and $50.");
-      await db.doc("settings/platform").set({ planFee: v }, { merge: true });
-      await log(req, action, "settings", `Plan a Date fee ${fmtMoney(v)}`); return { message: "Listing fee saved" };
+    case "savePlanCoins": {
+      const v = Math.round(Number(data.planCoins));
+      if (!(v >= 0 && v <= 20)) fail("invalid-argument", "Pick 0 to 20 coins.");
+      await db.doc("settings/platform").set({ planCoins: v }, { merge: true });
+      await log(req, action, "settings", `Plan a Date costs ${coinWord(v)}`); return { message: v ? `Posting a date costs ${coinWord(v)}` : "Posting a date is free" };
     }
     case "removePlan": {
       const pid = str(id, 64), x = (await plRef(pid).get()).data();
@@ -1315,7 +1325,7 @@ exports.nightsAdminAction = onCall(withStripe, async req => {
       if (x.guestUid) await push(x.guestUid, "Your date was called off", `${x.title} was removed by Whisper+Me.`);
       await push(x.creatorUid, "Your date plan was removed", str(reason, 200) || "It didn't follow the Plan a Date rules.");
       if (data.refund) await refundPlanFee(pid, x, "Your date plan was removed");
-      await log(req, action, pid, `${x.title} · ${reason || ""}`); return { message: data.refund ? "Removed, and the fee went back as credit." : "Removed." };
+      await log(req, action, pid, `${x.title} · ${reason || ""}`); return { message: data.refund ? "Removed, and what they paid to post it went back to them." : "Removed." };
     }
     case "hideMeetup":
     case "showMeetup": { await mtRef(id).update({ hidden: action === "hideMeetup" }); await log(req, action, id); return { message: action === "hideMeetup" ? "M&G paused" : "M&G is back on sale" }; }
@@ -1421,7 +1431,11 @@ exports.nightsAdminAction = onCall(withStripe, async req => {
       await log(req, action, "settings", `fee ${s.fee}%, deposit ${fmtMoney(s.depositCents)}, reward ${s.stoodUpRewardCoins} coins`);
       return { message: "Settings saved" };
     }
-    default: fail("invalid-argument", `Unknown action: ${action}`);
+    default: {
+      const r = await partners.adminAction(action, id, data, reason);
+      if (r) { await log(req, action, id || "partners", reason || ""); return r; }
+      fail("invalid-argument", `Unknown action: ${action}`);
+    }
   }
 });
 
@@ -2071,6 +2085,14 @@ async function payHost(id, x, s) {
   if (siteTotal) await rtdb.ref("siteRevenue").transaction(v => Math.round(((Number(v) || 0) + siteTotal / 100) * 100) / 100);
   const cardFees = x.stripeFees || 0, siteNet = siteTotal - cardFees;
   await db.collection("ledger").add({ kind: "meetupSettled", meetupId: id, hostUid: x.hostUid, official: !!x.official, sold: x.sold, hostEarned: hostTotal, siteFee: siteTotal, cardFees, siteNet, at: nowTs() });
+  // 🤝 partners: the site fee on each referred buyer's spots, and on the whole M&G if the host was referred
+  if (siteTotal) {
+    try {
+      const spots = await mtRef(id).collection("spots").where("status", "==", "paid").limit(500).get();
+      for (const sp of spots.docs) { const z = sp.data(); const base = Math.round((z.paid || x.price * (z.qty || 1)) * pct / 100); await partners.commission({ memberUid: z.uid, kind: "mg", base, key: `mg_${id}_${sp.id}`, note: x.title }); }
+      if (!x.official) await partners.commission({ memberUid: x.hostUid, kind: "host", base: siteTotal, key: `host_${id}`, note: x.title });
+    } catch (e) { logger.warn("partner mg", e.message); }
+  }
   const day = dayKey(new Date());
   await db.doc(`stats/day-${day}`).set({ day, fees: FieldValue.increment(siteTotal), cardFees: FieldValue.increment(cardFees), meetups: FieldValue.increment(1) }, { merge: true });
   await mtRef(id).update({ status: "completed", completedAt: nowTs(), hostEarned: hostTotal, siteFee: siteTotal, siteNet });
@@ -2140,27 +2162,40 @@ function cleanConnect(d) {
   if (!(quantity >= 1 && quantity <= 500)) fail("invalid-argument", "How many packages can be sold? 1 to 500.");
   return { ...c, size, quantity };
 }
-async function postConnect(req, id, data) {
+/* owner: a partner posting their own package ({ uid, name }). Partner packages go to the
+   admin for review first, can't use a picture link, and record what the place costs. */
+async function postConnect(req, id, data, owner) {
+  if (owner) data = { ...data, imageURL: "" };
   const c = cleanConnect(data);
+  const venueCost = Math.max(0, Math.round((Number(data.venueCost) || 0) * 100)); // dollars in, cents kept (like the price)
+  if (owner && !(venueCost > 0 && venueCost < c.price)) fail("invalid-argument", "Enter what the place will cost (less than the package price), so we can pay them.");
   let hue = 0; c.title.split("").forEach(ch => { hue = (hue * 31 + ch.charCodeAt(0)) % 360; });
   const vk = venueKey(c.venue), vr = (await db.doc(`connectVenues/${vk}`).get()).data();
   const pub = { title: c.title, about: c.about, category: c.category, items: c.items, imageURL: c.imageURL, hue, startsAt: fromMs(c.startsAt), price: c.price, size: c.size, quantity: c.quantity, venueName: c.venue.name, city: c.venue.city, lat: round3(c.venue.lat), lon: round3(c.venue.lon),
     venueKey: vk, venueRating: vr && vr.n ? { avg: avgOf(vr), n: vr.n } : null, idCheck: c.idCheck };
+  if (owner) Object.assign(pub, { partnerUid: owner.uid, partnerName: owner.name });
   if (!id) {
     const ref = db.collection("connects").doc();
-    await ref.set({ ...pub, sold: 0, held: 0, status: "live", hidden: false, stripeFees: 0, createdAt: nowTs() });
-    await cnPrivate(ref.id).set({ venue: c.venue });
+    await ref.set({ ...pub, sold: 0, held: 0, status: owner ? "review" : "live", hidden: false, stripeFees: 0, createdAt: nowTs() });
+    await cnPrivate(ref.id).set({ venue: c.venue, ...(venueCost ? { venueCost } : {}) });
+    if (owner) {
+      for (const a of ADMIN_UIDS) await push(a, "New date package to review 💞", `${owner.name}: ${c.title} · ${fmtMoney(c.price)} for ${c.size}`, `${APP_URL}/admin.html#connect`);
+      return { id: ref.id, message: `Sent to Whisper+Me for a quick review. We'll tell you when “${c.title}” is on sale.` };
+    }
     return { id: ref.id, message: `“${c.title}” is live in Connect Me` };
   }
   const x = (await cnRef(id).get()).data();
   if (!x) fail("not-found", "Not found.");
+  if (owner && x.partnerUid !== owner.uid) fail("permission-denied", "That isn't your package.");
+  if (owner && !["review", "live", "changes"].includes(x.status)) fail("failed-precondition", "This package can't be changed anymore.");
   const cur = (await cnPrivate(id).get()).data() || {};
   const booked = (x.sold || 0) + (x.held || 0);
   if (booked && (c.price !== x.price || c.size !== x.size || c.startsAt !== ms(x.startsAt) || c.venue.address !== cur.venue?.address)) fail("failed-precondition", "People already bought this one, so the price, size, time and place are locked. Cancel it (buyers get credit) and post a new one.");
   if (c.quantity < booked) fail("invalid-argument", `Already sold ${booked}.`);
-  await cnRef(id).update({ ...pub, editedAt: nowTs() });
-  await cnPrivate(id).set({ venue: c.venue });
-  return { id, message: `“${c.title}” updated` };
+  const backToReview = owner && !booked && x.status !== "review";
+  await cnRef(id).update({ ...pub, editedAt: nowTs(), ...(backToReview ? { status: "review" } : {}) });
+  await cnPrivate(id).set({ venue: c.venue, ...(venueCost || cur.venueCost ? { venueCost: venueCost || cur.venueCost } : {}) });
+  return { id, message: backToReview ? `Saved. “${c.title}” goes back to Whisper+Me for a quick look before it's on sale again.` : `“${c.title}” updated` };
 }
 
 /** Buy a package. Credit is used first; if it covers everything there's no checkout (no card fee). */
@@ -2182,7 +2217,7 @@ exports.buyConnect = onCall(withStripe, async req => {
     if (ms(x.startsAt) < Date.now() + 2 * 3600000) fail("failed-precondition", "Sales for this one have closed.");
     if (x.quantity - x.sold - x.held < 1) fail("resource-exhausted", "Sold out.");
     credit = Math.min(x.price, c?.balance || 0);
-    const base = { src: cleanSrc(req.data?.src), askedBy, dealId, buyerUid: uid, buyerName: me.name, title: x.title, venueName: x.venueName, city: x.city, startsAt: x.startsAt, size: x.size, amount: x.price, memberUids: [uid], idCheck: !!x.idCheck, createdAt: nowTs() };
+    const base = { src: cleanSrc(req.data?.src), via: partners.cleanCode(req.data?.src?.v), askedBy, dealId, buyerUid: uid, buyerName: me.name, title: x.title, venueName: x.venueName, city: x.city, startsAt: x.startsAt, size: x.size, amount: x.price, memberUids: [uid], idCheck: !!x.idCheck, createdAt: nowTs() };
     if (credit >= x.price) {
       const t = takeCredit(c, x.price);
       tx.set(creditRef(uid), t.next);
@@ -2417,7 +2452,9 @@ exports.myConnects = onCall(async req => {
     const buyer = o.buyerUid === uid;
     const v = o.status === "paid" ? (((await cnPrivate(o.dealId).get()).data() || {}).venue || {}) : {};
     const mine = (o.seats || []).find(x => x.uid === uid) || {};
+    const deal = o.dealId ? ((await cnRef(o.dealId).get()).data() || {}) : {};
     out.push({ id: d.id, buyer, title: o.title, venueName: o.venueName, city: o.city, startsAt: ms(o.startsAt), size: o.size, status: o.status, amount: buyer ? o.amount : 0,
+      matchmaker: deal.partnerName || "", suggestions: buyer && o.status === "paid" ? (o.suggestions || []).filter(z => !(o.memberUids || []).includes(z.uid)).map(z => ({ uid: z.uid, name: z.name, photo: z.photo })) : [],
       address: v.address || "", venuePhone: v.phone || "", code: mine.code || "", here: !!mine.checkedInAt, buyerName: o.buyerName, idCheck: !!o.idCheck,
       canRate: !!mine.code && ["paid", "completed"].includes(o.status) && rateWindow(ms(o.startsAt)),
       seats: (o.seats || []).map((x, i) => ({ i, name: x.name || "", role: x.role, status: x.status, here: !!x.checkedInAt, link: buyer && x.token && x.status !== "accepted" ? connectLink(x.token) : "" })) });
@@ -2525,6 +2562,9 @@ async function connectHousekeeping(s) {
         for (const z of here) { await creditCoins(z.uid, s.stoodUpRewardCoins, "Stood up (Connect Me)", od.id); await push(z.uid, "Sorry they didn't make it", `We added ${s.stoodUpRewardCoins} Whisper coin${s.stoodUpRewardCoins === 1 ? "" : "s"} to your account.`); }
       }
       await od.ref.update({ status: "completed", noShows: gone.map(z => z.uid), completedAt: nowTs() });
+      // 🤝 partner (matchmaker): their Connect Me rate of the price, only when the date happened (2+ people checked in).
+      // The partner who made the package comes first; then the link they bought through; then who brought the buyer.
+      if (here.length >= 2) await partners.commission({ memberUid: o.buyerUid, kind: "cm", base: o.amount || 0, key: "cm_" + od.id, note: x.title, viaCode: o.via || "", ownerUid: x.partnerUid || "" });
       if (here.length) await askForRatings("cm", od.id, o, here.map(z => z.uid));
     }
     const fees = x.stripeFees || 0;
@@ -2539,7 +2579,7 @@ async function connectHousekeeping(s) {
    📍 PLAN A DATE: anyone, in any city, posts a date at a real public
    place; people tap "I'm interested"; the creator approves one.
    Money rules (what keeps it from ever being paid companionship):
-   - The creator pays Whisper+Me a listing fee ($4.99). Nobody pays a member.
+   - The creator pays Whisper+Me 1 coin to post it (given back if nobody is matched). Nobody pays a member.
    - The couple pays the venue themselves, at the venue.
    - Requests are free. Plans and messages that talk about money, or about
      meeting somewhere private, are blocked.
@@ -2550,8 +2590,11 @@ async function connectHousekeeping(s) {
    planRequests/{planId}_{uid}      "I'm interested" (pending → approved/declined/…)
    planChat/{planId} (Realtime DB)  messages, only once someone is approved
 ═══════════════════════════════════════════════════════════════ */
-const PLAN_FEE = 499;
-const planFeeOf = s => { const v = Number(s && s.planFee); return s && s.planFee != null && v >= 0 && v <= 5000 ? Math.round(v) : PLAN_FEE; }; // admin can change it (even to free)
+/* Posting a date costs coins (1 by default, the same coins used for calls), so there's
+   no card checkout. Admin → Connect Me → Plan a Date can change it, even to 0 (free). */
+const PLAN_COINS = 1;
+const planCoinsOf = s => { const v = Number(s && s.planCoins); return s && s.planCoins != null && v >= 0 && v <= 20 ? Math.round(v) : PLAN_COINS; };
+const coinWord = n => `${n} coin${n === 1 ? "" : "s"}`;
 const PLAN_PAY_MINUTES = 40;
 const PLAN_CONFIRM_HOURS = 12;          // the approved person has this long to confirm
 const PLAN_MAX_LIVE = 3;                // live plans per creator
@@ -2622,7 +2665,7 @@ function cleanPlan(d) {
 const round3 = x => (Number.isFinite(x) ? Math.round(x * 1000) / 1000 : null);
 
 /** Make a plan. Pays the listing fee with credit if there's enough, otherwise returns a checkout link. */
-exports.createPlan = onCall(withStripe, async req => {
+exports.createPlan = onCall(async req => {
   const uid = requireUser(req);
   const s = await getSettings();
   notSuspended(await memberFor(uid, req.data?.birthYear));
@@ -2637,28 +2680,30 @@ exports.createPlan = onCall(withStripe, async req => {
   if (clash) fail("failed-precondition", clashMsg(clash));
   const me = await whisperProfile(uid);
   if (!me.photo) fail("failed-precondition", "Add a profile photo first (👤 Profile). People want to see who they're meeting.");
-  const fee = planFeeOf(s);
+  const coins = planCoinsOf(s);
   const rating = (await rtdb.ref(`users/${uid}/dateRating`).once("value")).val() || null;
+  // Take the coin(s) first; if anything after this fails, they go straight back.
+  if (coins > 0) {
+    let had = 0;
+    const r = await rtdb.ref(`users/${uid}/coins`).transaction(v => { had = Number(v) || 0; if (had < coins) return; return had - coins; });
+    if (!r.committed) fail("failed-precondition", `You need ${coinWord(coins)} to post a date. You have ${coinWord(had)}. Buy coins in 👤 Profile → Wallet.`);
+  }
   const ref = db.collection("plans").doc();
-  let paid = false;
-  await db.runTransaction(async tx => {
-    const cr = (await tx.get(creditRef(uid))).data();
-    const base = { creatorUid: uid, creatorName: me.name, creatorPhoto: me.photo, creatorRating: rating && rating.n ? { avg: rating.avg, n: rating.n } : null,
+  try {
+    await ref.set({ creatorUid: uid, creatorName: me.name, creatorPhoto: me.photo, creatorRating: rating && rating.n ? { avg: rating.avg, n: rating.n } : null,
       title: c.title, about: c.about, pays: c.pays, venueName: c.venue.name, city: c.venue.city, lat: round3(c.venue.lat), lon: round3(c.venue.lon),
-      startsAt: fromMs(c.startsAt), tz: okTz(req.data?.tz), hidden: false, requests: 0, fee, createdAt: nowTs() };
-    if (fee === 0) { tx.set(ref, { ...base, status: "live", paidWith: "free", cardPaid: 0, paidAt: nowTs() }); paid = true; }
-    else if ((cr?.balance || 0) >= fee) {
-      const t = takeCredit(cr, fee);
-      tx.set(creditRef(uid), t.next);
-      tx.set(ref, { ...base, status: "live", paidWith: "credit", creditFrom: t.from, cardPaid: 0, paidAt: nowTs() });
-      paid = true;
-    } else tx.set(ref, { ...base, status: "draft" });
-  });
-  await plPrivate(ref.id).set({ venue: c.venue, creatorUid: uid });
-  if (paid) { await planWentLive(ref.id, uid); return { id: ref.id, url: null, message: "Your date is live! We'll tell you when someone's interested." }; }
-  const url = await checkoutFor({ kind: "plan", uid, email: req.auth.token.email, amount: fee, dateId: ref.id,
-    name: `Date listing · ${c.title}`, description: `${fmtWhen(c.startsAt, req.data?.tz)} at ${c.venue.name}, ${c.venue.city}. If nobody's approved by then, it comes back as Whisper+Me credit.` });
-  return { id: ref.id, url };
+      startsAt: fromMs(c.startsAt), tz: okTz(req.data?.tz), hidden: false, requests: 0, fee: 0, coins, status: "live", paidWith: coins ? "coins" : "free", cardPaid: 0, paidAt: nowTs(), createdAt: nowTs() });
+    await plPrivate(ref.id).set({ venue: c.venue, creatorUid: uid });
+  } catch (e) {
+    if (coins) await rtdb.ref(`users/${uid}/coins`).transaction(v => (Number(v) || 0) + coins);
+    throw e;
+  }
+  if (coins) {
+    await db.collection("ledger").add({ kind: "planCoins", uid, planId: ref.id, coins, at: nowTs() });
+    await rtdb.ref("siteRevenue").transaction(v => Math.round(((Number(v) || 0) + coins * COIN_USD) * 100) / 100);
+  }
+  await planWentLive(ref.id, uid);
+  return { id: ref.id, url: null, coins, message: "Your date is live! We'll tell you when someone's interested." };
 });
 async function planWentLive(id, uid) {
   const n = (await db.collection("plans").where("creatorUid", "==", uid).get()).size;
@@ -2910,20 +2955,29 @@ exports.cancelPlan = onCall({ secrets: [GMAIL_PASS] }, async req => {
     await push(x.guestUid, "Your date was called off", `${x.creatorName} canceled ${x.title}. Sorry! Plenty more dates near you.`, `${APP_URL}/?dates=1`);
   }
   if (x.status === "draft") return { message: "Deleted." };
-  if (early) { const back = await refundPlanFee(id, x, "You called off a date plan early"); return { message: back ? `Called off. Your ${fmtMoney(back)} is back as Whisper+Me credit.` : "Called off." }; }
+  if (early) { const back = await refundPlanFee(id, x, "You called off a date plan early"); return { message: back ? `Called off. Your ${back} ${/coin/.test(back) ? (back.startsWith("1 ") ? "is" : "are") : "is"} back.` : "Called off." }; }
   if (x.status === "confirmed") await lateStrike(uid, s, x.title);
-  return { message: x.status === "confirmed" ? "Called off. It was less than a day away, so it counts as a strike and the fee isn't returned." : "Called off. It was less than a day away, so the fee isn't returned." };
+  return { message: x.status === "confirmed" ? "Called off. It was less than a day away, so it counts as a strike and the coin isn't returned." : "Called off. It was less than a day away, so the coin isn't returned." };
 });
+/** Gives back what was paid to post the date, once: coins go back to their balance
+    (older dates paid by card or credit get Whisper+Me credit). Returns words for messages ("1 coin"), or "". */
 async function refundPlanFee(id, x, note) {
   const done = await db.runTransaction(async tx => {
     const cur = (await tx.get(plRef(id))).data();
-    if (!cur || cur.feeReturned || !(cur.cardPaid || cur.paidWith === "credit")) return false;
+    if (!cur || cur.feeReturned || !(cur.coins > 0 || cur.cardPaid || cur.paidWith === "credit")) return false;
     tx.update(plRef(id), { feeReturned: true });
     return true;
   });
-  if (!done) return 0;
+  if (!done) return "";
+  if (x.coins > 0) {
+    await rtdb.ref(`users/${x.creatorUid}/coins`).transaction(v => (Number(v) || 0) + x.coins);
+    await rtdb.ref("siteRevenue").transaction(v => Math.round(((Number(v) || 0) - x.coins * COIN_USD) * 100) / 100);
+    await db.collection("ledger").add({ kind: "planCoinsBack", uid: x.creatorUid, planId: id, coins: x.coins, note: str(note, 80), at: nowTs() });
+    return coinWord(x.coins);
+  }
   const sources = x.paidWith === "credit" ? (x.creditFrom || []) : [{ pi: x.pi, amount: x.cardPaid || x.fee }];
-  return addCredit(x.creatorUid, sources.map(z => ({ pi: z.pi || null, amount: z.amount })), note);
+  const back = await addCredit(x.creatorUid, sources.map(z => ({ pi: z.pi || null, amount: z.amount })), note);
+  return back ? fmtMoney(back) + " in credit" : "";
 }
 
 /** The person who was picked backs out (or takes back a request). */
@@ -2950,8 +3004,8 @@ exports.withdrawPlan = onCall(async req => {
   const late = x.status === "confirmed" && ms(x.startsAt) - Date.now() < PLAN_LATE_HOURS * 3600000;
   if (late) await lateStrike(uid, s, x.title);
   const reopened = ms(x.startsAt) > Date.now() + 6 * 3600000;
-  if (!reopened) await refundPlanFee(id, x, "Your date canceled on you, so your fee is back");
-  await push(x.creatorUid, "Your date backed out", reopened ? `${x.guestName} can't make ${x.title}. It's open again: pick someone else from your requests.` : `${x.guestName} can't make ${x.title}. Sorry! Your fee is back as credit.`, `${APP_URL}/?dates=1&plan=${id}`);
+  const back = reopened ? "" : await refundPlanFee(id, x, "Your date canceled on you, so your coin is back");
+  await push(x.creatorUid, "Your date backed out", reopened ? `${x.guestName} can't make ${x.title}. It's open again: pick someone else from your requests.` : `${x.guestName} can't make ${x.title}. Sorry!${back ? " Your " + back + " " + (back.startsWith("1 ") ? "is" : "are") + " back." : ""}`, `${APP_URL}/?dates=1&plan=${id}`);
   return { message: late ? "Okay. It was less than a day away, so it counts as a strike." : "Okay, we let them know." };
 });
 
@@ -3004,7 +3058,7 @@ exports.myPlans = onCall(async req => {
     }
     const v = await place(d.id, x, true);
     out.push({ id: d.id, mine: true, title: x.title, about: x.about, pays: x.pays, status: x.status, startsAt: start, tz: x.tz || "", venueName: x.venueName, city: x.city, address: v.address || "", venuePhone: v.phone || "",
-      fee: x.fee, requests: reqs, guestUid: x.guestUid || null, guestName: x.guestName || "", guestPhoto: x.guestPhoto || "", confirmBy: ms(x.confirmBy), feeReturned: !!x.feeReturned,
+      fee: x.fee, coins: x.coins || 0, requests: reqs, guestUid: x.guestUid || null, guestName: x.guestName || "", guestPhoto: x.guestPhoto || "", confirmBy: ms(x.confirmBy), feeReturned: !!x.feeReturned,
       here: !!x.creatorHereAt, otherHere: !!x.guestHereAt, canRate: !!x.guestUid && ["confirmed", "completed"].includes(x.status) && rateWindow(start) });
   }
   for (const d of asked.docs) {
@@ -3022,7 +3076,8 @@ exports.myPlans = onCall(async req => {
   out.forEach(z => { if (z.canRate) z.myStars = rated[z.id] || 0; });
   out.sort((a, b) => a.startsAt - b.startsAt);
   const c = (await creditRef(uid).get()).data() || {};
-  return { plans: out, credit: c.balance || 0, fee: planFeeOf(await getSettings()) };
+  const coinsHave = Number((await rtdb.ref(`users/${uid}/coins`).once("value")).val()) || 0;
+  return { plans: out, credit: c.balance || 0, coins: planCoinsOf(await getSettings()), coinsHave };
 });
 
 /** Every 10 minutes: unpaid drafts expire, unanswered picks reopen, dates with no match return the fee, past dates settle. */
@@ -3059,7 +3114,7 @@ async function planHousekeeping(s) {
       await closePlanRequests(d.id, x, "canceled");
       await rtdb.ref(`planChat/${d.id}`).set(null);
       const back = await refundPlanFee(d.id, x, "Nobody was matched for your date plan");
-      await push(x.creatorUid, "No match this time", `${x.title} didn't find a match${back ? `, so your ${fmtMoney(back)} is back as credit. Try another day or place!` : "."}`, `${APP_URL}/?dates=1`);
+      await push(x.creatorUid, "No match this time", `${x.title} didn't find a match${back ? `, so your ${back} ${back.startsWith("1 ") ? "is" : "are"} back. Try another day or place!` : "."}`, `${APP_URL}/?dates=1`);
     }
   }
   const conf = await db.collection("plans").where("status", "==", "confirmed").limit(300).get();
@@ -3077,8 +3132,8 @@ async function planHousekeeping(s) {
       await db.doc(`members/${gone}`).set({ noShows: FieldValue.increment(1) }, { merge: true });
       await push(gone, "Missed date", `You didn't check in for ${x.title}. That counts as a strike.`);
       await creditCoins(stood, s.stoodUpRewardCoins, "Stood up (Plan a Date)", d.id);
-      if (stood === x.creatorUid) await refundPlanFee(d.id, x, "You were stood up, so your date fee is back");
-      await push(stood, "Sorry they didn't make it", `We added ${s.stoodUpRewardCoins} Whisper coin${s.stoodUpRewardCoins === 1 ? "" : "s"}${stood === x.creatorUid ? " and your fee back as credit" : ""}.`);
+      const back = stood === x.creatorUid ? await refundPlanFee(d.id, x, "You were stood up, so your coin is back") : "";
+      await push(stood, "Sorry they didn't make it", `We added ${s.stoodUpRewardCoins} Whisper coin${s.stoodUpRewardCoins === 1 ? "" : "s"}${back ? ", plus the " + back + " you posted it with" : ""}.`);
     }
     for (const u of showed) await db.doc(`members/${u}`).set({ datesDone: FieldValue.increment(1) }, { merge: true });
     if (showed.length === 2) await askForRatings("pd", d.id, x, showed);
@@ -3474,6 +3529,7 @@ async function buildSitemap() {
     { loc: "/rooms/", freq: "weekly", pri: "0.8", mod: SEO_PAGES_UPDATED },
     { loc: "/help/", freq: "monthly", pri: "0.7", mod: SEO_PAGES_UPDATED },
     { loc: "/meet/", freq: "weekly", pri: "0.9", mod: SEO_PAGES_UPDATED },
+    { loc: "/partner/", freq: "monthly", pri: "0.6", mod: "2026-11-05" },
     ...SEO_ROOM_SLUGS.map(s => ({ loc: `/rooms/${s}/`, freq: "weekly", pri: "0.7", mod: SEO_PAGES_UPDATED })),
     { loc: "/about.html", freq: "monthly", pri: "0.6", mod: SEO_PAGES_UPDATED },
     { loc: "/terms.html", freq: "yearly", pri: "0.2", mod: SEO_PAGES_UPDATED },
@@ -3585,6 +3641,90 @@ async function chatPrune() {
 exports.chatPrune = onSchedule({ schedule: "every 30 minutes", memory: "512MiB" }, chatPrune);
 
 // Test hooks (only when running the local test script; never part of a deploy).
+/* 🤝 PARTNER PROGRAM (partners.js): links, sign-ups, commissions, the partner board. */
+const partners = require("./partners")({ db, rtdb, admin, FieldValue, nowTs, ms, fromMs, push, sendEmail, logger, fail, str, APP_URL, getSettings, whisperProfile, ADMIN_UIDS });
+exports.partnerGo = onRequest({ cors: false }, (req, res) => partners.go(req, res));
+exports.partnerApply = onCall(async req => { const uid = requireUser(req); return partners.apply(uid, req.data || {}, req.auth.token.email || ""); });
+exports.partnerMe = onCall(async req => { const uid = requireUser(req); return partners.me(uid); });
+/* 💞 PARTNERS' OWN DATE PACKAGES + MATCHMAKING
+   An active partner can post Connect Me packages (reviewed by the admin first) and
+   is paid their Connect Me rate on every one of them that actually happens.
+   Matchmaking: members switch on "Open to matchmaker intros" (users/{uid}/introOk).
+   For a package someone bought, the partner can suggest up to 5 of those members;
+   the buyer sees them and invites one, and that person accepts or declines.
+   The partner never invites anyone themself, and nobody pays anybody but the site. */
+async function activePartner(uid) {
+  const p = (await db.doc(`partners/${uid}`).get()).data();
+  if (!p || p.status !== "active") fail("permission-denied", "This is for approved partners.");
+  return p;
+}
+exports.partnerPostConnect = onCall(async req => {
+  const uid = requireUser(req), p = await activePartner(uid);
+  return postConnect(req, str(req.data?.id, 64) || null, req.data?.data || {}, { uid, name: p.name || (await whisperProfile(uid)).name });
+});
+/** The partner's packages, with who bought them and the suggestions they've sent. */
+exports.partnerConnects = onCall(async req => {
+  const uid = requireUser(req); await activePartner(uid);
+  const q = await db.collection("connects").where("partnerUid", "==", uid).limit(60).get();
+  const out = [];
+  for (const d of q.docs) {
+    const x = d.data();
+    if (["canceled"].includes(x.status) && ms(x.startsAt) < Date.now() - 7 * 864e5) continue;
+    const priv = (await cnPrivate(d.id).get()).data() || {};
+    const orders = [];
+    if (x.sold) {
+      const oq = await db.collection("connectOrders").where("dealId", "==", d.id).limit(100).get();
+      for (const od of oq.docs) {
+        const o = od.data();
+        if (!["paid", "completed"].includes(o.status)) continue;
+        orders.push({ id: od.id, buyerName: String(o.buyerName || "").split(" ")[0], buyerUid: o.buyerUid, status: o.status,
+          seats: (o.seats || []).map(z => ({ role: z.role, status: z.status, name: z.status === "accepted" ? String(z.name || "").split(" ")[0] : "", here: !!z.checkedInAt })),
+          suggestions: (o.suggestions || []).map(z => ({ uid: z.uid, name: z.name, photo: z.photo })) });
+      }
+    }
+    out.push({ id: d.id, title: x.title, about: x.about, category: x.category, items: x.items || [], startsAt: ms(x.startsAt), price: x.price, size: x.size, quantity: x.quantity, sold: x.sold || 0,
+      status: x.status, hidden: !!x.hidden, changesNote: x.changesNote || "", venue: priv.venue || {}, venueCost: priv.venueCost || 0, idCheck: !!x.idCheck, orders });
+  }
+  out.sort((a, b) => b.startsAt - a.startsAt);
+  return { packages: out };
+});
+/** Members who switched on "Open to matchmaker intros" (photo required). */
+exports.partnerPool = onCall(async req => {
+  const uid = requireUser(req); await activePartner(uid);
+  const users = (await rtdb.ref("users").orderByChild("introOk").equalTo(true).once("value")).val() || {};
+  const list = Object.keys(users).filter(k => k !== uid && users[k] && users[k].photo && !users[k].banned).slice(0, 300)
+    .map(k => { const u = users[k]; return { uid: k, name: String(u.name || "Member").slice(0, 40), photo: u.photo, bio: String(u.bio || "").slice(0, 140), rating: u.dateRating && u.dateRating.n ? { avg: u.dateRating.avg, n: u.dateRating.n } : null }; });
+  return { members: list };
+});
+exports.partnerSuggest = onCall(async req => {
+  const uid = requireUser(req); const p = await activePartner(uid);
+  const orderId = str(req.data?.orderId, 64);
+  const uids = [...new Set((Array.isArray(req.data?.uids) ? req.data.uids : []).map(u => str(u, 128)).filter(Boolean))].slice(0, 5);
+  if (!uids.length) fail("invalid-argument", "Pick at least one person to suggest.");
+  const ref = coRef(orderId), o = (await ref.get()).data();
+  const deal = o && (await cnRef(o.dealId).get()).data();
+  if (!o || !deal || deal.partnerUid !== uid) fail("permission-denied", "You can only suggest people for your own packages.");
+  if (o.status !== "paid" || ms(o.startsAt) < Date.now()) fail("failed-precondition", "This date isn't active anymore.");
+  const picks = [];
+  for (const u of uids) {
+    if (u === o.buyerUid || (o.memberUids || []).includes(u)) continue;
+    const v = (await rtdb.ref(`users/${u}`).once("value")).val() || {};
+    if (v.introOk !== true || v.banned || !v.photo) continue; // only people who opted in
+    if (await blockedEitherWay(u, o.buyerUid)) continue;
+    picks.push({ uid: u, name: String(v.name || "Member").slice(0, 40), photo: String(v.photo || "").slice(0, 500), by: uid, at: Date.now() });
+  }
+  if (!picks.length) fail("failed-precondition", "None of those people can be suggested right now.");
+  const keep = (o.suggestions || []).filter(z => !picks.some(n => n.uid === z.uid));
+  await ref.update({ suggestions: [...keep, ...picks].slice(-8) });
+  await push(o.buyerUid, `${p.name || "Your matchmaker"} has ideas for your date 💞`, `${picks.length} ${picks.length === 1 ? "person" : "people"} who'd like to go out. Tap to see and invite one.`, `${APP_URL}/?dates=cm`);
+  return { message: `Sent ${picks.length} suggestion${picks.length === 1 ? "" : "s"} to ${String(o.buyerName || "the buyer").split(" ")[0]}.` };
+});
+
+/** A new account saved where it came from (userSrc/{uid}); a partner code there makes them that partner's. */
+exports.partnerAttach = onValueCreated({ ref: "/userSrc/{uid}", region: "us-central1", memory: "256MiB" }, async event => {
+  try { await partners.attach(event.params.uid, event.data.val() || {}); } catch (e) { logger.warn("partnerAttach", e.message); }
+});
+
 if (process.env.DATES_TEST) {
-  module.exports.__test = { setStripe: s => { _stripe = s; }, handleStripeEvent, housekeeping, settleDate, getSettings, CATEGORIES, landingStats, chatPrune, buildSitemap, planHousekeeping, planTextOk, mapPins, planClash, dateOGPage, meetupOGPage, share, payAllReady, ringOnce, stopRingFlow, claimDevice, onDispute, onDisputeChanged, onFraudWarning, sentMail, meetupReminders, connectReminders, emailHTML, connectInviteToken: async orderId => ((await coRef(orderId).get()).data()?.seats || []).map(x => x.token) };
+  module.exports.__test = { setStripe: s => { _stripe = s; }, handleStripeEvent, housekeeping, settleDate, getSettings, CATEGORIES, landingStats, chatPrune, buildSitemap, planHousekeeping, planTextOk, mapPins, planClash, partners: () => partners, dateOGPage, meetupOGPage, share, payAllReady, ringOnce, stopRingFlow, claimDevice, onDispute, onDisputeChanged, onFraudWarning, sentMail, meetupReminders, connectReminders, emailHTML, connectInviteToken: async orderId => ((await coRef(orderId).get()).data()?.seats || []).map(x => x.token) };
 }

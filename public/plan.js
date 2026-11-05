@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════════════════════════
    WHISPER+ME 📍 PLAN A DATE: the third tab on the ⭐ M&G screen.
    Anyone, in any city, posts a date at a real public place and pays a
-   small listing fee. People tap "I'm interested" (free). The creator
+   coin to post (given back if nobody's matched). People tap "I'm interested" (free). The creator
    picks one; that person confirms; they can message each other; both
    tap "I'm here" at the place. They pay the place themselves.
    All rules and money live in Cloud Functions (functions-nights);
@@ -11,11 +11,15 @@
   "use strict";
   var NEAR_KM = 40; // "near me" = about 25 miles
   var PAYS = { split: ["🤝", "We split it"], me: ["💝", "I'll treat"], each: ["🧾", "Each pays our own"] };
-  var P = { list: [], loaded: false, mine: [], mineLoaded: false, fee: 499, credit: 0, near: null, where: null, unsub: null, uid: null, chatOff: null };
+  var P = { list: [], loaded: false, mine: [], mineLoaded: false, coins: 1, near: null, where: null, unsub: null, uid: null, chatOff: null };
 
   /* ---------- helpers (same look as dates.js) ---------- */
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function money(c) { var n = (c || 0) / 100; return "$" + (n % 1 ? n.toFixed(2) : n); }
+  function cw(n) { return n + " coin" + (n === 1 ? "" : "s"); }
+  function myCoins() { var u = firebase.auth().currentUser; var m = (u && (window.allUsers || {})[u.uid]) || window.me || {}; return Number(m.coins) || 0; }
+  /* what a date cost to post, for messages: coins (now) or the old card fee */
+  function paidLabel(x) { return x.coins ? cw(x.coins) : money(x.fee); }
   function ms(t) { return t && t.toMillis ? t.toMillis() : (t && t.seconds ? t.seconds * 1000 : Number(t) || 0); }
   var MY_TZ = ""; try { MY_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (e) {}
   /* A date's time is shown in the place's own time zone (with "PST" etc. when that isn't yours). */
@@ -116,7 +120,7 @@
   function stop() { if (P.unsub) { try { P.unsub(); } catch (e) {} } P.unsub = null; }
   function load() {
     if (!me()) return Promise.resolve();
-    return fn("myPlans").then(function (r) { P.mine = r.plans || []; P.fee = r.fee != null ? r.fee : P.fee; P.credit = r.credit || 0; P.mineLoaded = true; redraw(); openPending(); }, function () { P.mineLoaded = true; });
+    return fn("myPlans").then(function (r) { P.mine = r.plans || []; P.coins = r.coins != null ? r.coins : P.coins; P.mineLoaded = true; redraw(); openPending(); }, function () { P.mineLoaded = true; });
   }
   firebase.auth().onAuthStateChanged(function (u) { if (!u) { stop(); P.mine = []; P.list = []; P.uid = null; } });
 
@@ -175,7 +179,7 @@
       if (x.status === "draft") { next = "Pay the " + money(x.fee) + " listing fee to put it up."; acts.push("<button class='dt-btn' onclick=\"Plan.pay('" + x.id + "',this)\">Pay " + money(x.fee) + "</button>"); }
       if (x.status === "live") next = (x.requests || []).length ? "Tap <b>Pick</b> on the person you want to go with. Everyone else is told it's filled." : "Open! We'll tell you when someone's interested. Share it to get more.";
       if (x.status === "matched") next = "You picked <b>" + esc(x.guestName) + "</b>. They have until " + esc(when(x.confirmBy, x.tz)) + " to confirm.";
-      if (x.status === "expired") next = x.feeReturned ? "Nobody was matched, so your " + money(x.fee) + " is back as credit. Try another day or place!" : "Nobody was matched.";
+      if (x.status === "expired") next = x.feeReturned ? "Nobody was matched, so your " + paidLabel(x) + (x.coins ? (x.coins === 1 ? " is" : " are") + " back." : " is back as credit.") + " Try another day or place!" : "Nobody was matched.";
       if (x.status === "live") acts.push("<button class='dt-btn ghost' onclick=\"Plan.share('" + x.id + "')\">↗ Share</button>");
       if (["draft", "live", "matched", "confirmed"].indexOf(x.status) > -1) acts.push("<button class='dt-btn red' onclick=\"Plan.cancel('" + x.id + "',this)\">Call it off</button>");
     } else {
@@ -202,10 +206,10 @@
   }
   function how() {
     return "<div class='dt-box' style='border-color:rgba(0,227,174,.4)'><h3>📍 How Plan a Date works</h3><p>Plan your own date anywhere, at a real public place. Pick who you go with.</p><ol class='dt-steps'>"
-      + "<li><b>1</b><strong>Post it</strong>The place, the time, the plan. " + (P.fee ? money(P.fee) + " to list." : "Free to list.") + "</li>"
+      + "<li><b>1</b><strong>Post it</strong>The place, the time, the plan. " + (P.coins ? cw(P.coins) + " to post." : "Free to post.") + "</li>"
       + "<li><b>2</b><strong>Pick someone</strong>People tap “I'm interested.” You choose one.</li>"
       + "<li><b>3</b><strong>Meet up</strong>Both tap “I'm here.” You pay the place directly.</li></ol>"
-      + "<p style='margin:10px 0 0;font-size:12.5px'>No match by the time it starts? Your fee comes back as credit. Asking is always free. <a href='/help/#plan-a-date' target='_blank' rel='noopener' style='color:#00e3ae'>Full guide with pictures →</a></p></div>"
+      + "<p style='margin:10px 0 0;font-size:12.5px'>No match by the time it starts? Your coin comes back. Asking is always free. <a href='/help/#plan-a-date' target='_blank' rel='noopener' style='color:#00e3ae'>Full guide with pictures →</a></p></div>"
       + "<div class='dt-rules'>🛟 <b>Stay safe:</b> meet only at the place you picked, tell a friend where you'll be, and never send money to someone you're meeting. Anyone asking for money is breaking the rules: report them.</div>";
   }
   function panelHTML() {
@@ -322,7 +326,7 @@
       if (!me()) { if (window.promptGuestUpgrade) window.promptGuestUpgrade("Planning a date"); return; }
       V = { venue: {}, results: [] };
       var ny = needYear(), pays = "split", minT = localInput(Date.now() + 25 * 3600000), maxT = localInput(Date.now() + 30 * 864e5);
-      var cover = P.credit >= P.fee;
+      var have = myCoins(), short = P.coins > have;
       openModal("<h3>📍 Plan a date</h3><p style='margin:-6px 0 0;color:#b3abcf;font-size:13px'>Anywhere, at a real public place. People ask, you pick who goes.</p>"
         + "<div><div class='lbl'>What's the plan?</div><input class='dt-in' id='pdTitle' maxlength='70' placeholder='Tacos and mini golf'></div>"
         + "<div><div class='lbl'>A little more <small>(optional)</small></div><textarea class='dt-in' id='pdAbout' maxlength='400' rows='2' placeholder='Low-key first date. Loser buys dessert.'></textarea></div>"
@@ -335,8 +339,10 @@
         + (ny ? birthYearField("pdYear2") : "")
         + "<label class='dt-check'><input type='checkbox' id='pdAgree'> <span>It's at a public place, nobody pays anyone to go out (we each pay the place), and I'll show up or call it off at least a day ahead. <a href='/terms.html#plan' target='_blank' rel='noopener'>Plan a Date rules</a></span></label>"
         + "<div id='pdErr2' class='dt-err'></div>"
-        + "<button class='dt-btn big teal' id='pdGo'>" + (!P.fee ? "Post it · free" : cover ? "Post it · paid with your credit" : "Post it · " + money(P.fee)) + "</button>"
-        + "<p class='dt-fine'>" + (P.fee ? "Nobody picked by the time it starts? The " + money(P.fee) + " comes back as Whisper+Me credit. " : "") + "Asking is free for everyone.</p>");
+        + (P.coins ? "<div class='dt-rules' id='pdCoins' style='display:flex;justify-content:space-between;align-items:center;gap:8px'><span>🪙 Posting costs <b>" + cw(P.coins) + "</b>. You have <b>" + cw(have) + "</b>.</span>"
+          + (short ? "<button class='dt-btn gold' style='flex:none;min-height:36px' onclick='Plan.buyCoins()'>Buy coins</button>" : "") + "</div>" : "")
+        + "<button class='dt-btn big teal' id='pdGo'>" + (!P.coins ? "Post it · free" : "Post it · " + cw(P.coins)) + "</button>"
+        + "<p class='dt-fine'>" + (P.coins ? "Nobody picked by the time it starts? Your " + (P.coins === 1 ? "coin comes" : "coins come") + " back. " : "") + "Asking is free for everyone.</p>");
       document.querySelectorAll("#pdPays button").forEach(function (b) { b.onclick = function () { pays = b.getAttribute("data-k"); document.querySelectorAll("#pdPays button").forEach(function (c) { c.setAttribute("aria-pressed", c === b); }); }; });
       var timer = null;
       $i("pdVq").oninput = function () { clearTimeout(timer); var q = this.value.trim(); timer = setTimeout(function () { venueSearch(q); }, 350); };
@@ -348,8 +354,16 @@
         var data = { title: $i("pdTitle").value, about: $i("pdAbout").value, pays: pays, tz: MY_TZ, startsAt: $i("pdWhen").value ? new Date($i("pdWhen").value).getTime() : 0,
           venue: { name: $i("pdVname").value, address: $i("pdVaddr").value, city: $i("pdVcity").value, phone: $i("pdVphone").value, source: V.venue.source || "other", osmId: V.venue.osmId || "", lat: V.venue.lat, lon: V.venue.lon } };
         if (ny) { data.birthYear = +$i("pdYear2").value; if (!data.birthYear) { err.textContent = "Pick your birth year."; return; } }
+        if (P.coins > myCoins()) { err.innerHTML = "You need " + cw(P.coins) + " to post a date. <a href='#' onclick='Plan.buyCoins();return false' style='color:#ffc94d'>Buy coins</a>"; return; }
         busy(btn, fn("createPlan", data)).then(function (r) { if (r.url) location.href = r.url; else { closeModal(); toast(r.message); if (window.Dates) window.Dates.setMode("pd"); load(); } }, function (e) { if (!yearRetry(e, Plan.create)) err.textContent = e.message; });
       };
+    },
+    /* 🪙 Not enough coins: to 👤 Profile → Wallet to buy some (the form is saved for when they come back). */
+    buyCoins: function () {
+      closeModal();
+      try { sessionStorage.setItem("wpmAfterCoins", "plan"); } catch (e) {}
+      if (window.setActive) window.setActive(3);
+      setTimeout(function () { if (window.Profile && window.Profile.tab) window.Profile.tab("wallet"); toast("Buy coins, then come back to ⭐ M&G → 📍 Plan to post your date."); }, 250);
     },
     pickVenue: function (i) {
       var r = V.results[i]; if (!r) return;
@@ -370,7 +384,8 @@
     cancel: function (id, btn) {
       var x = P.mine.filter(function (z) { return z.id === id; })[0] || {};
       var late = x.startsAt - Date.now() < 24 * 3600000;
-      if (!confirm(late ? "It's less than a day away. Calling it off now doesn't return the fee" + (x.status === "confirmed" ? " and counts as a strike" : "") + ". Call it off?" : "Call off this date? Your fee comes back as Whisper+Me credit.")) return;
+      var what = x.coins ? (x.coins === 1 ? "your coin" : "your coins") : "the fee";
+      if (!confirm(late ? "It's less than a day away. Calling it off now doesn't give back " + what + (x.status === "confirmed" ? " and counts as a strike" : "") + ". Call it off?" : "Call off this date? " + (x.coins ? (x.coins === 1 ? "Your coin comes" : "Your coins come") + " back." : "Your fee comes back as Whisper+Me credit."))) return;
       busy(btn, fn("cancelPlan", { planId: id })).then(function (r) { toast(r.message); load(); }, function (e) { toast(e.message, "error"); });
     },
     withdraw: function (id, btn) {
@@ -446,4 +461,15 @@
   };
   function stopChat() { if (P.chatOff) { try { P.chatOff(); } catch (e) {} P.chatOff = null; } }
   window.Plan = Plan;
+  /* Back from buying coins to post a date: open the Plan form again. */
+  (function () {
+    var want = null; try { want = sessionStorage.getItem("wpmAfterCoins"); } catch (e) {}
+    if (want !== "plan" || !/coins_success=1/.test(window.__initialSearch || location.search)) return;
+    try { sessionStorage.removeItem("wpmAfterCoins"); } catch (e) {}
+    var n = 0, t = setInterval(function () {
+      n++;
+      if (me() && window.setActive && window.Dates && myCoins() >= P.coins) { clearInterval(t); window.setActive(4); window.Dates.setMode("pd"); setTimeout(Plan.create, 400); }
+      else if (n > 60) clearInterval(t);
+    }, 500);
+  })();
 })();

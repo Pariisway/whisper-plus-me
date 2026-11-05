@@ -4069,7 +4069,21 @@ window.addEventListener("pagehide", function(){
     }catch(e){}
   }
   if(src && src.s && !cur){ src.at = Date.now(); src.landing = clean(window.location.pathname + (p.get("deal") ? "?deal=" + p.get("deal") : p.get("meetup") ? "?meetup=" + p.get("meetup") : "")); try{ localStorage.setItem(KEY, JSON.stringify(src)); }catch(e){} cur = src; }
-  window.wpmSource = function(){ var x = null; try{ x = JSON.parse(localStorage.getItem(KEY) || "null"); }catch(e){} return x && x.s ? { s:x.s, m:x.m || "", c:x.c || "", ct:x.ct || "" } : null; };
+  /* 🤝 A partner link (whisperplusme.com/go/CODE → ?via=CODE). The first partner wins, for 30 days;
+     a new account made in that time becomes that partner's (the server checks the code). */
+  var VKEY = "wpmVia", via = String(p.get("via") || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 20), curVia = null;
+  try{ curVia = JSON.parse(localStorage.getItem(VKEY) || "null"); }catch(e){}
+  if(curVia && Date.now() - (curVia.at || 0) > DAYS * 864e5) curVia = null;
+  if(via && !curVia){ try{ localStorage.setItem(VKEY, JSON.stringify({ v: via, at: Date.now() })); }catch(e){} }
+  window.wpmSource = function(){
+    var x = null, v = null;
+    try{ x = JSON.parse(localStorage.getItem(KEY) || "null"); }catch(e){}
+    try{ v = JSON.parse(localStorage.getItem(VKEY) || "null"); }catch(e){}
+    if(v && Date.now() - (v.at || 0) > DAYS * 864e5) v = null;
+    var out = x && x.s ? { s:x.s, m:x.m || "", c:x.c || "", ct:x.ct || "" } : (v ? { s:"partner", m:"partner", c:"", ct:"" } : null);
+    if(out && v && v.v) out.v = v.v;
+    return out;
+  };
 })();
 
 (function handleStripeReturn(){

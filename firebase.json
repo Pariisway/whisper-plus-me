@@ -195,6 +195,10 @@
         "function": "planOG"
       },
       {
+        "source": "/go/**",
+        "function": "partnerGo"
+      },
+      {
         "source": "/c/**",
         "function": "dealPage"
       },

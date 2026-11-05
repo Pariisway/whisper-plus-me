@@ -35,12 +35,12 @@ CAPTIONS = [
 ]
 
 FAQ = [
-    ("Is it free?", "Joining Whisper+Me is free. M&G spots and Connect Me packages have a price shown up front. Posting a Plan a Date costs $4.99, and asking to go on one is free."),
+    ("Is it free?", "Joining Whisper+Me is free. M&G spots and Connect Me packages have a price shown up front. Posting a Plan a Date costs 1 coin ($3), and asking to go on one is free."),
     ("Do I need an app?", "No. It works in any browser on your phone or computer. You can add it to your home screen."),
     ("Who can meet up?", "Anyone 21 or older. You need a free account, and for Plan a Date, a profile photo."),
     ("Where do people meet?", "Only at real public places: restaurants, cafés, bowling, classes, shows. Never homes or hotels."),
     ("Does anyone pay anyone?", "No. For M&G and Connect Me you pay through Whisper+Me. For Plan a Date, the two of you pay the place directly. Asking for or offering money gets you removed."),
-    ("What if my date doesn't show?", "Everyone checks in with “I'm here” at the place. No-shows get a strike; if you showed up and they didn't, you get a coin, and on Plan a Date your fee comes back too."),
+    ("What if my date doesn't show?", "Everyone checks in with “I'm here” at the place. No-shows get a strike; if you showed up and they didn't, you get a coin, and on Plan a Date your coin comes back too."),
     ("Is it only in St. Louis?", "M&G and Connect Me start in the St. Louis area. Plan a Date works in any city."),
 ]
 
@@ -82,11 +82,11 @@ body = f"""
 
 <section class="pg-card mt-sec" id="plan" style="--c:#00e3ae"><h2>📍 Plan a Date: you pick who goes</h2>
 <p>Anywhere, any city. Post a date at a real public place, say who pays the bill, and people tap “I'm interested.” You see their photo, rating, past dates and how far away they are, then pick one.</p>
-{steps(("Post it", "The plan, the place, the time and who pays (split, you treat, or each pays their own). $4.99 to list."),
+{steps(("Post it", "The plan, the place, the time and who pays (split, you treat, or each pays their own). 1 coin to post."),
        ("Pick someone", "People ask for free. Tap Pick on the one you want; they confirm."),
        ("Show up", "Message each other in the app, get the address, and both tap “I'm here.” You pay the place directly."))}
 {shots(("pd1-list", "Open dates near you"), ("pd4-create", "Post a date in a minute"), ("pd2a-requests", "You pick who goes"), ("pd5-chat", "Talk before you meet"))}
-<p class="mt-host">No match by the time it starts? Your $4.99 comes back as credit.</p>
+<p class="mt-host">No match by the time it starts? Your coin comes back.</p>
 <div class="pg-ctas"><a class="pg-btn" href="/?dates=pd">📍 Plan a date</a></div>
 </section>
 
@@ -94,7 +94,7 @@ body = f"""
 <div class="mt-tablewrap"><table class="hp-table"><thead><tr><th></th><th>⭐ M&amp;G</th><th>💞 Connect Me</th><th>📍 Plan a Date</th></tr></thead><tbody>
 <tr><td>Who you meet</td><td>A host and a group</td><td>Who you invite</td><td>Who you pick</td></tr>
 <tr><td>Where</td><td>Chosen by the host</td><td>Our partner places</td><td>Any public place you choose</td></tr>
-<tr><td>Price</td><td>Per spot, set by the host</td><td>One price for 2 or 4</td><td>$4.99 to post, free to ask; you pay the place</td></tr>
+<tr><td>Price</td><td>Per spot, set by the host</td><td>One price for 2 or 4</td><td>1 coin to post, free to ask; you pay the place</td></tr>
 <tr><td>Best for</td><td>Meeting new people</td><td>A ready-made date night</td><td>Your own plan, any city</td></tr>
 </tbody></table></div>
 </section>
@@ -187,7 +187,10 @@ CSS = """
 JS = """
 (function(){
   var url = "https://whisperplusme.com/meet/", text = "Meet up in real life: meet & greets, date nights for 2, or plan your own date and pick who goes. Free to join.";
-  var src = new URLSearchParams(location.search).get("ref"); if (src) url += "?ref=" + encodeURIComponent(src.slice(0, 40));
+  var q0 = new URLSearchParams(location.search), src = q0.get("ref"); if (src) url += "?ref=" + encodeURIComponent(src.slice(0, 40));
+  /* A partner link (?via=CODE) is remembered the same way the app does (first partner wins, 30 days). */
+  var via = String(q0.get("via") || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 20);
+  try { var cv = JSON.parse(localStorage.getItem("wpmVia") || "null"); if (via && (!cv || Date.now() - cv.at > 30 * 864e5)) localStorage.setItem("wpmVia", JSON.stringify({ v: via, at: Date.now() })); } catch (e) {}
   /* Ad and referral tags on this link (ref, utm_*) carry on into the app, so sign-ups and sales are credited. */
   var keep = new URLSearchParams(), q = new URLSearchParams(location.search);
   ["ref", "utm_source", "utm_medium", "utm_campaign", "utm_content"].forEach(function(k){ if (q.get(k)) keep.set(k, q.get(k).slice(0, 60)); });

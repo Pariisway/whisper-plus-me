@@ -357,10 +357,26 @@
       + "<p style='margin:6px 0'>" + esc(when(o.startsAt)) + (o.buyer ? "" : " · from " + esc(o.buyerName)) + "</p>"
       + (live && o.address ? "<div class='dt-rules'>📍 <b>" + esc(o.venueName) + "</b><br>" + esc(o.address) + ", " + esc(o.city) + (o.venuePhone ? "<br>📞 <a href='tel:" + esc(String(o.venuePhone).replace(/[^0-9+]/g, "")) + "' style='color:#00e3ae'>" + esc(o.venuePhone) + "</a>" : "") + "<br><a href='" + maps + "' target='_blank' rel='noopener' style='color:#00e3ae'>Open in Maps</a></div>" : "")
       + (o.buyer || seats ? "<div style='margin-top:8px'><div class='lbl' style='font-size:11px;color:#9a8fb5;font-weight:800;letter-spacing:.08em'>WHO'S GOING</div>" + seats + "</div>" : "")
+      + suggestBox(o, live)
       + (live && o.code ? "<div style='text-align:center;margin-top:10px'><div class='dt-code' style='color:#ff8fb3'>" + esc(o.code) + "</div><div style='font-size:12px;color:#9a8fb5'>Your code. Show it if the staff asks.</div></div>" : "")
       + (live && o.idCheck ? "<div class='dt-rules' style='margin-top:8px'>🪪 <b>21+:</b> everyone brings a valid photo ID. It's checked at the door.</div>" : "")
       + (o.canRate ? starRow("cm", o.id, o.myStars || 0) : "")
       + (live ? "<div class='dt-actions' style='margin-top:10px'>" + (hereOpen && !o.here ? "<button class='dt-btn teal' onclick=\"Dates.imHere('" + o.id + "',this)\">📍 I'm here</button>" : !o.here ? "<span style='font-size:12px;color:#9a8fb5'>“I'm here” opens an hour before.</span>" : "") + "</div>" : "")
+      + "</div>";
+  }
+
+  /* 💞 A matchmaker (partner) suggested people for this date: invite one; she decides. */
+  function suggestBox(o, live) {
+    var sug = o.suggestions || [];
+    if (!o.buyer || !live || !sug.length) return "";
+    var seat = (o.seats || []).filter(function (x) { return x.role === "guest" && x.status !== "accepted"; })[0];
+    if (!seat) return "";
+    return "<div style='margin-top:10px;background:rgba(224,69,123,.08);border:1px solid rgba(224,69,123,.3);border-radius:12px;padding:10px'>"
+      + "<div style='font-size:12.5px;color:#ffb3cb;font-weight:800'>💞 " + esc(o.matchmaker || "Your matchmaker") + " suggests</div>"
+      + "<div style='font-size:12px;color:#b3abcf;margin:2px 0 8px'>They're open to a date. Invite one; she says yes or no.</div>"
+      + sug.map(function (p) { return "<div class='dt-seat'><span style='display:flex;align-items:center;gap:8px'><button style='background:none;border:0;padding:0;cursor:pointer' onclick=\"showProfileModal('" + esc(p.uid) + "')\" aria-label='See profile'>" + avatar(p, 34) + "</button>" + esc(p.name) + "</span>"
+        + (seat.status === "invited" ? "" : "<button class='dt-btn' style='min-height:34px;padding:6px 12px' onclick=\"Dates.inviteSuggested('" + o.id + "'," + seat.i + ",'" + esc(p.uid) + "',this)\">Invite</button>") + "</div>"; }).join("")
+      + (seat.status === "invited" ? "<div style='font-size:12px;color:#9a8fb5;margin-top:6px'>Invite sent. If she can't make it, you can invite someone else.</div>" : "")
       + "</div>";
   }
 
@@ -714,6 +730,9 @@
         });
       };
       draw("");
+    },
+    inviteSuggested: function (orderId, seat, uid, btn) {
+      busy(btn, fn("inviteToConnect", { orderId: orderId, seat: seat, uid: uid })).then(function () { toast("Invite sent 💞"); loadMine(); }, function (e) { toast(e.message, "error"); });
     },
     newConnectLink: function (orderId, seat, btn) {
       if (!confirm("Give this spot a new link? The old link stops working.")) return;

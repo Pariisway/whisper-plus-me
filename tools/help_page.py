@@ -31,13 +31,13 @@ TOC = [("start", "👋", "Getting started"), ("rooms", "🎙️", "Voice chat ro
        ("plan-a-date", "📍", "Plan a Date"), ("credit", "💳", "Credit & refunds"), ("safety", "🛟", "Staying safe"), ("faq", "❓", "Questions")]
 
 FAQ = [
-    ("Is Whisper+Me free?", "Yes. Joining, the voice chat rooms, text chat, the open mic and the map are free. You only pay for 1-on-1 calls and paid member rooms (with coins), M&G spots, Connect Me packages, and the small listing fee to post a Plan a Date."),
+    ("Is Whisper+Me free?", "Yes. Joining, the voice chat rooms, text chat, the open mic and the map are free. You only pay for 1-on-1 calls and paid member rooms (with coins), M&G spots, Connect Me packages, and 1 coin to post a Plan a Date."),
     ("Do I need to download an app?", "No. It runs in any browser on your phone or computer. You can add it to your home screen so it opens like an app."),
     ("How old do I have to be?", "18 to use Whisper+Me. 21 to buy an M&G spot, a Connect Me package, or to post or ask for a Plan a Date. We ask your birth year once."),
     ("How much is a coin?", "$3. Members set their call price from 1 to 10 coins. Creators earn $2 for every coin people spend calling them or joining their room."),
     ("How do I get paid as a creator?", "Open 👤 Profile → Wallet and tap Set up payouts. Stripe sends your earnings to your bank once you reach $50."),
     ("Is Plan a Date a dating or escort service?", "It's a way to plan a real outing at a public place and pick who goes. Members never pay each other: the two of you pay the place directly. Anyone who asks for or offers money is removed."),
-    ("What if nobody picks my date?", "If nobody is confirmed by the time it starts, your listing fee comes back as Whisper+Me credit automatically."),
+    ("What if nobody picks my date?", "If nobody is confirmed by the time it starts, the coin you paid to post it comes back automatically."),
     ("Can I use my Whisper+Me credit on my card instead?", "Yes. Under 🎟️ My tickets, tap Send it to my card instead and it's refunded to the card you paid with (usually 5 to 10 days)."),
     ("Who sees my messages in Plan a Date?", "Only you and the person you're going with. Messages are deleted when a date is called off, or 30 days after it happens."),
     ("How do I report someone?", "Open their profile and tap 🚩 Report, or use Report on a date or ticket. Only Whisper+Me sees reports. If you're in danger, call 911."),
@@ -128,7 +128,7 @@ body = f"""
 
 <section class="pg-card hp-feature" id="plan-a-date"><h2>📍 Plan a Date</h2>
 <p class="hp-lead">Plan your own date anywhere, at a real public place, and pick who you go with. It works in any city, not just where Whisper+Me runs events.</p>
-<div class="hp-facts"><div><b>$4.99</b>to post a date</div><div><b>Free</b>to ask to go</div><div><b>21+</b>public places only</div></div>
+<div class="hp-facts"><div><b>1 coin</b>to post a date</div><div><b>Free</b>to ask to go</div><div><b>21+</b>public places only</div></div>
 
 <h3>Step 1: Post your date</h3>
 {steps(("Open ⭐ M&amp;G → 📍 Plan", "Tap the green <em>📍 Plan a date</em> button. You need a profile photo first, so people know who they're meeting."),
@@ -136,8 +136,8 @@ body = f"""
        ("Pick the place", "Search for it (restaurant, café, bowling, pottery class…), or tap <em>Type it in</em>. Homes, hotels and Airbnbs aren't allowed."),
        ("Pick the day and time", "Anywhere from 24 hours to 30 days ahead. The time is shown in your own time zone."),
        ("Say who pays the bill", "<em>We split it</em>, <em>I'll treat</em>, or <em>Each pays our own</em>. Either way, you pay the place directly. Nobody pays the other person."),
-       ("Tick the rules box and post it", "Pay the $4.99 listing fee (your credit is used first). Your date goes up right away."))}
-{shots(("pd4-create", "The Plan a date form: the plan, the place, the time and who pays."))}
+       ("Tick the rules box and post it", "Posting costs 1 coin ($3), taken from your coins. No coins? Tap <em>Buy coins</em>. Your date goes up right away."))}
+{shots(("pd4-create", "The Plan a date form: the plan, the place and the time."), ("pd4b-post", "Who pays the bill, then post it for 1 coin."))}
 
 <h3>Step 2: People ask to go</h3>
 <p>Your date shows on the 📍 Plan list. People nearby see it under <b>Near me</b> (about 25 miles), and anyone can find it under <b>Everywhere</b>. Tap <b>↗ Share</b> to post it on your Stories or send it to someone: the link opens straight to your date.</p>
@@ -159,11 +159,11 @@ body = f"""
        ("Pay the place", "Pay the restaurant or venue directly, the way the date said."),
        ("⭐ Rate each other", "After the date you can both leave 1 to 5 stars. Stars show on your future dates."))}
 
-<h3>The fee, cancelling and no-shows</h3>
-<table class="hp-table"><thead><tr><th>What happens</th><th>Your $4.99 listing fee</th></tr></thead><tbody>
-<tr><td>Nobody is picked or confirmed by the time it starts</td><td>✅ Back as Whisper+Me credit</td></tr>
-<tr><td>You call it off more than 24 hours ahead</td><td>✅ Back as credit</td></tr>
-<tr><td>Your date doesn't show up and you checked in</td><td>✅ Back as credit, plus a coin</td></tr>
+<h3>Your coin, cancelling and no-shows</h3>
+<table class="hp-table"><thead><tr><th>What happens</th><th>The coin you paid to post</th></tr></thead><tbody>
+<tr><td>Nobody is picked or confirmed by the time it starts</td><td>✅ Back in your coins</td></tr>
+<tr><td>You call it off more than 24 hours ahead</td><td>✅ Back in your coins</td></tr>
+<tr><td>Your date doesn't show up and you checked in</td><td>✅ Back, plus an extra coin</td></tr>
 <tr><td>You call it off less than 24 hours ahead</td><td>❌ Not returned (and a strike if it was confirmed)</td></tr>
 <tr><td>Your date is removed for breaking the rules</td><td>❌ Not returned</td></tr>
 </tbody></table>
@@ -181,7 +181,7 @@ body = f"""
 </section>
 
 <section class="pg-card" id="credit"><h2>💳 Credit &amp; refunds</h2>
-<p>When something is canceled by a host, a venue or Whisper+Me, or a Plan a Date fee comes back, you get the money back as <b>Whisper+Me credit</b> right away. It's used first on your next M&amp;G, Connect Me or date listing, with no card needed.</p>
+<p>When something is canceled by a host, a venue or Whisper+Me, you get the money back as <b>Whisper+Me credit</b> right away. It's used first on your next M&amp;G or Connect Me, with no card needed. (A Plan a Date coin comes straight back to your coins.)</p>
 <p>Rather have it on your card? Open <em>🎟️ My tickets</em> and tap <em>Send it to my card instead</em>. It's refunded to the card you paid with, usually in 5 to 10 days. M&amp;G spots and Connect Me packages aren't refundable otherwise.</p>
 </section>
 
@@ -206,9 +206,9 @@ body = f"""
 
 schema = {"@context": "https://schema.org", "@graph": [
     {"@type": "HowTo", "@id": URL + "#plan-a-date", "name": "How to plan a date on Whisper+Me", "description": "Post a date at a public place, let people ask to go, pick who goes, and meet up.",
-     "image": "https://whisperplusme.com/help/img/pd1-list.webp", "estimatedCost": {"@type": "MonetaryAmount", "currency": "USD", "value": "4.99"},
+     "image": "https://whisperplusme.com/help/img/pd1-list.webp", "estimatedCost": {"@type": "MonetaryAmount", "currency": "USD", "value": "3"},
      "step": [{"@type": "HowToStep", "name": n, "text": t, "url": URL + "#plan-a-date"} for n, t in [
-         ("Post your date", "Open M&G, then Plan, and fill in the plan, a public place, the day and time, and who pays the bill. Pay the $4.99 listing fee."),
+         ("Post your date", "Open M&G, then Plan, and fill in the plan, a public place, the day and time, and who pays the bill. Posting costs 1 coin."),
          ("People ask to go", "Members near you or anywhere tap I'm interested for free."),
          ("Pick who goes", "Under Your dates, pick one person. They confirm within 12 hours."),
          ("Meet up", "Message each other, tap I'm here at the place, and pay the place directly."),

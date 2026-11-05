@@ -8,7 +8,7 @@ Key facts:
 - M&G (meet & greet): a member or Whisper+Me hosts a meetup at a public venue; people buy one spot each. 21+.
 - Connect Me: ready-made nights out (dinner, bowling, shows and more) at one price for 2 or 4. The buyer invites who they want. 21+.
 - Members can share a "take me out" link asking someone to treat them to a Connect Me night out.
-- Plan a Date: any member 21+, in any city, posts a date at a real public place (small listing fee). Others tap "I'm interested" for free; the poster picks who goes. The two pay the place directly; members never pay each other. Shared plans are at https://whisperplusme.com/p/{id}.
+- Plan a Date: any member 21+, in any city, posts a date at a real public place (costs 1 coin, $3). Others tap "I'm interested" for free; the poster picks who goes. The two pay the place directly; members never pay each other. Shared plans are at https://whisperplusme.com/p/{id}.
 - Whisper+Me is peer support, not therapy or a crisis line. In the US, call or text 988 in a crisis.
 
 ## Voice chat rooms
@@ -28,6 +28,7 @@ Key facts:
 
 ## Meet up in real life
 
+- [Partner program](https://whisperplusme.com/partner/): creators and promoters earn a share of the M&G site fee from people who join through their link (12 months), and matchmakers create Connect Me date packages and earn a share of each one that happens
 - [Meet up in real life](https://whisperplusme.com/meet/): M&G, Connect Me and Plan a Date explained, with pictures and a short video
 - [Connect Me date ideas](https://whisperplusme.com/connect): every date-night package on sale now, with dates, places and prices
 - Live M&G pages are at https://whisperplusme.com/m/{id} and Connect Me packages at https://whisperplusme.com/c/{id}; all current ones are listed in the [sitemap](https://whisperplusme.com/sitemap.xml)

@@ -244,6 +244,7 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
       <button data-tab="safety">🛡️ Safety</button>
       <button data-tab="dates">⭐ M&amp;G<span class="n" id="nav-n-mg" hidden></span></button>
       <button data-tab="connect">💞 Connect Me</button>
+      <button data-tab="partners">🤝 Partners<span class="n" id="nav-n-pt" hidden></span></button>
       <button data-tab="log">🧾 Activity</button>
     </nav>
   </div>
@@ -718,8 +719,8 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
 
   <section class="card" id="sec-plans">
     <h2>📍 Plan a Date <span class="right"><div class="seg" id="pl-f"><button data-f="open" class="on" onclick="plFilter('open')">Active</button><button data-f="all" onclick="plFilter('all')">All</button><button data-f="flags" onclick="plFilter('flags')">Blocked words</button></div></span></h2>
-    <p class="help">Dates members post themselves, anywhere. They pay the listing fee; the couple pays the place directly. Remove anything that looks like paid company, a private place, or spam. “Blocked words” shows what the money/private-place filter stopped.</p>
-    <div class="row" style="margin-bottom:10px"><span class="help" style="margin:0">Listing fee</span><input class="in" id="pl-fee" type="number" min="0" max="50" step="0.5" style="width:90px"><button class="btn sm" onclick="plSaveFee()">Save</button><span class="help" id="pl-stats" style="margin:0"></span></div>
+    <p class="help">Dates members post themselves, anywhere. Posting one costs coins (1 by default; back to them if nobody's matched); the couple pays the place directly. Remove anything that looks like paid company, a private place, or spam. “Blocked words” shows what the money/private-place filter stopped.</p>
+    <div class="row" style="margin-bottom:10px"><span class="help" style="margin:0">Posting costs</span><input class="in" id="pl-fee" type="number" min="0" max="20" step="1" style="width:80px"><span class="help" style="margin:0">coins</span><button class="btn sm" onclick="plSaveFee()">Save</button><span class="help" id="pl-stats" style="margin:0"></span></div>
     <div id="pl-list" class="list"><div class="empty">Loading…</div></div>
   </section>
 
@@ -764,6 +765,33 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
 
 <!-- (Connect Me best places is filled by loadRatings) -->
 <!-- ══════════ ACTIVITY ══════════ -->
+<div class="page" id="p-partners">
+  <h1 class="page-title">🤝 Partners</h1>
+  <p class="page-sub">People who share Whisper+Me with their followers. They apply at <a href="/partner/" target="_blank" rel="noopener">whisperplusme.com/partner</a>, you approve them, and they get a link (whisperplusme.com/go/name). New accounts made through it are theirs for a set number of months, and they earn a share of what Whisper+Me keeps when those people buy M&amp;G spots, host M&amp;Gs or buy Connect Me packages (not coins or Plan a Date). You can give each partner their own share. Earnings wait a hold period, then go into their normal earnings and out with payouts.</p>
+
+  <section class="card" id="sec-ptapps">
+    <h2>📝 Applications</h2>
+    <div id="pt-apps" class="list"><div class="empty">Loading…</div></div>
+  </section>
+
+  <section class="card">
+    <h2>🤝 Partners <span class="right"><span class="help" id="pt-totals" style="margin:0"></span></span></h2>
+    <div id="pt-list" class="list"><div class="empty">Loading…</div></div>
+  </section>
+
+  <section class="card">
+    <h2>⚙️ How partners earn</h2>
+    <div class="row">
+      <label class="field"><span>Default partner share</span><input class="in" id="pt-pct" type="number" min="0" max="50" style="width:90px"> % of what we keep</label>
+      <label class="field"><span>For how long per person</span><input class="in" id="pt-months" type="number" min="1" max="60" style="width:90px"> months</label>
+      <label class="field"><span>Hold before paying</span><input class="in" id="pt-hold" type="number" min="0" max="60" style="width:90px"> days</label>
+      <label class="field"><span>Default Connect Me share</span><input class="in" id="pt-margin" type="number" min="0" max="50" style="width:90px"> % of the package price</label>
+    </div>
+    <p class="help">Partners earn on <b>M&amp;Gs</b> (their M&amp;G share of the site fee, on spots their people buy and M&amp;Gs their people host) and <b>Connect Me</b> (their Connect Me share of the package price, only after the date happens with 2+ people checked in). For Connect Me, a package the partner made always pays them; otherwise a package bought through their link within 30 days, or by someone they brought, does. Never on coins or Plan a Date. Give one partner their own shares with the two boxes on their row. The hold covers refunds and chargebacks; a chargeback cancels anything still on hold from that person.</p>
+    <button class="btn main" onclick="ptSaveSettings()">Save</button>
+  </section>
+</div>
+
 <div class="page" id="p-log">
   <h1 class="page-title">🧾 Activity</h1>
   <p class="page-sub">Everything done from this dashboard, newest first. Kept for 200 actions.</p>
@@ -884,7 +912,8 @@ const LOADERS = {
   safety: () => { loadReports(); loadSafety(); loadMicLog(); loadOrg(); },
   log: () => listenLog(),
   dates: () => { dtLoad(); loadRatings(); },
-  connect: () => { cmLoad(); loadRatings(); plLoad(); }
+  connect: () => { cmLoad(); loadRatings(); plLoad(); },
+  partners: () => ptLoad()
 };
 const loaded = {};
 function go(tab, focusId) {
@@ -1846,7 +1875,7 @@ const PL_ST = { draft: ["#ffba49", "Fee not paid"], live: ["var(--teal)", "Open"
 async function plLoad() {
   try { await dtSdk(); const r = await dtCall("plans", { data: { limit: 200 } }); PL.plans = r.plans || []; PL.flags = r.flags || []; }
   catch (e) { if ($("pl-list")) $("pl-list").innerHTML = `<div class="empty">Couldn't load: ${h(e.message)}</div>`; return; }
-  try { const st = (await firebase.firestore().doc("settings/platform").get()).data() || {}; if (document.activeElement !== $("pl-fee")) $("pl-fee").value = ((st.planFee == null ? 499 : st.planFee) / 100).toFixed(2); } catch (e) { /* keep */ }
+  try { const st = (await firebase.firestore().doc("settings/platform").get()).data() || {}; if (document.activeElement !== $("pl-fee")) $("pl-fee").value = st.planCoins == null ? 1 : st.planCoins; } catch (e) { /* keep */ }
   const paid = PL.plans.filter(p => p.paidWith), done = PL.plans.filter(p => p.status === "completed");
   $("pl-stats").textContent = `${paid.length} paid · ${done.length} went on the date · ${PL.plans.filter(p => (p.noShows || []).length).length} with a no-show`;
   plDraw();
@@ -1863,21 +1892,64 @@ function plDraw() {
   $("pl-list").innerHTML = rows.length ? rows.map(p => { const st = PL_ST[p.status] || ["#aaa", p.status];
     return `<div class="item"><div class="who"><b>📍 ${h(p.title)} <span style="color:${st[0]};font-size:12px">· ${h(st[1])}</span></b>
       <span>${h(p.creatorName)}${p.guestName ? " + " + h(p.guestName) : ""} · ${h(p.venueName)}, ${h(p.city)} · ${new Date(p.startsAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
-      <span>${p.requests} asked · ${p.paidWith ? "paid $" + (p.fee / 100).toFixed(2) + " (" + h(p.paidWith) + ")" : "unpaid"}${p.feeReturned ? " · fee returned as credit" : ""}${(p.noShows || []).length ? " · ⚠️ no-show" : ""}</span>${p.about ? `<span style="white-space:pre-wrap;color:var(--text)">“${h(p.about)}”</span>` : ""}</div>
-      <div class="acts"><button class="btn sm" onclick="person(${j(p.creatorUid)})">👤</button>${["completed", "removed"].includes(p.status) ? "" : `<button class="btn sm red" onclick="plRemove(${j(p.id)},${p.paidWith && !p.feeReturned ? 1 : 0})">Remove</button>`}</div></div>`; }).join("")
+      <span>${p.requests} asked · ${p.coins ? "paid " + p.coins + " coin" + (p.coins === 1 ? "" : "s") : p.paidWith === "free" ? "posted free" : p.paidWith ? "paid $" + (p.fee / 100).toFixed(2) + " (" + h(p.paidWith) + ")" : "unpaid"}${p.feeReturned ? (p.coins ? " · coin given back" : " · fee returned as credit") : ""}${(p.noShows || []).length ? " · ⚠️ no-show" : ""}</span>${p.about ? `<span style="white-space:pre-wrap;color:var(--text)">“${h(p.about)}”</span>` : ""}</div>
+      <div class="acts"><button class="btn sm" onclick="person(${j(p.creatorUid)})">👤</button>${["completed", "removed"].includes(p.status) ? "" : `<button class="btn sm red" onclick="plRemove(${j(p.id)},${(p.coins || (p.paidWith && p.paidWith !== "free")) && !p.feeReturned ? 1 : 0})">Remove</button>`}</div></div>`; }).join("")
     : `<div class="empty">${PL.plans.length ? "Nothing active right now." : "No dates planned yet. Members post them from ⭐ M&G → 📍 Plan."}</div>`;
 }
 async function plRemove(id, paid) {
   const reason = await dialog({ title: "Remove this date?", body: "It comes down, anyone who asked or was picked is told it's called off, and the creator is told why.", input: { placeholder: "Why (they'll see this)", value: "It didn't follow the Plan a Date rules." }, ok: "Remove", danger: true });
   if (reason === null || reason === undefined || reason === false) return;
   let refund = false;
-  if (paid) refund = !!(await dialog({ title: "Give the fee back?", body: "Return their listing fee as Whisper+Me credit? Pick No for scams or rule breaking.", ok: "Yes, give it back", cancel: "No" }));
+  if (paid) refund = !!(await dialog({ title: "Give back what they paid?", body: "Return the coin(s) they paid to post it? Pick No for scams or rule breaking.", ok: "Yes, give it back", cancel: "No" }));
   const r = await safely(() => dtCall("removePlan", { id, reason, data: { refund } }), "Removed"); if (r) plLoad();
 }
 async function plSaveFee() {
-  const v = Math.round(Number($("pl-fee").value) * 100);
-  if (!(v >= 0 && v <= 5000)) return toast("Pick between $0 and $50", true);
-  const r = await safely(() => dtCall("savePlanFee", { data: { planFee: v } }), "Listing fee saved"); if (r !== undefined) plLoad();
+  const v = Math.round(Number($("pl-fee").value));
+  if (!(v >= 0 && v <= 20)) return toast("Pick 0 to 20 coins", true);
+  const r = await safely(() => dtCall("savePlanCoins", { data: { planCoins: v } }), null); if (r) { toast(r.message); plLoad(); }
+}
+/* ───────── 🤝 Partners ───────── */
+const PT = { list: [], settings: {} };
+async function ptLoad() {
+  try { await dtSdk(); const r = await dtCall("partners"); PT.list = r.partners || []; PT.settings = r.settings || {}; }
+  catch (e) { $("pt-list").innerHTML = `<div class="empty">Couldn't load: ${h(e.message)}</div>`; return; }
+  const s = PT.settings;
+  if (document.activeElement && !/^pt-/.test(document.activeElement.id)) { $("pt-pct").value = s.partnerPct; $("pt-months").value = s.partnerMonths; $("pt-hold").value = s.partnerHoldDays; $("pt-margin").value = s.partnerCmPct; }
+  const apps = PT.list.filter(p => p.status === "pending");
+  $("nav-n-pt").hidden = !apps.length; $("nav-n-pt").textContent = apps.length;
+  const m = c => "$" + ((c || 0) / 100).toFixed(2);
+  $("pt-apps").innerHTML = apps.length ? apps.map(p => `<div class="item"><div class="who"><b>${h(p.name)} <span class="help" style="margin:0">· ${h(p.email || "")} · applied ${ago(p.appliedAt)}</span></b>
+      <span>📣 ${h(p.channels.join(", "))}${p.audience ? " · about " + h(p.audience) : ""}${p.links ? " · " + h(p.links) : ""}</span>
+      <span style="white-space:pre-wrap;color:var(--text)">“${h(p.how)}”</span>
+      <span class="row" style="gap:6px;margin-top:6px">whisperplusme.com/go/<input class="in" id="ptc-${h(p.uid)}" value="${h(p.wantCode || "")}" placeholder="link name" style="width:150px;min-height:36px"></span></div>
+      <div class="acts"><button class="btn sm" onclick="person(${j(p.uid)})">👤</button><button class="btn sm main" onclick="ptApprove(${j(p.uid)})">Approve</button><button class="btn sm red" onclick="ptDecline(${j(p.uid)})">Decline</button></div></div>`).join("")
+    : `<div class="empty">No applications waiting. Share <a href="/partner/" target="_blank" rel="noopener">whisperplusme.com/partner</a> with creators and group admins.</div>`;
+  const act = PT.list.filter(p => p.status === "active" || p.status === "paused");
+  const sum = k => act.reduce((a, p) => a + (p[k] || 0), 0);
+  $("pt-totals").textContent = act.length ? `${act.length} partners · ${sum("clicks")} opens · ${sum("signups")} sign-ups · ${m(sum("earnedTotal"))} earned (${m(sum("pending"))} on hold)` : "";
+  $("pt-list").innerHTML = act.length ? act.map(p => `<div class="item"><div class="who"><b>${h(p.name)} ${p.status === "paused" ? '<span style="color:#ffba49;font-size:12px">· Paused</span>' : ""} <span class="help" style="margin:0">· /go/${h(p.code)} · M&amp;G ${p.pct != null ? "<b style='color:var(--teal)'>" + p.pct + "%</b>" : PT.settings.partnerPct + "%"} · Connect Me ${p.cmPct != null ? "<b style='color:var(--teal)'>" + p.cmPct + "%</b>" : PT.settings.partnerCmPct + "%"}</span></b>
+      <span>${p.clicks} opens · ${p.signups} sign-ups · ${p.buyers} bought something · <b style="color:var(--teal)">${m(p.earnedTotal)}</b> earned (${m(p.pending)} on hold, ${m(p.paid)} added)</span></div>
+      <div class="acts"><button class="btn sm" onclick="ptEarnings(${j(p.uid)},${j(p.name)})">💵 Earnings</button><span class="row" style="gap:4px;flex-wrap:nowrap" title="This partner's own shares. Empty = the default.">M&amp;G<input class="in" id="ptp-${h(p.uid)}" type="number" min="0" max="50" value="${p.pct == null ? "" : p.pct}" placeholder="${PT.settings.partnerPct}" style="width:58px;min-height:34px" aria-label="${h(p.name)}'s M&amp;G share in %">% Connect<input class="in" id="ptc2-${h(p.uid)}" type="number" min="0" max="50" value="${p.cmPct == null ? "" : p.cmPct}" placeholder="${PT.settings.partnerCmPct}" style="width:58px;min-height:34px" aria-label="${h(p.name)}'s Connect Me share in %">%<button class="btn sm" onclick="ptRate(${j(p.uid)})">Save</button></span>
+      ${p.status === "paused" ? `<button class="btn sm main" onclick="ptPause(${j(p.uid)},false)">Resume</button>` : `<button class="btn sm red" onclick="ptPause(${j(p.uid)},true)">Pause</button>`}<button class="btn sm" onclick="person(${j(p.uid)})">👤</button></div></div>`).join("")
+    : `<div class="empty">No partners yet.</div>`;
+}
+async function ptApprove(uid) { const code = ($("ptc-" + uid) || {}).value || ""; const r = await safely(() => dtCall("approvePartner", { id: uid, data: { code } }), null); if (r) { toast(r.message); ptLoad(); } }
+async function ptDecline(uid) { const reason = await dialog({ title: "Decline this application?", body: "They'll get a notification with your reason.", input: { value: "It isn't a fit right now. Thanks for applying!" }, ok: "Decline", danger: true }); if (reason == null) return; const r = await safely(() => dtCall("declinePartner", { id: uid, reason }), "Declined"); if (r) ptLoad(); }
+async function ptPause(uid, pause) {
+  let reason = "";
+  if (pause) { reason = await dialog({ title: "Pause this partner?", body: "Their link keeps working, but nothing new is earned until you resume. Earnings on hold stay on hold.", input: { value: "Paused for breaking the partner rules." }, ok: "Pause", danger: true }); if (reason == null) return; }
+  const r = await safely(() => dtCall(pause ? "pausePartner" : "resumePartner", { id: uid, reason }), pause ? "Paused" : "Resumed"); if (r) ptLoad();
+}
+/* Each partner can have their own share; empty = the default for everyone. */
+async function ptRate(uid) { const v = (($("ptp-" + uid) || {}).value || "").trim(), c = (($("ptc2-" + uid) || {}).value || "").trim(); const r = await safely(() => dtCall("setPartnerPct", { id: uid, data: { pct: v, cmPct: c } }), null); if (r) { toast(r.message); ptLoad(); } }
+async function ptEarnings(uid, name) {
+  const r = await safely(() => dtCall("partnerEarnings", { id: uid }), null); if (!r) return;
+  const m = c => "$" + ((c || 0) / 100).toFixed(2), L = { mg: "⭐ M&G spot", host: "⭐ Hosted M&G", cm: "💞 Connect Me" };
+  openModal(`<h3>💵 ${h(name)}'s earnings</h3><div class="list" style="max-height:60vh;overflow:auto">${(r.earnings || []).length ? r.earnings.map(e => `<div class="item"><div class="who"><b>${L[e.kind] || h(e.kind)} ${e.note ? "· " + h(e.note) : ""}</b><span>${new Date(e.at).toLocaleString()} · ${e.pct}% of ${m(e.base)} · member ${h(e.memberUid.slice(0, 8))}…</span></div><div class="acts"><b>${m(e.amount)}</b>&nbsp;<span class="help" style="margin:0">${h(e.status)}</span></div></div>`).join("") : '<div class="empty">Nothing yet.</div>'}</div><div class="acts"><button class="btn" onclick="closeModal()">Close</button></div>`);
+}
+async function ptSaveSettings() {
+  const data = { partnerPct: $("pt-pct").value, partnerMonths: $("pt-months").value, partnerHoldDays: $("pt-hold").value, partnerCmPct: $("pt-margin").value };
+  const r = await safely(() => dtCall("partnerSettings", { data }), "Partner settings saved"); if (r) ptLoad();
 }
 async function dtCall(action, extra) { const r = await firebase.functions().httpsCallable("nightsAdminAction")(Object.assign({ action }, extra || {})); return r.data || {}; }
 async function dtLoad() {
@@ -2204,15 +2276,25 @@ function cmEdit(id) {
 function cmFilter(f) { CM.f = f; document.querySelectorAll("#cm-f button").forEach(b => b.classList.toggle("on", b.dataset.f === f)); cmRender(); }
 function cmRender() {
   let list = CM.list.slice();
-  if (CM.f === "live") list = list.filter(c => c.status === "live").sort((a, b) => dtMs(a.startsAt) - dtMs(b.startsAt));
+  if (CM.f === "live") list = list.filter(c => ["live", "review", "changes"].includes(c.status)).sort((a, b) => (a.status === "review" ? -1 : 0) - (b.status === "review" ? -1 : 0) || dtMs(a.startsAt) - dtMs(b.startsAt));
   $("cm-list").innerHTML = list.length ? list.map(c => {
-    const st = c.status === "live" ? (c.hidden ? `<span class="pill warn">Paused</span>` : `<span class="pill on">On sale</span>`) : `<span class="pill">${h({ ended: "Not selling", completed: "Done", canceled: "Canceled" }[c.status] || c.status)}</span>`;
-    const acts = c.status === "live" ? [
+    const st = c.status === "live" ? (c.hidden ? `<span class="pill warn">Paused</span>` : `<span class="pill on">On sale</span>`) : c.status === "review" ? `<span class="pill warn">🤝 Partner package · review it</span>` : c.status === "changes" ? `<span class="pill">Sent back to partner</span>` : `<span class="pill">${h({ ended: "Not selling", completed: "Done", canceled: "Canceled" }[c.status] || c.status)}</span>`;
+    const acts = c.status === "review" ? [`<button class="btn sm main" onclick="cmAct('approveConnect',${j(c.id)})">✅ Put it on sale</button>`, `<button class="btn sm" onclick="cmSendBack(${j(c.id)})">Send back</button>`, `<button class="btn sm" onclick="cmEdit(${j(c.id)})">✏️ Edit</button>`, `<span class="help" style="margin:0" id="cmvc-${h(c.id)}"></span>`] : c.status === "live" ? [
       c.hidden ? `<button class="btn sm teal" onclick="cmAct('showConnect',${j(c.id)})">▶ Resume</button>` : `<button class="btn sm gold" onclick="cmAct('hideConnect',${j(c.id)})">⏸ Pause</button>`,
       `<button class="btn sm" onclick="cmEdit(${j(c.id)})">✏️ Edit</button>`, `<button class="btn sm red" onclick="cmAct('endConnect',${j(c.id)})">Stop selling</button>`, `<button class="btn sm red" onclick="cmAct('cancelConnect',${j(c.id)})">Cancel</button>`] : [];
-    return `<div class="item" style="flex-wrap:wrap"><div class="who"><b>${h(c.title)} ${st}</b><span>${h(c.venueName)}, ${h(c.city || "")} · ${h(dtWhenText(dtMs(c.startsAt)))} · ${usd(c.price)} for ${c.size} · ${Number(c.sold || 0)} of ${c.quantity} sold${c.siteNet != null ? " · you kept " + usd(c.siteNet) + " after card fees" : ""}</span></div>
+    if (c.status === "review") setTimeout(() => cmVenueCost(c.id), 0);
+    return `<div class="item" style="flex-wrap:wrap"><div class="who"><b>${h(c.title)} ${st}</b><span>${c.partnerName ? "🤝 by " + h(c.partnerName) + " · " : ""}${h(c.venueName)}, ${h(c.city || "")} · ${h(dtWhenText(dtMs(c.startsAt)))} · ${usd(c.price)} for ${c.size} · ${Number(c.sold || 0)} of ${c.quantity} sold${c.siteNet != null ? " · you kept " + usd(c.siteNet) + " after card fees" : ""}</span></div>
       <div class="acts">${c.status === "live" ? `<button class="btn sm main" onclick="adLink('c',${j(c.id)},${j(c.title)})">📣 Ad link</button>` : ""}<button class="btn sm" onclick="cmOrders(${j(c.id)})">Who's going</button>${acts.join("")}</div></div>`;
   }).join("") : `<div class="empty">${CM.f === "live" ? "Nothing on sale. Post a package below." : "No packages yet."}</div>`;
+}
+/* A partner's package: what the place costs (kept private), and sending it back with a note. */
+async function cmVenueCost(id) {
+  try { const v = ((await firebase.firestore().doc(`connects/${id}/private/info`).get()).data() || {}); const el = $("cmvc-" + id); if (el) el.textContent = v.venueCost ? `Place costs ${usd(v.venueCost)} · ${[v.venue && v.venue.address, v.venue && v.venue.phone].filter(Boolean).join(" · ")}` : ""; } catch (e) { /* admin only */ }
+}
+async function cmSendBack(id) {
+  const reason = await dialog({ title: "Send it back to the partner?", body: "They'll get your note and can fix it.", input: { value: "Please check the price and the details." }, ok: "Send back" });
+  if (reason == null) return;
+  const r = await safely(() => dtCall("rejectConnect", { id, reason }), "Sent back"); if (r) cmRender();
 }
 /* 📣 A link for an ad or post, tagged so Money → "Where sales come from" credits it. */
 function adLink(kind, id, title) {

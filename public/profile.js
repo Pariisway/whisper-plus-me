@@ -187,7 +187,10 @@
       + "</details>"
       + "<button class='pf-primary' id='pf-save' onclick='Profile.save()'>Save changes</button>"
       + "<div class='pf-row'><button class='pf-btn' onclick=\"shareProfile(" + jsAttr(myUid()) + ")\">🔗 Share profile</button>"
-      + "<button class='pf-btn' onclick=\"showProfileModal(" + jsAttr(myUid()) + ")\">👁 Preview</button></div>";
+      + "<button class='pf-btn' onclick=\"showProfileModal(" + jsAttr(myUid()) + ")\">👁 Preview</button></div>"
+      /* 💞 Matchmakers (Whisper+Me partners) can suggest you to someone who bought a date night. You always decide. */
+      + "<div class='pf-card pf-toggle' style='margin-top:14px'><div><b>💞 Open to matchmaker intros</b><div class='pf-muted'>Whisper+Me matchmakers can suggest you to someone who bought a date night at a public place. They invite you; you say yes or no. 21+. Nobody pays you or asks you for money.</div></div>"
+      + "<button class='pf-switch" + (m.introOk ? " on" : "") + "' role='switch' aria-checked='" + !!m.introOk + "' aria-label='Open to matchmaker intros' onclick='Profile.toggleIntro(this)'></button></div>";
   }
 
   function paneWallet() {
@@ -357,6 +360,7 @@
       + "<button onclick='window.Dates ? Dates.myEvents() : setActive(4)'>🎟️ My Meet &amp; Greet</button>"
       + (window.Install && !window.Install.isInstalled() ? "<button onclick='Install.show()'>📲 Add Whisper+Me to my Home Screen</button>" : "")
       + "<button onclick=\"showEmbedCode(" + jsAttr(uid) + ",'profile')\">🧩 Put my profile on my website</button>"
+      + "<button onclick=\"location.href='/partner/'\">🤝 Partner program: earn by sharing Whisper+Me</button>"
       + "</div>"
       + "<div class='pf-card'><div class='pf-label' style='margin-top:0'>Message support</div>"
       + "<label class='pf-field'><input id='contact-subject' maxlength='100' placeholder='Subject' autocomplete='off'></label>"
@@ -433,6 +437,17 @@
   var P = {
     phoneHTML: phoneHTML,
     panelHTML: panelHTML,
+    toggleIntro: function (btn) {
+      var uid = myUid(), m = me(), on = !m.introOk;
+      if (!uid) return;
+      if (on && !m.photo) { showToast("Add a profile photo first, so matchmakers can suggest you.", "warn"); return; }
+      btn.disabled = true;
+      firebase.database().ref("users/" + uid + "/introOk").set(on).then(function () {
+        m.introOk = on; if (window.allUsers && window.allUsers[uid]) window.allUsers[uid].introOk = on;
+        btn.disabled = false; btn.classList.toggle("on", on); btn.setAttribute("aria-checked", on);
+        showToast(on ? "💞 You're open to matchmaker intros" : "Matchmaker intros are off", "success");
+      }, function () { btn.disabled = false; showToast("Couldn't change it. Try again.", "error"); });
+    },
     tab: function (t, focusId) {
       if (t === "calls") { lsSet(seenKey(), Date.now()); if (tab !== "calls") loadLog(true); }
       tab = t; dirty = false; rerenderPanel(focusId);

@@ -974,7 +974,7 @@ async function test(name, fn) {
     assert.ok(!(await T.buildSitemap()).includes(`/m/${mg.id}<`), "paused M&G drops out");
   });
 
-  await test("Plan a Date: creator pays $4.99, people ask free, creator picks one, money talk blocked, no-show strike, unmatched fee comes back as credit", async () => {
+  await test("Plan a Date: posting costs 1 coin, people ask free, creator picks one, money talk blocked, no-show strike, unmatched coin comes back", async () => {
     seedPeople("pcre", "pg1", "pg2", "pg3", "pnoph");
     ["pcre", "pg1", "pg2", "pg3"].forEach(u => { rtdb.users[u].photo = "https://x.test/" + u + ".jpg"; rtdb.users[u].email = u + "@x.com"; });
     const s = await T.getSettings();
@@ -988,18 +988,19 @@ async function test(name, fn) {
     await assert.rejects(call("createPlan", "pcre", plan({ startsAt: Date.now() + 3 * H })), /24 hours/);
     assert.strictEqual(T.planTextOk("Flower arrangement class then coffee", "plan"), "", "a flower arrangement class is fine");
     assert.ok([...store.values()].some(x => x && x.where === "plan" && /Generous/.test(x.text || "")), "blocked attempts are logged for the admin");
-    // pay the listing fee
+    // posting costs 1 coin: no coins, no post; with coins it goes live right away (no card checkout)
+    rtdb.users.pcre.coins = 0;
+    await assert.rejects(call("createPlan", "pcre", plan()), /You need 1 coin to post a date\. You have 0 coins/);
+    assert.ok(![...store.keys()].some(k => /^plans\/[^/]+$/.test(k) && store.get(k).creatorUid === "pcre"), "nothing was posted");
+    rtdb.users.pcre.coins = 3; rtdb.users.pg2.coins = 2; rtdb.users.pg3.coins = 2;
+    const sessBefore = S.sessions.length;
     const p1 = await call("createPlan", "pcre", plan());
-    assert.ok(p1.url && doc("plans/" + p1.id).status === "draft");
-    const sess = S.sessions[S.sessions.length - 1];
-    assert.strictEqual(sess.line_items[0].price_data.unit_amount, 499);
-    await completeLastCheckout("pcre");
+    assert.deepStrictEqual([p1.url, p1.coins, rtdb.users.pcre.coins, S.sessions.length], [null, 1, 2, sessBefore], "1 coin taken, no checkout");
     const x1 = doc("plans/" + p1.id);
-    assert.deepStrictEqual([x1.status, x1.paidWith, x1.venueName, x1.city], ["live", "card", "Taco Town", "Los Angeles, CA"]);
+    assert.deepStrictEqual([x1.status, x1.paidWith, x1.coins, x1.venueName, x1.city], ["live", "coins", 1, "Taco Town", "Los Angeles, CA"]);
     assert.ok(!("address" in x1) && !("phone" in x1), "street address and phone stay private");
     assert.strictEqual(x1.tz, "America/Los_Angeles", "the place's time zone is kept");
     assert.deepStrictEqual([x1.lat, x1.lon], [34.05, -118.25], "open dates get a map pin");
-    assert.ok(/[AP]M P[SD]T/.test(sess.line_items[0].price_data.product_data.description || ""), "times show in the place's own zone: " + sess.line_items[0].price_data.product_data.description);
     // the share page: who, what, where (city only), free to ask, not indexed
     const pg = await T.share.planPage(p1.id);
     assert.ok(/Tacos and mini golf/.test(pg) && /Taco Town, Los Angeles, CA/.test(pg) && /I&#39;m interested|I'm interested/.test(pg) && /noindex/.test(pg), "plan share page");
@@ -1057,19 +1058,19 @@ async function test(name, fn) {
     assert.deepStrictEqual([rtdb.users.pcre.dateRating.n, rtdb.users.pcre.dateRating.avg], [1, 2]);
     await assert.rejects(call("rateEvent", "pg2", { kind: "pd", id: p1.id, stars: 5 }), /date you went on/);
 
-    // no match by the time it starts → the $4.99 comes back as credit; then credit pays the next one
+    // no match by the time it starts → the coin comes back
     const p2 = await call("createPlan", "pcre", plan({ title: "Coffee and a walk", startsAt: Date.now() + 30 * H }));
-    await completeLastCheckout("pcre");
+    const coinsBefore = rtdb.users.pcre.coins;
     await call("requestPlan", "pg2", { planId: p2.id });
     advanceHours(31);
     await T.planHousekeeping(s);
     assert.strictEqual(doc("plans/" + p2.id).status, "expired");
     assert.strictEqual(doc(`planRequests/${p2.id}_pg2`).status, "closed");
-    assert.strictEqual(doc("credits/pcre").balance, 499, "fee back as credit");
+    assert.strictEqual(rtdb.users.pcre.coins, coinsBefore + 1, "coin back");
     await T.planHousekeeping(s);
-    assert.strictEqual(doc("credits/pcre").balance, 499, "never twice");
+    assert.strictEqual(rtdb.users.pcre.coins, coinsBefore + 1, "never twice");
     const p3 = await call("createPlan", "pcre", plan({ title: "Paint and sip", startsAt: Date.now() + 40 * H }));
-    assert.deepStrictEqual([p3.url, doc("plans/" + p3.id).status, doc("plans/" + p3.id).paidWith, doc("credits/pcre").balance], [null, "live", "credit", 0]);
+    assert.deepStrictEqual([p3.url, doc("plans/" + p3.id).status, rtdb.users.pcre.coins], [null, "live", coinsBefore]);
 
     // picked but never confirmed → back on, creator picks someone else
     await call("requestPlan", "pg2", { planId: p3.id });
@@ -1086,35 +1087,36 @@ async function test(name, fn) {
     await call("withdrawPlan", "pg3", { planId: p3.id });
     assert.strictEqual(doc("plans/" + p3.id).status, "canceled");
     assert.strictEqual(doc("members/pg3").strikes, strikes3 + 1);
-    assert.strictEqual(doc("credits/pcre").balance, 499);
+    assert.strictEqual(rtdb.users.pcre.coins, coinsBefore + 1, "creator's coin back");
 
     // creator cancels early → credit; admin can remove one and give the fee back
     const p4 = await call("createPlan", "pcre", plan({ title: "Bowling", startsAt: Date.now() + 80 * H }));
-    assert.strictEqual(p4.url, null, "credit paid for it again");
+    assert.strictEqual(rtdb.users.pcre.coins, coinsBefore);
     const c4 = await call("cancelPlan", "pcre", { planId: p4.id });
-    assert.ok(/back as Whisper\+Me credit/.test(c4.message) && doc("credits/pcre").balance === 499);
+    assert.ok(/Your 1 coin is back/.test(c4.message) && rtdb.users.pcre.coins === coinsBefore + 1, c4.message);
     const p5 = await call("createPlan", "pcre", plan({ title: "Arcade night", startsAt: Date.now() + 60 * H }));
     const ad = await call("nightsAdminAction", "v6aIXY12MDY9ci1wWJmCiLOAKoG2", { action: "plans" });
     assert.ok(ad.plans.some(z => z.id === p5.id) && ad.flags.length >= 3, "admin sees plans and blocked attempts");
     await call("nightsAdminAction", "v6aIXY12MDY9ci1wWJmCiLOAKoG2", { action: "removePlan", id: p5.id, reason: "Test", data: { refund: true } });
-    assert.deepStrictEqual([doc("plans/" + p5.id).status, doc("credits/pcre").balance], ["removed", 499]);
+    assert.deepStrictEqual([doc("plans/" + p5.id).status, rtdb.users.pcre.coins], ["removed", coinsBefore + 1]);
     // 🗺️ map pins: a place typed in by hand (no spot yet) is looked up once, never again
     const p7 = await call("createPlan", "pg2", plan({ title: "Typed-in place", startsAt: Date.now() + 50 * H, venue: { name: "Corner Cafe", address: "9 Elm St", city: "Austin, TX", phone: "512-555-0101" } }));
-    await completeLastCheckout("pg2");
     assert.strictEqual(doc("plans/" + p7.id).lat, null);
     await T.mapPins();
     assert.strictEqual(doc("plans/" + p7.id).geoTried, true, "looked up once (no network in tests)");
     await call("cancelPlan", "pg2", { planId: p7.id });
-    // the admin can change the listing fee, even to free
-    await assert.rejects(call("nightsAdminAction", "v6aIXY12MDY9ci1wWJmCiLOAKoG2", { action: "savePlanFee", data: { planFee: 99999 } }), /between/);
-    await call("nightsAdminAction", "v6aIXY12MDY9ci1wWJmCiLOAKoG2", { action: "savePlanFee", data: { planFee: 0 } });
+    // the admin can change the price in coins, even to free
+    await assert.rejects(call("nightsAdminAction", "v6aIXY12MDY9ci1wWJmCiLOAKoG2", { action: "savePlanCoins", data: { planCoins: 99 } }), /0 to 20/);
+    await call("nightsAdminAction", "v6aIXY12MDY9ci1wWJmCiLOAKoG2", { action: "savePlanCoins", data: { planCoins: 0 } });
+    const before3 = rtdb.users.pg3.coins;
     const p6 = await call("createPlan", "pg3", plan({ title: "Free coffee date", startsAt: Date.now() + 40 * H }));
-    assert.deepStrictEqual([p6.url, doc("plans/" + p6.id).status, doc("plans/" + p6.id).paidWith], [null, "live", "free"]);
-    assert.strictEqual((await call("myPlans", "pg3", {})).fee, 0);
+    assert.deepStrictEqual([p6.url, doc("plans/" + p6.id).status, doc("plans/" + p6.id).paidWith, rtdb.users.pg3.coins], [null, "live", "free", before3]);
+    assert.strictEqual((await call("myPlans", "pg3", {})).coins, 0);
     await call("cancelPlan", "pg3", { planId: p6.id });
-    assert.ok(!(doc("credits/pg3") || {}).balance, "nothing to give back on a free listing");
-    await call("nightsAdminAction", "v6aIXY12MDY9ci1wWJmCiLOAKoG2", { action: "savePlanFee", data: { planFee: 499 } });
-    assert.strictEqual((await call("myPlans", "pg3", {})).fee, 499);
+    assert.strictEqual(rtdb.users.pg3.coins, before3, "nothing to give back on a free listing");
+    await call("nightsAdminAction", "v6aIXY12MDY9ci1wWJmCiLOAKoG2", { action: "savePlanCoins", data: { planCoins: 1 } });
+    const mp = await call("myPlans", "pg3", {});
+    assert.deepStrictEqual([mp.coins, mp.coinsHave], [1, before3]);
   });
 
   await test("Plan a Date: no double-booking (first confirm wins, the other pick reopens, clashing asks are blocked)", async () => {
@@ -1122,7 +1124,8 @@ async function test(name, fn) {
     ["dA", "dB", "dC", "dE", "dG", "dH"].forEach(u => { rtdb.users[u].photo = "https://x.test/" + u + ".jpg"; rtdb.users[u].email = u + "@x.com"; });
     const venue = { name: "Taco Town", address: "12 Main St", city: "Austin, TX", phone: "512-555-0100", lat: 30.27, lon: -97.74 };
     const T0 = Date.now() + 72 * H;
-    const post = async (u, title, at) => { const r = await call("createPlan", u, { title, pays: "split", venue, startsAt: at, birthYear: 1990 }); await completeLastCheckout(u); return r.id; };
+    ["dA", "dB", "dC", "dE", "dG", "dH"].forEach(u => { rtdb.users[u].coins = 10; });
+    const post = async (u, title, at) => { const r = await call("createPlan", u, { title, pays: "split", venue, startsAt: at, birthYear: 1990 }); return r.id; };
     const a = await post("dA", "Tacos", T0), b = await post("dB", "Bowling", T0 + 1 * H), c = await post("dC", "Brunch", T0 + 30 * H), g = await post("dE", "Karaoke", T0 + 3 * H);
     for (const id of [a, b, c, g]) await call("requestPlan", "dG", { planId: id, birthYear: 1991 });
     await call("requestPlan", "dH", { planId: b, birthYear: 1993 });
@@ -1145,6 +1148,7 @@ async function test(name, fn) {
     await call("confirmPlan", "dH", { planId: b, yes: true });
     // booked people can't post or ask for dates that clash
     await assert.rejects(call("createPlan", "dG", { title: "Sushi", pays: "split", venue, startsAt: T0 - 1 * H }), /already have a date around then/);
+    assert.strictEqual(rtdb.users.dG.coins, 10, "a refused post never takes the coin");
     await assert.rejects(call("requestPlan", "dH", { planId: g }), /already have a date around then/);
     // a creator can't pick someone who's already booked then
     await call("requestPlan", "dH", { planId: c });
@@ -1153,7 +1157,7 @@ async function test(name, fn) {
     // posting next to your own date clashes; far enough apart is fine
     await assert.rejects(call("createPlan", "dE", { title: "Late show", pays: "split", venue, startsAt: T0 + 5 * H }), /already have a date around then/);
     // someone far away has to say they'll be in town; the creator sees how far
-    seedPeople("dJ", "dK"); rtdb.users.dJ.photo = "https://x.test/dJ.jpg"; rtdb.users.dK.photo = "https://x.test/dK.jpg"; rtdb.users.dK.email = "dK@x.com";
+    seedPeople("dJ", "dK"); rtdb.users.dJ.photo = "https://x.test/dJ.jpg"; rtdb.users.dK.photo = "https://x.test/dK.jpg"; rtdb.users.dK.email = "dK@x.com"; rtdb.users.dK.coins = 5;
     const k = await post("dK", "Museum", T0 + 50 * H);
     const la = { lat: 34.05, lng: -118.24, birthYear: 1994 };
     await assert.rejects(call("requestPlan", "dJ", { planId: k, ...la }), /about 1\d{3} miles from you\. Only ask if you'll be in Austin/);
@@ -1166,6 +1170,141 @@ async function test(name, fn) {
     const z = await post("dE", "Late show", T0 + 8 * H);
     await call("requestPlan", "dA", { planId: z }); // dA's own Tacos is 8 hours earlier
     assert.strictEqual(doc("planRequests/" + z + "_dA").status, "pending");
+  });
+
+  await test("Partners: apply, approved, link clicks, new sign-ups counted, 20% of the site's share on M&G spots, hosted M&Gs and Connect Me (matchmaker), never coins or Plan a Date, for 12 months, hold then paid, chargeback cancels", async () => {
+    const ADM = "v6aIXY12MDY9ci1wWJmCiLOAKoG2", P = T.partners();
+    const auth = require("firebase-admin").__auth;
+    seedPeople("ptA", "ptB", "nm1", "nm2", "old1");
+    const fresh = u => { auth[u] = Object.assign(auth[u] || {}, { creationTime: new Date(Date.now()).toUTCString() }); };
+    // apply → pending → admin approves with a link name
+    await assert.rejects(call("partnerApply", "ptA", { channels: [], how: "x" }), /at least one place/);
+    await assert.rejects(call("partnerApply", "ptA", { channels: ["TikTok"], how: "I post date ideas daily", code: "admin", agree: true }), /3 to 20 letters/);
+    const r = await call("partnerApply", "ptA", { channels: ["TikTok", "Instagram"], how: "I post St. Louis date ideas daily", links: "@stlDates", audience: "12k", code: "STL-Dates!", agree: true });
+    assert.ok(/Thanks/.test(r.message));
+    assert.strictEqual((await call("partnerMe", "ptA")).status, "pending");
+    await assert.rejects(call("partnerApply", "ptA", { channels: ["TikTok"], how: "again and again", agree: true }), /application is in/);
+    const list = await call("nightsAdminAction", ADM, { action: "partners" });
+    assert.ok(list.partners.some(x => x.uid === "ptA" && x.status === "pending" && x.wantCode === "stl-dates"));
+    await call("nightsAdminAction", ADM, { action: "approvePartner", id: "ptA" });
+    assert.deepStrictEqual([doc("partners/ptA").status, doc("partners/ptA").code, doc("partnerCodes/stl-dates").uid], ["active", "stl-dates", "ptA"]);
+    // a second partner can't take the same link name
+    await call("partnerApply", "ptB", { channels: ["Facebook groups"], how: "I run a local events group", agree: true });
+    await assert.rejects(call("nightsAdminAction", ADM, { action: "approvePartner", id: "ptB", data: { code: "stl-dates" } }), /taken/);
+    // clicks: /go/CODE counts and opens the site with the code
+    let red = null; const res = { set() {}, redirect: (c, u) => { red = u; } };
+    await P.go({ path: "/go/stl-dates/meet" }, res);
+    await P.go({ path: "/go/stl-dates" }, res);
+    assert.strictEqual(red, "https://whisperplusme.com/?via=stl-dates");
+    await P.go({ path: "/go/nobody" }, res);
+    assert.strictEqual(doc("partners/ptA").clicks, 2);
+    // sign-ups: brand-new accounts only, never yourself, never an old account
+    fresh("nm1"); fresh("nm2"); fresh("ptA");
+    auth.old1 = { creationTime: new Date(Date.now() - 10 * 864e5).toUTCString() };
+    assert.strictEqual(await P.attach("nm1", { s: "partner", v: "stl-dates" }), "ptA");
+    assert.strictEqual(await P.attach("nm1", { s: "partner", v: "stl-dates" }), null, "only once");
+    assert.strictEqual(await P.attach("old1", { s: "partner", v: "stl-dates" }), null, "old accounts don't count");
+    assert.strictEqual(await P.attach("ptA", { s: "partner", v: "stl-dates" }), null, "not yourself");
+    assert.strictEqual(await P.attach("nm2", { s: "partner", v: "nope" }), null, "unknown code");
+    assert.strictEqual(doc("partners/ptA").signups, 1);
+    // earnings: 20% of the site's share, on meet-ups only (never coins or Connect Me)
+    assert.strictEqual(await P.commission({ memberUid: "nm1", kind: "coins", base: 2500, key: "coins_s1", note: "25 coins" }), 0, "coins never pay partners");
+    assert.strictEqual(await P.commission({ memberUid: "nm1", kind: "pd", base: 2500, key: "pd_1" }), 0, "Plan a Date never pays partners");
+    assert.strictEqual(await P.commission({ memberUid: "nm1", kind: "host", base: 2500, key: "host_m9", note: "Her M&G" }), 500, "hosted an M&G: site fee $25 → partner $5");
+    assert.strictEqual(await P.commission({ memberUid: "nm1", kind: "host", base: 2500, key: "host_m9" }), 0, "a repeat event never pays twice");
+    assert.strictEqual(await P.commission({ memberUid: "nm2", kind: "host", base: 2500, key: "host_m8" }), 0, "not referred");
+    await P.commission({ memberUid: "nm1", kind: "mg", base: 450, key: "mg_m1_nm1", note: "Brunch" });
+    assert.deepStrictEqual([doc("partners/ptA").pending, doc("partners/ptA").buyers], [590, 1], "hosting isn't buying; the M&G spot is");
+    // the partner's board
+    const me = await call("partnerMe", "ptA");
+    assert.ok(me.status === "active" && me.code === "stl-dates" && me.clicks === 2 && me.signups === 1 && me.pending === 590 && me.recent.length === 2 && me.terms.pct === 20);
+    // hold: nothing moves before 14 days, then it lands in earnings (paid with payouts)
+    rtdb.users.ptA.earnings = 10;
+    assert.strictEqual(await P.release(), 0);
+    advanceHours(15 * 24);
+    assert.strictEqual(await P.release(), 2);
+    assert.strictEqual(rtdb.users.ptA.earnings, 15.9);
+    assert.deepStrictEqual([doc("partners/ptA").pending, doc("partners/ptA").paid], [0, 590]);
+    // a chargeback cancels what's still pending from that member
+    await P.commission({ memberUid: "nm1", kind: "mg", base: 1000, key: "pd_s3" });
+    assert.strictEqual(await P.reverseFor("nm1", "Chargeback"), 1);
+    assert.deepStrictEqual([doc("partners/ptA").pending, doc("partnerEarnings/pd_s3").status], [0, "reversed"]);
+    // paused partners earn nothing new; a custom rate; after 12 months nothing more
+    await call("nightsAdminAction", ADM, { action: "pausePartner", id: "ptA", reason: "Spam" });
+    assert.strictEqual(await P.commission({ memberUid: "nm1", kind: "mg", base: 1000, key: "pd_s4" }), 0);
+    await call("nightsAdminAction", ADM, { action: "resumePartner", id: "ptA" });
+    await call("nightsAdminAction", ADM, { action: "setPartnerPct", id: "ptA", data: { pct: 30 } });
+    assert.strictEqual(await P.commission({ memberUid: "nm1", kind: "mg", base: 1000, key: "pd_s5" }), 300);
+    await call("nightsAdminAction", ADM, { action: "partnerSettings", data: { partnerPct: 20, partnerCmPct: 10, partnerMonths: 12, partnerHoldDays: 21 } });
+    assert.deepStrictEqual([(await P.cfg()).partnerHoldDays, (await P.cfg()).partnerCmPct], [21, 10]);
+    // each partner can have their own Connect Me rate (of the package price)
+    const rr = await call("nightsAdminAction", ADM, { action: "setPartnerPct", id: "ptA", data: { cmPct: 15 } });
+    assert.ok(/M&G 30% · |M&G 30%/.test(rr.message) && /Connect Me 15%/.test(rr.message), rr.message);
+    // Connect Me matchmaking: a package bought through a partner's link pays that partner, even from an older account
+    seedPeople("cmOld"); auth.cmOld = { creationTime: new Date(Date.now() - 400 * 864e5).toUTCString() };
+    assert.strictEqual(await P.commission({ memberUid: "cmOld", kind: "cm", base: 8000, key: "cm_o1", note: "Dinner for 2", viaCode: "stl-dates" }), 1200, "15% of an $80 package");
+    assert.strictEqual(await P.commission({ memberUid: "cmOld", kind: "mg", base: 2400, key: "mg_o1", viaCode: "stl-dates" }), 0, "matchmaking is Connect Me only; an M&G from an un-referred member pays nothing");
+    assert.strictEqual(await P.commission({ memberUid: "ptA", kind: "cm", base: 8000, key: "cm_self", viaCode: "stl-dates" }), 0, "not through your own link");
+    advanceHours(366 * 24);
+    assert.strictEqual(await P.commission({ memberUid: "nm1", kind: "mg", base: 1000, key: "pd_s6" }), 0, "12 months are up");
+    // declined
+    await call("nightsAdminAction", ADM, { action: "declinePartner", id: "ptB", reason: "Not a fit yet" });
+    assert.ok((await call("partnerMe", "ptB")).status === "declined");
+  });
+
+  await test("Partner packages + matchmaking: a partner posts a package, admin approves, buyer gets suggestions from members who opted in, invites one, partner is paid only when the date happens", async () => {
+    const ADM = "v6aIXY12MDY9ci1wWJmCiLOAKoG2";
+    seedPeople("az", "guy1", "gal1", "gal2", "gal3", "guy2");
+    rtdb.users.az.email = "az@x.com";
+    ["gal1", "gal2", "gal3"].forEach(u => { rtdb.users[u].photo = "https://x.test/" + u + ".jpg"; });
+    rtdb.users.gal1.introOk = true; rtdb.users.gal2.introOk = true; // gal3 didn't opt in
+    const venue = { name: "Cafe Rio", address: "1 Mill Ave", city: "Tempe, AZ", phone: "480-555-0100", source: "osm", lat: 33.42, lon: -111.94 };
+    const pkg = { title: "Tacos & a sunset walk", about: "Dinner for two", category: "Dinner", items: ["Dinner for 2"], venue, startsAt: Date.now() + 72 * H, price: 90, size: 2, quantity: 5, venueCost: 50 };
+    // only approved partners
+    await assert.rejects(call("partnerPostConnect", "az", { data: pkg }), /approved partners/);
+    await call("partnerApply", "az", { channels: ["Instagram"], how: "I set up my friends on dates", agree: true });
+    await call("nightsAdminAction", ADM, { action: "approvePartner", id: "az", data: { code: "arizona" } });
+    await assert.rejects(call("partnerPostConnect", "az", { data: { ...pkg, venueCost: 0 } }), /what the place will cost/);
+    const made = await call("partnerPostConnect", "az", { data: { ...pkg, imageURL: "https://evil.example/x.jpg" } });
+    const c0 = doc("connects/" + made.id);
+    assert.deepStrictEqual([c0.status, c0.partnerUid, c0.imageURL], ["review", "az", ""], "goes to review, no picture links");
+    assert.strictEqual(doc("connects/" + made.id + "/private/info").venueCost, 5000);
+    // admin sends it back, partner fixes it, admin approves
+    await call("nightsAdminAction", ADM, { action: "rejectConnect", id: made.id, reason: "Add the time you'll meet" });
+    assert.strictEqual(doc("connects/" + made.id).status, "changes");
+    await call("partnerPostConnect", "az", { id: made.id, data: { ...pkg, about: "Dinner for two, meet at 7" } });
+    assert.strictEqual(doc("connects/" + made.id).status, "review");
+    await call("nightsAdminAction", ADM, { action: "approveConnect", id: made.id });
+    assert.strictEqual(doc("connects/" + made.id).status, "live");
+    await assert.rejects(call("partnerPostConnect", "guy1", { id: made.id, data: pkg }), /approved partners/);
+    // a buyer (not from her link) buys it
+    const b = await call("buyConnect", "guy1", { dealId: made.id, birthYear: 1988 }); await completeLastCheckout("guy1");
+    // her board shows the order; the pool is only people who opted in
+    const board = (await call("partnerConnects", "az")).packages.find(x => x.id === made.id);
+    assert.ok(board.sold === 1 && board.orders.length === 1 && board.orders[0].buyerName === "GUY1" && board.venueCost === 5000);
+    const pool = (await call("partnerPool", "az")).members.map(m => m.uid).sort();
+    assert.deepStrictEqual(pool, ["gal1", "gal2"]);
+    // she suggests; someone who didn't opt in is skipped; not for other people's orders
+    await assert.rejects(call("partnerSuggest", "az", { orderId: b.orderId, uids: ["gal3"] }), /can be suggested/);
+    const sg = await call("partnerSuggest", "az", { orderId: b.orderId, uids: ["gal1", "gal2", "gal3"] });
+    assert.ok(/Sent 2 suggestions/.test(sg.message));
+    await assert.rejects(call("partnerSuggest", "guy2", { orderId: b.orderId, uids: ["gal1"] }), /approved partners/);
+    // the buyer sees them (and who the matchmaker is) and invites one; she accepts
+    const mine = (await call("myConnects", "guy1")).connects.find(x => x.id === b.orderId);
+    assert.deepStrictEqual([mine.matchmaker, mine.suggestions.map(z => z.uid).sort()], ["AZ", ["gal1", "gal2"]]);
+    await call("inviteToConnect", "guy1", { orderId: b.orderId, seat: 1, uid: "gal2" });
+    const tok = doc("connectOrders/" + b.orderId).seats[1].token;
+    await call("acceptConnect", "gal2", { token: tok, birthYear: 1995 });
+    assert.ok(!(await call("myConnects", "guy1")).connects.find(x => x.id === b.orderId).suggestions.some(z => z.uid === "gal2"), "she's going now");
+    // both check in → she is paid her Connect Me rate (default 10%) of the price (no pay if only one person shows)
+    const e0 = (doc("partners/az").earnedTotal || 0);
+    advanceHours(72);
+    await call("connectHere", "guy1", { orderId: b.orderId, lat: 33.42, lng: -111.94 });
+    await call("connectHere", "gal2", { orderId: b.orderId, lat: 33.42, lng: -111.94 });
+    advanceHours(4); await T.housekeeping();
+    assert.strictEqual(doc("connectOrders/" + b.orderId).status, "completed");
+    assert.strictEqual(doc("partners/az").earnedTotal - e0, 900, "10% of $90, held then paid with payouts");
+    assert.strictEqual(doc("partnerEarnings/cm_" + b.orderId).partnerUid, "az");
   });
 
   await test("Landing counter and chat cleanup keep the site fast", async () => {
