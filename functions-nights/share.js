@@ -162,8 +162,10 @@ module.exports = function makeShare({ db, rtdb, APP_URL, logger, ms, fmtMoney })
     return { id, title: clip(x.title, 80), hostName: x.official ? "Whisper+Me" : clip(x.hostName, 40), hostUid: x.official ? "" : x.hostUid, hostPhotoUrl: x.hostPhoto || "", imageUrl: x.imageURL || "",
       hue: x.hue || 280, official: !!x.official, category: x.category || "M&G", items: x.items || [], about: x.about || "",
       startsAt: ms(x.startsAt), venueName: x.venueName || "", city: x.city || "", price: x.price, left: Math.max(0, (x.spots || 0) - (x.sold || 0) - (x.held || 0)), sold: x.sold || 0,
-      idCheck: !!x.idCheck, rating, live };
+      idCheck: !!x.idCheck, rating, live, idea: !!x.idea, est: x.est || 0, pays: x.pays || "", tag: x.idea ? "💡 DATE IDEA · FREE" : "" };
   }
+  /* 💡 date ideas: free to join, pay at the place */
+  const ideaCost = m => (m.est ? `About ${fmtMoney(m.est)} each` : "Pay at the place") + (m.pays === "split" ? ", split the bill" : "");
   const whenText = t => new Date(t).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
   const poster = (m, w, hgt, s, pic) => h("div", { width: w, height: hgt, borderRadius: 36 * s, overflow: "hidden", position: "relative", backgroundImage: `linear-gradient(135deg, hsl(${m.hue},60%,32%), hsl(${(m.hue + 40) % 360},65%,16%) 70%, #0b0b16)`, border: `${4 * s}px solid rgba(255,255,255,0.08)` },
     pic ? img(pic, { position: "absolute", top: 0, left: 0, width: w - 8 * s, height: hgt - 8 * s, objectFit: "cover" }) : null,
@@ -175,14 +177,14 @@ module.exports = function makeShare({ db, rtdb, APP_URL, logger, ms, fmtMoney })
   async function meetupCard(m, story) {
     const icon = await appIcon();
     const pic = await dataUrl(m.imageUrl || m.hostPhotoUrl), hostPic = m.official ? icon : await dataUrl(m.hostPhotoUrl);
-    const buy = m.live ? (m.left ? `🎟️  Get my spot · ${fmtMoney(m.price)}` : "Sold out · see what's next") : "See what's coming up";
+    const buy = m.live ? (m.left ? (m.idea ? "💞  I'm going · free" : `🎟️  Get my spot · ${fmtMoney(m.price)}`) : "Sold out · see what's next") : "See what's coming up";
     const host = (size) => h("div", { alignItems: "center", gap: size * 0.5 },
       hostPic ? img(hostPic, { width: size * 2.2, height: size * 2.2, borderRadius: size * 2.2, objectFit: "cover" }) : initialCircle(m.hostName, size * 2.2),
       h("div", { flexDirection: "column" }, h("div", { fontSize: size, fontWeight: 800, color: "#fff" }, m.official ? "Hosted by Whisper+Me" : `with ${m.hostName}`),
         m.rating && m.rating.n ? h("div", { fontSize: size * 0.8, color: C.star, fontWeight: 700 }, `⭐ ${Number(m.rating.avg).toFixed(1)} · ${m.rating.n} rating${m.rating.n === 1 ? "" : "s"}`) : h("div", { fontSize: size * 0.8, color: C.muted }, "Meet & Greet")));
     const facts = (size) => h("div", { flexDirection: "column", gap: size * 0.4, fontSize: size, color: C.text },
       h("div", {}, `📅  ${whenText(m.startsAt)}`), h("div", {}, `📍  ${clip(m.venueName, 34)}${m.city ? ", " + clip(m.city.split(",")[0], 20) : ""}`),
-      h("div", { gap: 12 * (size / 24), alignItems: "center" }, h("div", { fontWeight: 900, fontSize: size * 1.4, color: "#fff" }, fmtMoney(m.price)), h("div", { color: C.muted }, "per person"),
+      h("div", { gap: 12 * (size / 24), alignItems: "center" }, h("div", { fontWeight: 900, fontSize: size * 1.4, color: "#fff" }, m.idea ? "Free" : fmtMoney(m.price)), h("div", { color: C.muted }, m.idea ? ideaCost(m) : "per person"),
         m.live && m.left ? chip(`${m.left} spot${m.left === 1 ? "" : "s"} left`, size * 0.8, C.gold) : null, m.idCheck ? chip("🪪 21+ ID", size * 0.8, C.gold) : null));
     if (!story) {
       return toPng(h("div", { width: 1200, height: 630, backgroundImage: BG, padding: "26px 44px", gap: 42, alignItems: "center", fontFamily: "Inter", color: C.text },
@@ -439,21 +441,22 @@ ${ig || tw || web ? `<div class="soc">${ig ? `<a href="${esc(ig)}" target="_blan
         body: `<div class="facts" style="text-align:center">This M&amp;G isn't available anymore.</div><div class="btns"><a class="b p" href="/?dates=1">⭐ See what's coming up</a></div>` });
     }
     const appUrl = `/?dates=1${m.live ? "&meetup=" + encodeURIComponent(id) : ""}${tail}`;
-    const title = `${m.title} · with ${m.hostName}`;
-    const desc = m.live ? `${whenText(m.startsAt)} at ${m.venueName}${m.city ? ", " + m.city : ""}. ${fmtMoney(m.price)} a spot${m.left <= 10 ? `, ${m.left} left` : ""}. ${(m.items || []).slice(0, 2).join(", ")}.`
+    const title = m.idea ? `${m.title} · a date idea on Whisper+Me` : `${m.title} · with ${m.hostName}`;
+    const desc = m.live && m.idea ? `${whenText(m.startsAt)} at ${m.venueName}${m.city ? ", " + m.city : ""}. Free to join, ${m.left} spot${m.left === 1 ? "" : "s"} left. ${ideaCost(m)} at the place. Find someone to go with.`
+      : m.live ? `${whenText(m.startsAt)} at ${m.venueName}${m.city ? ", " + m.city : ""}. ${fmtMoney(m.price)} a spot${m.left <= 10 ? `, ${m.left} left` : ""}. ${(m.items || []).slice(0, 2).join(", ")}.`
       : "This meet & greet has ended. See what's coming up on Whisper+Me.";
     const v = ver(m.title, m.imageUrl, m.price, m.left, m.live, Math.floor(Date.now() / 36e5));
     const body = `<div class="ph" style="aspect-ratio:4/5;background:linear-gradient(135deg,hsl(${m.hue} 60% 32%),hsl(${(m.hue + 40) % 360} 65% 16%) 70%,#0b0b16)">${m.imageUrl || m.hostPhotoUrl ? `<img src="${esc(m.imageUrl || m.hostPhotoUrl)}" alt="">` : ""}<div class="sh"></div>
-<div class="pill" style="left:16px;transform:none">${m.official ? "⭐ Whisper+Me pick" : "⭐ M&amp;G · Meet &amp; Greet"}</div>${m.live && m.left <= 10 ? `<div class="tag">${m.left ? m.left + " LEFT" : "SOLD OUT"}</div>` : ""}
+<div class="pill" style="left:16px;transform:none">${m.idea ? "💡 Date idea · free" : m.official ? "⭐ Whisper+Me pick" : "⭐ M&amp;G · Meet &amp; Greet"}</div>${m.live && m.left <= 10 ? `<div class="tag">${m.left ? m.left + " LEFT" : "SOLD OUT"}</div>` : ""}
 <div class="info"><h1 class="nm">${esc(m.title)}</h1></div></div>
 <div class="host">${m.official ? `<img src="/icon-192.png" alt="">` : m.hostPhotoUrl ? `<img src="${esc(m.hostPhotoUrl)}" alt="">` : `<div class="av">${esc((m.hostName[0] || "?").toUpperCase())}</div>`}<div><b>${m.official ? "Hosted by Whisper+Me" : "with " + esc(m.hostName)}</b><small>${m.rating && m.rating.n ? `⭐ ${Number(m.rating.avg).toFixed(1)} from ${m.rating.n} guest${m.rating.n === 1 ? "" : "s"}` : "Meet &amp; Greet"}</small></div></div>
 <div class="facts"><div>📅 ${esc(whenText(m.startsAt))}</div><div>📍 ${esc(m.venueName)}${m.city ? ", " + esc(m.city) : ""} <span style="color:#8f89a8">(exact address after you get a spot)</span></div>
-<div><b style="font-size:20px">${fmtMoney(m.price)}</b> per person${m.live ? ` · ${m.left} spot${m.left === 1 ? "" : "s"} left` : ""}</div>${(m.items || []).length ? `<div>✓ ${m.items.slice(0, 4).map(esc).join(" · ✓ ")}</div>` : ""}${m.idCheck ? `<div style="color:#f7b955">🪪 21+, bring a photo ID</div>` : ""}</div>
-<div class="btns">${m.live && m.left ? `<a class="b p" href="${esc(appUrl)}">🎟️ Get my spot · ${fmtMoney(m.price)}</a>` : `<a class="b p" href="/?dates=1">⭐ See what's coming up</a>`}
+${m.idea ? `<div><b style="font-size:20px">Free to join</b>${m.live ? ` · ${m.left} spot${m.left === 1 ? "" : "s"} left` : ""}<br><span style="color:#8f89a8">${esc(ideaCost(m))}. Everyone pays the place directly.</span></div>` : `<div><b style="font-size:20px">${fmtMoney(m.price)}</b> per person${m.live ? ` · ${m.left} spot${m.left === 1 ? "" : "s"} left` : ""}</div>`}${(m.items || []).length ? `<div>✓ ${m.items.slice(0, 4).map(esc).join(" · ✓ ")}</div>` : ""}${m.idCheck ? `<div style="color:#f7b955">🪪 21+, bring a photo ID</div>` : ""}</div>
+<div class="btns">${m.live && m.left ? `<a class="b p" href="${esc(appUrl)}">${m.idea ? "💞 I'm going · free" : "🎟️ Get my spot · " + fmtMoney(m.price)}</a>` : `<a class="b p" href="/?dates=1">⭐ See what's coming up</a>`}
 ${m.hostUid ? `<a class="b s" href="/u/${esc(m.hostUid)}">👤 About ${esc(clip(m.hostName, 20))}</a>` : ""}
 <button class="b s" data-share>↗ Bring a friend</button></div>`;
     const image = `${APP_URL}/s/m/${id}/card.png?v=${v}`;
-    const schema = m.live ? eventSchema(m, { url, image, name: m.title, desc, price: m.price, perWhat: "One spot",
+    const schema = m.live ? eventSchema(m, { url, image, name: m.title, desc, price: m.price, perWhat: m.idea ? "Free to join; pay the place for what you order" : "One spot",
       organizer: m.official ? SITE_ORG : { "@type": "Person", name: m.hostName, url: `${APP_URL}/u/${m.hostUid}` } }) : null;
     return pageShell({ title, desc, url, image, body, index: m.live, schema });
   }

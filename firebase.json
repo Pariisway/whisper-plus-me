@@ -219,6 +219,10 @@
         "function": "sitemap"
       },
       {
+        "source": "/site-info",
+        "function": "siteInfo"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

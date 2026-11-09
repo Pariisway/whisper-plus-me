@@ -335,6 +335,12 @@
         ".read": "auth != null && (data.child('members').child(auth.uid).exists() || auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2')",
         ".write": false
       }
+    },
+    "ideaChat": {
+      "$id": {
+        ".read": "auth != null && (data.child('members').child(auth.uid).exists() || auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2')",
+        ".write": false
+      }
     }
   }
 }

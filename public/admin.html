@@ -541,6 +541,12 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
       <div><video id="hiw-pv" controls playsinline preload="metadata" style="width:100%;max-height:520px;border-radius:14px;background:#000"></video></div>
     </div>
   </section>
+  <section class="card" id="sec-contact">
+    <h2>📮 Contact email</h2>
+    <p class="help">The email people see on every page: the About page, the footers, Help, Privacy, Terms, the partner page and the venue pages. Replies to emails the site sends go here too. Changes show up everywhere within about 5 minutes. (Emails are still <b>sent</b> from whisper.me.support@gmail.com, because that's the account with the app password.)</p>
+    <label class="field"><span>Contact email</span><input class="in" id="ct-email" type="email" maxlength="120" placeholder="whisper.me.support@gmail.com" style="max-width:420px"></label>
+    <div class="row"><button class="btn main" onclick="ctSave()">💾 Save</button><button class="btn" onclick="ctReset()">↺ Use whisper.me.support@gmail.com</button><span class="help" id="ct-status" style="margin:0"></span></div>
+  </section>
 </div>
 
 <!-- ══════════ ANNOUNCE ══════════ -->
@@ -637,7 +643,8 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
   <div class="lm">
     <section class="card" id="sec-newticket">
       <h2 id="dt-form-title">➕ Post a Whisper+Me M&amp;G</h2>
-      <p class="help" style="margin-top:-6px">Goes live for everyone right away. You keep the ticket money (pay the venue yourself). Buyers see the address after they pay.</p>
+      <p class="help" id="dt-form-help" style="margin-top:-6px">Goes live for everyone right away. You keep the ticket money (pay the venue yourself). Buyers see the address after they pay.</p>
+      <div class="field"><span>Type</span><div class="seg" id="dt-type"><button data-v="mg" class="on" onclick="dtType('mg')">⭐ Paid M&amp;G</button><button data-v="idea" onclick="dtType('idea')">💡 Free date idea</button></div></div>
       <label class="field"><span>Name</span><input class="in" id="dt-title" maxlength="80" placeholder="Jazz Night at The Pageant" oninput="dtPreview()"></label>
       <label class="field"><span>What happens <em>(optional)</em></span><textarea class="in" id="dt-note" maxlength="800" rows="2" placeholder="Live band, a drink each, meet new people. Dress code, parking…" oninput="dtPreview()"></textarea></label>
       <div class="field"><span>Category</span><div class="seg" id="dt-cat"></div></div>
@@ -650,8 +657,13 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
       </div>
       <div class="row">
         <label class="field grow"><span>Date &amp; time</span><input class="in" id="dt-when" type="datetime-local" oninput="dtPreview()"></label>
-        <label class="field" style="width:130px"><span>Price per person ($)</span><input class="in" id="dt-price" type="number" min="5" step="1" placeholder="30" oninput="dtPreview()"></label>
-        <label class="field" style="width:110px"><span>Spots</span><input class="in" id="dt-qty" type="number" min="1" max="500" value="20" oninput="dtPreview()"></label>
+        <label class="field" style="width:130px"><span id="dt-price-l">Price per person ($)</span><input class="in" id="dt-price" type="number" min="0" step="1" placeholder="30" oninput="dtPreview()"></label>
+        <label class="field" style="width:110px"><span id="dt-qty-l">Spots</span><input class="in" id="dt-qty" type="number" min="1" max="500" value="20" oninput="dtPreview()"></label>
+      </div>
+      <div id="dt-idea-only" hidden>
+        <div class="field"><span>How many people</span><div class="seg" id="dt-ppl"><button data-v="2" onclick="dtPpl(2)">2</button><button data-v="4" onclick="dtPpl(4)">4</button><button data-v="6" onclick="dtPpl(6)">6</button><button data-v="8" onclick="dtPpl(8)">8</button><button data-v="10" onclick="dtPpl(10)">10</button></div></div>
+        <div class="field"><span>Who pays at the place</span><div class="seg" id="dt-pays"><button data-v="each" class="on" onclick="dtPays('each')">Each pays their own</button><button data-v="split" onclick="dtPays('split')">Split the bill</button></div></div>
+        <p class="help" style="margin-top:-4px">Free for members to join, and backing out any time never counts as a strike. Nothing is paid on the site, and partners don't earn on these.</p>
       </div>
       <div class="field"><span>What's included <em>(optional)</em></span>
         <div class="row"><input class="in grow" id="dt-item" maxlength="60" placeholder="A drink each" onkeydown="if(event.key==='Enter'){event.preventDefault();dtAddItem()}"><button class="btn" onclick="dtAddItem()">Add</button></div>
@@ -906,7 +918,7 @@ function start() {
 /* ───────── navigation ───────── */
 const LOADERS = {
   money: () => { loadSales(); loadDisputes(); loadMoney(); loadCoinPurchases(); loadCallLedger(); loadRoomLedger(); loadStripeAccounts(); loadAutoPay(); },
-  landing: () => { ldLoad(false); hiwLoad(); },
+  landing: () => { ldLoad(false); hiwLoad(); ctLoad(); },
   announce: () => loadBanners(),
   rooms: () => loadPresets(),
   safety: () => { loadReports(); loadSafety(); loadMicLog(); loadOrg(); },
@@ -1316,6 +1328,20 @@ async function loadStripeAccounts() {
 /* ───────── landing page manager ───────── */
 const LD_DEFAULT = { mode: "color", playlist: {}, image: "", color: "#0b0b16", color2: "#3a1170", gradient: true, shuffle: false, imageSeconds: 8, overlay: 0.45, showSound: true, headline: "Talk. Go live. Meet up.", subline: "Voice rooms, live mics, 1-on-1 calls and real date nights. Your people are already here." };
 const ld = { cfg: Object.assign({}, LD_DEFAULT, { playlist: {} }), dirty: false, loadedOnce: false, pv: "phone", pvIdx: 0 };
+/* ───────── 📮 contact email (landing/contact), shown on every page by /contact.js ───────── */
+const CT_DEFAULT = "whisper.me.support@gmail.com";
+async function ctLoad() {
+  const v = (await db.ref("landing/contact").once("value")).val() || {};
+  $("ct-email").value = v.email || CT_DEFAULT;
+  $("ct-status").textContent = v.updatedAt ? "Last changed " + when(v.updatedAt) : "";
+}
+async function ctSave() {
+  const e = $("ct-email").value.trim().toLowerCase();
+  if (!/^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/.test(e)) return toast("That doesn't look like an email address.", true);
+  await safely(() => db.ref("landing/contact").set({ email: e, updatedAt: Date.now() }), "Contact email saved. It shows everywhere within about 5 minutes.");
+  ctLoad();
+}
+function ctReset() { $("ct-email").value = CT_DEFAULT; ctSave(); }
 /* ───────── "How Whisper+Me works" button (landing/howItWorks) ───────── */
 const HIW_TOUR = { video: "/media/how-it-works.mp4", poster: "/media/how-it-works.jpg" };
 async function hiwLoad() {
@@ -1353,7 +1379,7 @@ async function ldLoad(force) {
   if (force && ld.dirty && !await dialog({ title: "Undo your changes?", body: "Goes back to what's live right now.", ok: "Undo" })) return;
   try {
     const v = (await db.ref("landing").once("value")).val() || {};
-    delete v.stats; delete v.updatedAt; delete v.howItWorks; // saved by its own card
+    delete v.stats; delete v.updatedAt; delete v.howItWorks; delete v.contact; // saved by their own cards
     ld.cfg = Object.assign({}, LD_DEFAULT, v); ld.cfg.playlist = JSON.parse(JSON.stringify(v.playlist || {}));
     ld.cfg.site = Object.assign({ mode: "default", overlay: 0.5, color: "#0e0e1c", color2: "#3a1170", gradient: true }, JSON.parse(JSON.stringify(v.site || {})));
     ld.loadedOnce = true; ldDirty(false); ldRender(); renderGlance();
@@ -1535,7 +1561,7 @@ async function ldUpload(files, target) {
   box.hidden = true;
 }
 async function ldPublish() {
-  const c = Object.assign({}, ld.cfg); delete c.howItWorks;
+  const c = Object.assign({}, ld.cfg); delete c.howItWorks; delete c.contact;
   if (c.mode === "videos" && !Object.keys(c.playlist || {}).length) { toast("Add at least one video or picture first", true); return; }
   if (c.mode === "image" && !c.image) { toast("Add a picture first", true); return; }
   c.headline = String(c.headline || "").slice(0, 70); c.subline = String(c.subline || "").slice(0, 200);
@@ -1840,7 +1866,7 @@ async function orgDelete() {
 /* ───────── M&G: review, post official M&Gs, old tickets ───────── */
 const DT_CATS = [["Dinner", "🍽️"], ["Activities", "🎳"], ["Concerts", "🎤"], ["Movies", "🎬"], ["Other", "⭐"]];
 const DT_PRESETS = ["A drink each", "Dinner", "Show ticket", "Appetizers", "Reserved section", "Photo with the host", "Skip-the-line entry", "Dessert"];
-const DT = { tickets: [], meetups: [], settings: {}, cat: "Dinner", items: [], pic: null, editing: null, venue: { source: "other" }, vres: [], unsubs: [] };
+const DT = { tickets: [], meetups: [], settings: {}, cat: "Dinner", items: [], pic: null, editing: null, type: "mg", pays: "each", venue: { source: "other" }, vres: [], unsubs: [] };
 function loadScript(src) { return new Promise((res, rej) => { if (document.querySelector(`script[src="${src}"]`)) return res(); const sc = document.createElement("script"); sc.src = src; sc.onload = res; sc.onerror = () => rej(new Error("Couldn't load " + src)); document.head.appendChild(sc); }); }
 async function dtSdk() {
   if (!firebase.firestore) await loadScript("https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js");
@@ -1972,6 +1998,26 @@ async function dtLoad() {
   }, () => {}));
   dtPreview();
 }
+/* ⭐ paid M&G or 💡 free date idea (free to join, everyone pays the place) */
+function dtType(t) {
+  const was = DT.type;
+  DT.type = t === "idea" ? "idea" : "mg";
+  const idea = DT.type === "idea";
+  if (was !== DT.type && !DT.editing) $("dt-qty").value = idea ? 2 : 20;
+  document.querySelectorAll("#dt-type button").forEach(b => b.classList.toggle("on", b.dataset.v === DT.type));
+  $("dt-idea-only").hidden = !idea;
+  $("dt-price-l").textContent = idea ? "About $ each (optional)" : "Price per person ($)";
+  $("dt-price").placeholder = idea ? "25" : "30";
+  $("dt-qty-l").textContent = idea ? "People" : "Spots";
+  $("dt-qty").max = idea ? 20 : 500; $("dt-qty").min = idea ? 2 : 1;
+  if (idea && !(Number($("dt-qty").value) >= 2 && Number($("dt-qty").value) <= 20)) $("dt-qty").value = 2;
+  if (!idea && Number($("dt-qty").value) <= 2 && !DT.editing) $("dt-qty").value = 20;
+  $("dt-form-help").textContent = idea ? "A free date idea, like dinner for 2 or bowling for 4. Members tap “I'm going”, see who else is going, chat, and each pays the place. Shows on the 💞 Connect Me screen right away." : "Goes live for everyone right away. You keep the ticket money (pay the venue yourself). Buyers see the address after they pay.";
+  if (!DT.editing) { $("dt-form-title").textContent = idea ? "➕ Post a 💡 date idea" : "➕ Post a Whisper+Me M&G"; $("dt-post").textContent = idea ? "🚀 Post it. Members can join free right away" : "🚀 Post it. Everyone sees it right away"; }
+  dtPpl(Number($("dt-qty").value)); dtPreview();
+}
+function dtPpl(n) { if (n) $("dt-qty").value = n; document.querySelectorAll("#dt-ppl button").forEach(b => b.classList.toggle("on", Number(b.dataset.v) === Number($("dt-qty").value))); dtPreview(); }
+function dtPays(v) { DT.pays = v === "split" ? "split" : "each"; document.querySelectorAll("#dt-pays button").forEach(b => b.classList.toggle("on", b.dataset.v === DT.pays)); dtPreview(); }
 function dtCat(c) { DT.cat = c; document.querySelectorAll("#dt-cat button").forEach(b => b.classList.toggle("on", b.dataset.v === c)); dtPreview(); }
 function dtAddItem(text) {
   const v = String(text || $("dt-item").value || "").trim().slice(0, 60);
@@ -1997,6 +2043,17 @@ function dtPreview() {
   const title = $("dt-title").value.trim() || "Your M&G name";
   const price = Number($("dt-price").value) || 0, ms = $("dt-when").value ? new Date($("dt-when").value).getTime() : 0, spots = Number($("dt-qty").value) || 0;
   const hue = dtHue(title), place = $("dt-vname").value.trim() || "Place", city = $("dt-vcity").value.trim();
+  if (DT.type === "idea") {
+    $("dt-card").innerHTML = `<div style="border-radius:16px;overflow:hidden;background:#12122a;border:1px solid rgba(0,227,174,.55)">
+    <div style="position:relative;height:120px;padding:10px 12px;display:flex;flex-direction:column;justify-content:space-between;background:linear-gradient(135deg,hsl(${hue} 60% 32%),hsl(${(hue + 40) % 360} 65% 16%) 70%,#0b0b16)">${DT.picUrl ? `<img src="${h(DT.picUrl)}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.55">` : ""}
+      <span style="position:relative;font-size:10px;letter-spacing:.12em;text-transform:uppercase;display:flex;justify-content:space-between"><span>💡 Date idea · free</span><span>For ${spots || "–"}</span></span>
+      <b style="position:relative;font-size:18px">${h(title === "Your M&G name" ? "Bowling for 2" : title)}</b></div>
+    <div style="padding:10px 12px;display:flex;justify-content:space-between;gap:10px;align-items:center"><div class="help" style="margin:0">📍 ${h(place)}${city ? ", " + h(city.split(",")[0]) : ""}<br>${h(dtWhenText(ms))}<br>Be the first to go</div>
+      <div style="text-align:right"><b style="font-size:18px">Free</b><div class="help" style="margin:0">pay at the place</div></div></div></div>
+    <p class="help" style="margin:10px 0 0">${price ? "About $" + price + " each · " : ""}${DT.pays === "split" ? "split the bill" : "each pays their own"} at the place.</p>
+    ${DT.items.length ? `<p class="help" style="margin:6px 0 0">${DT.items.map(x => "✓ " + h(x)).join("<br>")}</p>` : ""}`;
+    return;
+  }
   $("dt-card").innerHTML = `<div style="border-radius:16px;overflow:hidden;background:#12122a;border:1px solid rgba(0,227,174,.35)">
     <div style="position:relative;height:120px;padding:10px 12px;display:flex;flex-direction:column;justify-content:space-between;background:linear-gradient(135deg,hsl(${hue} 60% 32%),hsl(${(hue + 40) % 360} 65% 16%) 70%,#0b0b16)">${DT.picUrl ? `<img src="${h(DT.picUrl)}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.55">` : ""}
       <span style="position:relative;font-size:10px;letter-spacing:.12em;text-transform:uppercase;display:flex;justify-content:space-between"><span>⭐ Whisper+Me pick</span><span>${spots && spots <= 5 ? spots + " left" : ""}</span></span>
@@ -2031,19 +2088,22 @@ function dtPickVenue(i) {
 }
 function dtFormData() {
   const ms = $("dt-when").value ? new Date($("dt-when").value).getTime() : 0;
-  return { title: $("dt-title").value.trim(), about: $("dt-note").value.trim(), category: DT.cat, items: DT.items.slice(), startsAt: ms, price: Number($("dt-price").value), spots: Number($("dt-qty").value), idCheck: $("dt-id").checked,
+  const idea = DT.type === "idea";
+  return { title: $("dt-title").value.trim(), about: $("dt-note").value.trim(), category: DT.cat, items: DT.items.slice(), startsAt: ms, price: idea ? 0 : Number($("dt-price").value), spots: Number($("dt-qty").value), idCheck: $("dt-id").checked,
+    ...(idea ? { idea: true, est: Number($("dt-price").value) || 0, pays: DT.pays || "each" } : {}),
     venue: Object.assign({}, DT.venue, { name: $("dt-vname").value.trim(), address: $("dt-vaddr").value.trim(), city: $("dt-vcity").value.trim(), phone: $("dt-vphone").value.trim() }) };
 }
 function dtResetForm() {
   DT.editing = null; DT.keepImage = ""; DT.venue = { source: "other" };
   ["dt-title", "dt-note", "dt-price", "dt-vq", "dt-vname", "dt-vaddr", "dt-vcity", "dt-vphone"].forEach(k => { $(k).value = ""; });
-  $("dt-qty").value = 20; $("dt-id").checked = false; $("dt-vres").innerHTML = ""; DT.items = []; dtPicClear(); dtItems();
+  $("dt-qty").value = DT.type === "idea" ? 2 : 20; $("dt-id").checked = false; $("dt-vres").innerHTML = ""; DT.items = []; dtPicClear(); dtItems();
   $("dt-cancel-edit").hidden = true; $("dt-form-title").textContent = "➕ Post a Whisper+Me M&G"; $("dt-post").textContent = "🚀 Post it. Everyone sees it right away";
+  document.querySelectorAll("#dt-type button").forEach(b => { b.disabled = false; }); dtPays("each"); dtType(DT.type);
 }
 function dtCancelEdit() { dtResetForm(); $("dt-status").textContent = ""; }
 async function dtPost() {
   const d = dtFormData();
-  const miss = !d.title ? "Give it a name" : !d.venue.name || !d.venue.address || !d.venue.city ? "Add the place's name, street address and city" : !d.venue.phone ? "Add the place's phone number" : !(d.price >= 5) ? "Price must be at least $5" : !d.startsAt ? "Pick a date and time" : !(d.spots >= 1) ? "How many spots?" : "";
+  const miss = !d.title ? "Give it a name" : !d.venue.name || !d.venue.address || !d.venue.city ? "Add the place's name, street address and city" : !d.venue.phone ? "Add the place's phone number" : !d.idea && !(d.price >= 5) ? "Price must be at least $5" : !d.startsAt ? "Pick a date and time" : d.idea && !(d.spots >= 2 && d.spots <= 20) ? "People: 2 to 20" : !(d.spots >= 1) ? "How many spots?" : "";
   if (miss) { toast(miss, true); return; }
   const btn = $("dt-post"), label = btn.textContent; btn.disabled = true; btn.textContent = DT.editing ? "Saving…" : "Posting…";
   const r = await safely(async () => {
@@ -2055,7 +2115,7 @@ async function dtPost() {
   if (r && r.id) {
     toast(r.message || "Posted"); logAct((DT.editing ? "Edited" : "Posted") + ` M&G "${d.title}"`);
     if (DT.fromTicket) { $("dt-status").innerHTML = `✅ Live. Now <b>Stop selling</b> the old ticket below.`; DT.fromTicket = null; }
-    else $("dt-status").textContent = DT.editing ? "✅ Saved. Everyone sees the changes now." : "✅ “" + d.title + "” is live on the M&G screen for everyone.";
+    else $("dt-status").textContent = DT.editing ? "✅ Saved. Everyone sees the changes now." : d.idea ? "✅ “" + d.title + "” is up on the 💞 Connect Me screen. Members can join free." : "✅ “" + d.title + "” is live on the M&G screen for everyone.";
     dtResetForm();
   }
 }
@@ -2063,14 +2123,16 @@ function dtEditMeetup(id) {
   const m = DT.meetups.find(x => x.id === id); if (!m) return;
   firebase.firestore().doc(`meetups/${id}/private/info`).get().then(p => {
     const v = (p.exists && p.data().venue) || {};
-    dtResetForm(); DT.editing = id; DT.venue = Object.assign({ source: "other" }, v);
+    DT.type = m.idea ? "idea" : "mg"; dtResetForm(); DT.editing = id; DT.venue = Object.assign({ source: "other" }, v);
+    document.querySelectorAll("#dt-type button").forEach(b => { b.disabled = true; });
     $("dt-title").value = m.title || ""; $("dt-note").value = m.about || ""; dtCat(m.category || "Other");
     $("dt-vq").value = v.name || m.venueName || ""; $("dt-vname").value = v.name || m.venueName || ""; $("dt-vaddr").value = v.address || ""; $("dt-vcity").value = v.city || m.city || ""; $("dt-vphone").value = v.phone || "";
-    $("dt-price").value = (Number(m.price || 0) / 100).toFixed(2).replace(/\.00$/, ""); $("dt-qty").value = m.spots || 1; $("dt-id").checked = !!m.idCheck;
+    $("dt-price").value = (Number((m.idea ? m.est : m.price) || 0) / 100).toFixed(2).replace(/\.00$/, "").replace(/^0$/, ""); $("dt-qty").value = m.spots || 1; $("dt-id").checked = !!m.idCheck;
+    if (m.idea) { dtPays(m.pays || "each"); dtPpl(m.spots); }
     const d = new Date(dtMs(m.startsAt)); $("dt-when").value = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
     DT.items = (m.items || []).slice(); DT.picUrl = m.imageURL || ""; DT.keepImage = m.imageURL || ""; $("dt-pic-x").hidden = !DT.picUrl; dtItems();
-    $("dt-form-title").textContent = "✏️ Edit M&G"; $("dt-post").textContent = "💾 Save changes"; $("dt-cancel-edit").hidden = false;
-    $("dt-status").textContent = m.sold ? `✏️ ${m.sold} already sold, so the time, price and place are locked.` : "✏️ Change anything, then Save changes.";
+    $("dt-form-title").textContent = m.idea ? "✏️ Edit 💡 date idea" : "✏️ Edit M&G"; $("dt-post").textContent = "💾 Save changes"; $("dt-cancel-edit").hidden = false;
+    $("dt-status").textContent = m.sold ? (m.idea ? `✏️ ${m.sold} going, so the time and place are locked.` : `✏️ ${m.sold} already sold, so the time, price and place are locked.`) : "✏️ Change anything, then Save changes.";
     go("dates", "sec-newticket");
   }, e => toast(e.message, true));
 }
@@ -2118,19 +2180,19 @@ function dtRenderMeetups() {
   const tb = document.querySelector('#mg-f button[data-f="todo"]'); if (tb) tb.textContent = "Needs you" + (nTodo ? " (" + nTodo + ")" : "");
   $("dt-meetups").innerHTML = list.length ? list.map(m => {
     const st = MG_ST[m.status] || ["", m.status];
-    const pill = `<span class="pill ${st[0]}">${m.hidden && m.status === "live" ? "Paused" : st[1]}</span>${m.official ? ` <span class="pill on">Whisper+Me</span>` : ""}${m.reported ? ` <span class="pill bad">${m.reported} report${m.reported > 1 ? "s" : ""}</span>` : ""}`;
+    const pill = `<span class="pill ${st[0]}">${m.hidden && m.status === "live" ? "Paused" : st[1]}</span>${m.idea ? ` <span class="pill on">💡 Date idea</span>` : m.official ? ` <span class="pill on">Whisper+Me</span>` : ""}${m.reported ? ` <span class="pill bad">${m.reported} report${m.reported > 1 ? "s" : ""}</span>` : ""}`;
     const acts = [];
     if (["pending", "changes"].includes(m.status)) acts.push(`<button class="btn sm teal" onclick="mgAct('approveMeetup',${j(m.id)})">✅ Approve</button>`, `<button class="btn sm gold" onclick="mgAct('requestMeetupChanges',${j(m.id)})">✏️ Ask for changes</button>`, `<button class="btn sm red" onclick="mgAct('rejectMeetup',${j(m.id)})">Reject</button>`);
     if (m.status === "live") {
       acts.push(`<button class="btn sm main" onclick="adLink('m',${j(m.id)},${j(m.title)})">📣 Ad link</button>`);
       acts.push(m.hidden ? `<button class="btn sm teal" onclick="mgAct('showMeetup',${j(m.id)})">▶ Resume</button>` : `<button class="btn sm gold" onclick="mgAct('hideMeetup',${j(m.id)})">⏸ Pause</button>`);
       acts.push(m.official ? `<button class="btn sm" onclick="dtEditMeetup(${j(m.id)})">✏️ Edit</button>` : `<button class="btn sm gold" onclick="mgAct('requestMeetupChanges',${j(m.id)})">✏️ Ask for changes</button>`);
-      acts.push(`<button class="btn sm" onclick="dtCopyMeetLink(${j(m.id)})">🔗 Link</button>`, `<button class="btn sm red" onclick="mgAct('cancelMeetup',${j(m.id)})">Cancel &amp; refund</button>`);
+      acts.push(`<button class="btn sm" onclick="dtCopyMeetLink(${j(m.id)})">🔗 Link</button>`, `<button class="btn sm red" onclick="mgAct('cancelMeetup',${j(m.id)})">${m.idea ? "Cancel it" : "Cancel &amp; refund"}</button>`);
     }
     if (m.status === "review") acts.push(`<button class="btn sm teal" onclick="mgAct('payMeetupHost',${j(m.id)})">It happened: pay host</button>`, `<button class="btn sm red" onclick="mgAct('noShow',${j(m.id)})">Refund buyers</button>`);
     if (m.status === "paying") acts.push(`<button class="btn sm teal" onclick="mgAct('payMeetupHost',${j(m.id)})">Pay now</button>`, `<button class="btn sm gold" onclick="mgAct('holdMeetupPayout',${j(m.id)})">✋ Hold</button>`);
     const why = m.status === "review" ? (m.lastReport ? `Buyer report: ${h(m.lastReport)}` : "Nobody was checked in.") : m.status === "paying" ? `Host gets paid ${h(dtWhenText(dtMs(m.payoutAt)))}` : "";
-    return `<div class="item" style="flex-wrap:wrap">${ava({ name: m.hostName, photo: m.hostPhoto })}<div class="who"><b>${h(m.title)} ${pill}</b><span>${m.official ? "Whisper+Me" : "by " + h(m.hostName)} · ${h(m.venueName)}, ${h(m.city || "")} · ${h(dtWhenText(dtMs(m.startsAt)))} · ${usd(m.price)} a spot · ${Number(m.sold || 0)} of ${Number(m.spots || 0)} sold${m.checkedIn ? " · " + m.checkedIn + " checked in" : ""}${m.official ? "" : " · deposit " + h((m.hostDeposit || {}).status || "–")}</span>${why ? `<span style="color:var(--gold)">${why}</span>` : ""}${m.changesNote ? `<span style="color:var(--gold)">Your note: ${h(m.changesNote)}</span>` : ""}</div>
+    return `<div class="item" style="flex-wrap:wrap">${ava({ name: m.hostName, photo: m.hostPhoto })}<div class="who"><b>${h(m.title)} ${pill}</b><span>${m.official ? "Whisper+Me" : "by " + h(m.hostName)} · ${h(m.venueName)}, ${h(m.city || "")} · ${h(dtWhenText(dtMs(m.startsAt)))} · ${m.idea ? `free · ${Number(m.sold || 0)} of ${Number(m.spots || 0)} going${(m.going || []).length ? " (" + m.going.map(g => h(String(g.name || "").split(" ")[0])).join(", ") + ")" : ""}` : `${usd(m.price)} a spot · ${Number(m.sold || 0)} of ${Number(m.spots || 0)} sold`}${m.checkedIn ? " · " + m.checkedIn + " checked in" : ""}${m.official ? "" : " · deposit " + h((m.hostDeposit || {}).status || "–")}</span>${why ? `<span style="color:var(--gold)">${why}</span>` : ""}${m.changesNote ? `<span style="color:var(--gold)">Your note: ${h(m.changesNote)}</span>` : ""}</div>
       <div class="acts"><button class="btn sm" onclick="mgDetails(${j(m.id)})">Details</button>${acts.join("")}</div></div>`;
   }).join("") : `<div class="empty">${mgF === "todo" ? "Nothing needs you. 🎉" : "No M&Gs here yet."}</div>`;
 }
@@ -2176,6 +2238,7 @@ async function mgAct(action, id) {
     if (action === "requestMeetupChanges" && !String(note).trim()) { toast("Write what needs to change", true); return; }
     extra.reason = String(note).trim();
   }
+  else if (action === "cancelMeetup" && m.idea) { if (!await dialog({ title: "Cancel “" + (m.title || "") + "”?", body: "The " + (m.sold || 0) + " people going get a notification. Nothing was paid, so there's nothing to refund.", ok: "Cancel it", danger: true })) return; extra.reason = "Whisper+Me called it off."; }
   else if (action === "cancelMeetup") { if (!await dialog({ title: "Cancel “" + (m.title || "") + "”?", body: "Every buyer (" + (m.sold || 0) + ") gets their money back as Whisper+Me credit (no card fees)" + (m.official ? "." : ". The host's deposit stays on their account."), ok: "Cancel & give credit", danger: true })) return; extra.reason = "Canceled by Whisper+Me."; }
   else if (action === "noShow") { if (!await dialog({ title: "Refund the buyers?", body: "Every buyer (" + (m.sold || 0) + ") gets their money back as credit. Because the M&G didn't happen as promised, the host's deposit is kept and they get a strike.", ok: "Refund buyers", danger: true })) return; action = "cancelMeetup"; extra = { reason: "It didn't happen as promised.", data: { keepDeposit: true } }; }
   else if (action === "payMeetupHost") { if (!await dialog({ title: m.status === "paying" ? "Pay the host now?" : "Pay the host?", body: (m.status === "paying" ? "Skips the rest of the waiting time. " : "Only if you confirmed the M&G happened. ") + "The host gets their share of " + (m.sold || 0) + " spot(s).", ok: "Pay host" })) return; }

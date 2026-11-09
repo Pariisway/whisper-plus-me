@@ -251,9 +251,11 @@ page = f"""<!doctype html>
 </main>
 <footer class="pg-foot">
 <nav aria-label="More from Whisper+Me"><a href="/meet">Meet up</a><a href="/connect">Date ideas</a><a href="/help/">How to use</a><a href="/rooms/">Voice chat rooms</a><a href="/about.html">About</a><a href="/terms.html">Terms</a><a href="/privacy.html">Privacy</a></nav>
+<p class="pg-contact">Questions? Email <a data-contact href="mailto:whisper.me.support@gmail.com">whisper.me.support@gmail.com</a></p>
 <p>© 2026 Whisper+Me · Real voices. Real moments. · 21+ to meet up</p>
 </footer>
 <script>{JS}</script>
+<script src="/contact.js" defer></script>
 </body>
 </html>
 """

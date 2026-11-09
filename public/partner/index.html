@@ -201,6 +201,7 @@
 </main>
 <footer class="pg-foot">
 <nav aria-label="More from Whisper+Me"><a href="/meet/">Meet up</a><a href="/help/">How to use</a><a href="/partner/">Partners</a><a href="/about.html">About</a><a href="/terms.html">Terms</a><a href="/privacy.html">Privacy</a></nav>
+<p class="pg-contact">Questions? Email <a data-contact href="mailto:whisper.me.support@gmail.com">whisper.me.support@gmail.com</a></p>
 <p>© 2026 Whisper+Me</p>
 </footer>
 
@@ -272,7 +273,7 @@
     $("ptCaps").innerHTML = caps.map(function (c, i) { return "<div class='pt-cap'><p>" + esc(c) + "</p><button data-c='" + i + "'>Copy</button></div>"; }).join("");
     $("ptCaps").querySelectorAll("button").forEach(function (b) { b.onclick = function () { copy(caps[+b.getAttribute("data-c")], b); }; });
     var pn = $("ptPausedNote");
-    if (d.status === "paused") { pn.className = "pt-card pt-note"; pn.innerHTML = "⏸️ <b>Your partner link is paused.</b> " + esc(d.pauseReason || "") + " Nothing new is earned until it's back on. Questions? whisper.me.support@gmail.com"; }
+    if (d.status === "paused") { pn.className = "pt-card pt-note"; pn.innerHTML = "⏸️ <b>Your partner link is paused.</b> " + esc(d.pauseReason || "") + " Nothing new is earned until it's back on. Questions? " + esc(window.wpmContact ? wpmContact() : "whisper.me.support@gmail.com"); }
     else pn.className = "pt-hide";
     show("ptBoard");
   }
@@ -387,5 +388,6 @@
   firebase.auth().onAuthStateChanged(load);
 })();
 </script>
+<script src="/contact.js" defer></script>
 </body>
 </html>

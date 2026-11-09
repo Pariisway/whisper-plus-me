@@ -198,7 +198,7 @@ body = f"""
 
 <section class="pg-card" id="faq"><h2>❓ Questions</h2>
 {"".join(f'<details class="hp-q"><summary>{q}</summary><p>{a}</p></details>' for q, a in FAQ)}
-<p style="margin-top:16px">Still stuck? Email <a href="mailto:whisper.me.support@gmail.com">whisper.me.support@gmail.com</a>.</p>
+<p style="margin-top:16px">Still stuck? Email <a data-contact href="mailto:whisper.me.support@gmail.com">whisper.me.support@gmail.com</a>.</p>
 </section>
 
 <section class="pg-hero"><div class="pg-ctas"><a class="pg-btn" href="/">🎙️ Open Whisper+Me</a><a class="pg-btn ghost" href="/?dates=1">⭐ See what's on</a></div><p class="pg-note">Free · No download · 18+</p></section>
@@ -284,8 +284,10 @@ page = f"""<!doctype html>
 </main>
 <footer class="pg-foot">
 <nav aria-label="More from Whisper+Me"><a href="/meet/">Meet up</a><a href="/help/">How to use</a><a href="/rooms/">Voice chat rooms</a><a href="/connect">Date ideas</a><a href="/about.html">About</a><a href="/terms.html">Terms</a><a href="/privacy.html">Privacy</a></nav>
+<p class="pg-contact">Questions? Email <a data-contact href="mailto:whisper.me.support@gmail.com">whisper.me.support@gmail.com</a></p>
 <p>© 2026 Whisper+Me · Real voices. Real moments. · 18+</p>
 </footer>
+<script src="/contact.js" defer></script>
 </body>
 </html>
 """

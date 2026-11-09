@@ -82,7 +82,7 @@ async function splitDate(host, guests, opts = {}) {
 const results = [];
 async function test(name, fn) {
   try { await fn(); results.push(["ok", name]); }
-  catch (e) { results.push(["FAIL", name, e.stack.split("\n").slice(0, 3).join(" | ")]); }
+  catch (e) { results.push(["FAIL", name, e.stack.split("\n").slice(0, 3).join(" | ") + (e.actual !== undefined ? " actual=" + JSON.stringify(e.actual) + " expected=" + JSON.stringify(e.expected) : "")]); }
 }
 
 (async () => {
@@ -1307,6 +1307,65 @@ async function test(name, fn) {
     assert.strictEqual(doc("partnerEarnings/cm_" + b.orderId).partnerUid, "az");
   });
 
+  await test("💡 Date ideas: admin-only, free to join, pay at the place, leave any time with no strike", async () => {
+    const pic = u => { seedPeople(u); rtdb.users[u].photo = "https://x/p.jpg"; };
+    ["di1", "di2", "di3", "di4"].forEach(pic); seedPeople("dinopic");
+    const venue = { name: "Pinz", address: "1 Lane St", city: "St. Louis, MO", phone: "314-555-0101", source: "other" };
+    const r = await admin({ action: "postMeetup", data: { idea: true, title: "Bowling for 2", about: "Loser buys fries", category: "Games", items: [], venue, startsAt: Date.now() + 48 * H, spots: 2, est: 25, pays: "each" } });
+    const m = () => doc("meetups/" + r.id);
+    assert.deepStrictEqual([m().idea, m().price, m().est, m().pays, m().spots, m().status, m().official], [true, 0, 2500, "each", 2, "live", true]);
+    // Only the admin can post them: a member's M&G still needs a price.
+    seedPeople("hosty"); await assert.rejects(call("createMeetup", "hosty", { ...mgData({ price: 0 }), idea: true, birthYear: 1990 }), /at least \$5/);
+    await assert.rejects(call("buyMeetupSpot", "di1", { meetupId: r.id, birthYear: 1990 }), /free/);
+    await assert.rejects(call("joinIdea", "dinopic", { meetupId: r.id, birthYear: 1990 }), /photo/);
+    const j1 = await call("joinIdea", "di1", { meetupId: r.id, birthYear: 1990 });
+    assert.ok(/We'll tell you/.test(j1.message));
+    assert.deepStrictEqual([m().sold, m().going.map(g => g.uid), rtdb.ideaChat[r.id].members], [1, ["di1"], { di1: true }]);
+    await assert.rejects(call("joinIdea", "di1", { meetupId: r.id }), /already going/);
+    const j2 = await call("joinIdea", "di2", { meetupId: r.id, birthYear: 1990 });
+    assert.ok(j2.full && m().sold === 2);
+    await assert.rejects(call("joinIdea", "di3", { meetupId: r.id, birthYear: 1990 }), /filled up/);
+    // Chat: only people going; money talk blocked
+    await call("ideaSay", "di1", { meetupId: r.id, text: "See you at 7!" });
+    await assert.rejects(call("ideaSay", "di3", { meetupId: r.id, text: "hi" }), /Only people going/);
+    await assert.rejects(call("ideaSay", "di2", { meetupId: r.id, text: "cashapp me $20" }), /money/);
+    // My Meet & Greet shows it with who's going and the address
+    const mine = (await call("myMeetups", "di2")).meetups.find(x => x.id === r.id);
+    assert.ok(mine.idea && mine.going.length === 2 && mine.address === "1 Lane St" && mine.spotStatus === "paid");
+    // Leaving: free, no strike, spot opens for someone else
+    const before = (doc("members/di1") || {}).strikes || 0;
+    await call("leaveIdea", "di1", { meetupId: r.id });
+    assert.deepStrictEqual([m().sold, m().going.map(g => g.uid), (doc("members/di1") || {}).strikes || 0, rtdb.ideaChat[r.id].members], [1, ["di2"], before, { di2: true }]);
+    await call("joinIdea", "di3", { meetupId: r.id, birthYear: 1990 });
+    // Edits: time and place lock once people are going
+    await assert.rejects(admin({ action: "postMeetup", id: r.id, data: { title: "Bowling for 2", category: "Games", venue, startsAt: Date.now() + 60 * H, spots: 2 } }), /locked/);
+    await admin({ action: "postMeetup", id: r.id, data: { title: "Bowling night for 4", category: "Games", venue, startsAt: m().startsAt.toMillis(), spots: 4, est: 30, pays: "split" } });
+    assert.deepStrictEqual([m().idea, m().spots, m().pays, m().price], [true, 4, "split", 0]);
+    // No hoarding: 3 open date ideas at a time
+    const more = [];
+    for (let i = 0; i < 3; i++) more.push((await admin({ action: "postMeetup", data: { idea: true, title: "Idea " + i, category: "Dinner", venue, startsAt: Date.now() + (50 + i) * H, spots: 2 } })).id);
+    await call("joinIdea", "di4", { meetupId: more[0], birthYear: 1991 }); await call("joinIdea", "di4", { meetupId: more[1] }); await call("joinIdea", "di4", { meetupId: more[2] });
+    await call("joinIdea", "di4", { meetupId: r.id }).then(() => assert.fail("should block a 4th"), e => assert.ok(/already going on 3/.test(e.message)));
+    // Admin cancels: nothing to refund, nobody gets "credit"
+    await admin({ action: "cancelMeetup", id: r.id, reason: "Rain." });
+    assert.strictEqual(m().status, "canceled");
+    assert.ok(!doc("credits/di2") || !(doc("credits/di2").balance > 0), "no credit for a free date");
+    assert.ok(rtdb.ideaChat[r.id] == null, "chat removed");
+    // Share page says free
+    const page = await T.share.meetupPage(more[0]);
+    assert.ok(page.includes("Free to join") && page.includes("💡 Date idea"));
+  });
+  await test("Contact email: admin sets it once, every page and email reply uses it", async () => {
+    T.resetContact();
+    assert.strictEqual(await T.contactEmail(), "whisper.me.support@gmail.com", "default");
+    await require("firebase-admin").database().ref("landing/contact").set({ email: "hello@whisperplusme.com", updatedAt: Date.now() });
+    T.resetContact();
+    assert.strictEqual(await T.contactEmail(), "hello@whisperplusme.com");
+    await require("firebase-admin").database().ref("landing/contact").set({ email: "not an email" });
+    T.resetContact();
+    assert.strictEqual(await T.contactEmail(), "whisper.me.support@gmail.com", "a bad value falls back to the default");
+    T.resetContact();
+  });
   await test("Landing counter and chat cleanup keep the site fast", async () => {
     const rt = require("firebase-admin").__rtdb;
     rt.presence = { a: { room: "general" }, b: { room: "general" }, c: { room: "x" } };

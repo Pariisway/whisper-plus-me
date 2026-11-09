@@ -120,6 +120,16 @@
 .pm-sec{background:#1a1729!important;color:#fff;border:1px solid rgba(255,255,255,.1)!important}\
 .pm-warn{background:rgba(229,57,53,.15)!important;color:#ff8a8a}\
 .pm-off{font-size:13px;color:#8f89a8;padding:8px 0}\
+.pm-dates{margin:16px 0 0;padding:14px 0 4px;border-top:1px solid rgba(255,255,255,.08);text-align:left}\
+.pm-dates-h{font-size:15px;font-weight:900;color:#fff;padding:0 18px 10px}.pm-dates-h small{background:#ff4f8b;color:#fff;border-radius:999px;padding:1px 8px;font-size:11px;margin-left:4px;vertical-align:2px}\
+.pm-dates-row{display:flex;gap:10px;overflow-x:auto;padding:0 18px 12px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:thin}\
+.pm-dt{flex:0 0 200px;scroll-snap-align:start;display:flex;flex-direction:column;gap:4px;text-align:left;background:#1a1729;border:1px solid rgba(0,227,174,.35);border-radius:16px;padding:12px;color:#d8d2ee;font-size:12.5px;cursor:pointer;min-height:0;margin:0}\
+.pm-dt.mg{border-color:rgba(214,177,107,.45)}\
+.pm-dt b{font-size:14.5px;color:#fff;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}\
+.pm-dt span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\
+.pm-dt-k{font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#00e3ae}.pm-dt.mg .pm-dt-k{color:#d6b16b}\
+.pm-dt-p{color:#fff;font-weight:700}\
+.pm-dt i{font-style:normal;margin-top:6px;text-align:center;font-weight:800;color:#fff;background:linear-gradient(90deg,#ff4f8b,#7b2ff7);border-radius:999px;padding:8px 0}.pm-dt.mg i{background:#d6b16b;color:#1a1308}\
 .pl-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}\
 .pl-head b{font-size:15px}\
 .pl-f{display:flex;gap:6px}\
@@ -579,8 +589,36 @@
         + (u.rating && u.rating.n ? "<span title='Rating from M&G guests'><b style='color:#ffc94d'>★ " + Number(u.rating.avg).toFixed(1) + "</b> host · " + u.rating.n + " rating" + (u.rating.n === 1 ? "" : "s") + "</span>" : "") + "</div>"
         + (links ? "<div class='pm-links'>" + links + "</div>" : "")
         + "<div class='pm-actions'>" + actions + "</div>"
+        + "<div class='pm-dates' id='pmDates' hidden></div>"
         + "</div>";
       modal.style.display = "flex";
+      P.loadMemberDates(uid, u, isMe);
+    },
+    /* ---------- their dates, in a side-scroll at the bottom of the card ---------- */
+    loadMemberDates: function (uid, u, isMe) {
+      if (!window.Dates || !window.Dates.memberEvents) return;
+      window.Dates.memberEvents(uid).then(function (list) {
+        var box = document.getElementById("pmDates");
+        if (!box || !list.length) return;
+        var first = esc(String(u.name || "They").split(" ")[0]);
+        var cards = list.map(function (e) {
+          var pd = e.kind === "pd";
+          return "<button class='pm-dt " + e.kind + "' onclick=\"Profile.openDate(" + jsAttr(e.kind) + "," + jsAttr(e.id) + ")\">"
+            + "<span class='pm-dt-k'>" + (pd ? "📍 Plan a Date" : "⭐ M&G") + "</span>"
+            + "<b>" + esc(e.title || "A date") + "</b>"
+            + "<span>🗓️ " + esc(window.Dates.whenShort(e.at)) + "</span>"
+            + "<span>📌 " + esc(e.place || "") + (e.city ? " · " + esc(String(e.city).split(",")[0]) : "") + "</span>"
+            + "<span class='pm-dt-p'>" + esc(e.price) + (pd ? "" : " · " + e.left + " left") + "</span>"
+            + "<i>" + (isMe ? "Open" : pd ? "💞 I'm interested" : "🎟️ Get a spot") + "</i></button>";
+        }).join("");
+        box.innerHTML = "<div class='pm-dates-h'>" + (isMe ? "💞 Your dates" : "💞 Go on a date with " + first) + " <small>" + list.length + "</small></div>"
+          + "<div class='pm-dates-row'>" + cards + "</div>";
+        box.hidden = false;
+      });
+    },
+    openDate: function (kind, id) {
+      closeProfileModal();
+      if (window.Dates && window.Dates.openFromMap) window.Dates.openFromMap(kind, id);
     },
     /* ---------- block & report ---------- */
     isBlocked: function (uid) { return !!(window.__myBlocks || {})[uid]; },

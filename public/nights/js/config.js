@@ -8,6 +8,8 @@ export const BRAND = {
   city: "St. Louis & Metro East",
   supportEmail: "whisper.me.support@gmail.com"
 };
+// The contact email set in Admin → Landing → 📮 Contact email replaces the one above.
+try { fetch("/site-info").then(r => r.ok ? r.json() : {}).then(j => { if (j && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(j.email || "")) BRAND.supportEmail = j.email; }).catch(() => {}); } catch (e) { /* keep the default */ }
 
 // 2) Firebase: the same project as Whisper+me (from public/firebase.js),
 //    so members use ONE account for live chat and nights out.

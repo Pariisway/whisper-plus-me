@@ -150,11 +150,21 @@ function emailText({ heading, intro, rows = [], code = "", button = null, after 
   return [heading, "", intro, code ? `Your code: ${code}` : "", ...rows.filter(x => x && x[1] !== "" && x[1] != null).map(([k, v]) => `${k}: ${v}`), button ? `${button[0]}: ${button[1]}` : "", after, "", "Whisper+Me · whisperplusme.com"].filter(x => x !== "").join("\n");
 }
 /** to: a uid or an email address. Never throws. */
+/* The public contact email (Admin → Landing → Contact email, saved at landing/contact).
+   Replies to our emails go there. Mail is still SENT from the Gmail account above. */
+let _contact = { at: 0, email: "" };
+async function contactEmail() {
+  if (Date.now() - _contact.at < 5 * 60000 && _contact.email) return _contact.email;
+  let e = "";
+  try { e = String(((await rtdb.ref("landing/contact").once("value")).val() || {}).email || ""); } catch (x) { /* use the default */ }
+  _contact = { at: Date.now(), email: EMAIL_RE.test(e) ? e : MAIL_FROM };
+  return _contact.email;
+}
 async function sendEmail(to, subject, parts, { ics = "" } = {}) {
   try {
     const addr = EMAIL_RE.test(String(to)) ? String(to) : await emailOf(to);
     if (!addr) return false;
-    const msg = { from: `"Whisper+Me" <${MAIL_FROM}>`, to: addr, replyTo: MAIL_FROM, subject, html: emailHTML(parts), text: emailText(parts) };
+    const msg = { from: `"Whisper+Me" <${MAIL_FROM}>`, to: addr, replyTo: await contactEmail(), subject, html: emailHTML(parts), text: emailText(parts) };
     if (ics) msg.icalEvent = { method: "PUBLISH", filename: "whisperplusme.ics", content: ics };
     if (process.env.DATES_TEST) { sentMail.push({ to: addr, subject, parts }); return true; }
     const m = mailer(); if (!m) { logger.warn("email skipped (no Gmail password)", subject); return false; }
@@ -1519,7 +1529,7 @@ function takeCredit(c, want) {
   return { used, from, next: { balance: (c?.balance || 0) - used, sources: sources.filter(x => x.left > 0) } };
 }
 
-function cleanMeetup(d, { official = false } = {}) {
+function cleanMeetup(d, { official = false, idea = false } = {}) {
   const v = d.venue || {};
   const out = {
     title: str(d.title, 80), about: str(d.about, 800), category: CATEGORIES.includes(d.category) ? d.category : "Other",
@@ -1538,6 +1548,14 @@ function cleanMeetup(d, { official = false } = {}) {
     if (!PHONE_RE.test(out.contact.phone)) fail("invalid-argument", "Add a phone number we can reach you at.");
     if (!(out.startsAt > Date.now() + 24 * 3600000)) fail("invalid-argument", "Pick a time at least 24 hours away, so there's time to review it and sell spots.");
   } else if (!(out.startsAt > Date.now() + 3 * 3600000)) fail("invalid-argument", "Pick a time at least 3 hours away.");
+  if (idea) {
+    // 💡 Date idea: free to join, everyone pays the place themselves.
+    out.price = 0;
+    out.est = Math.max(0, Math.min(100000, Math.round(Number(d.est || 0) * 100) || 0));
+    out.pays = d.pays === "split" ? "split" : "each";
+    if (!(out.spots >= 2 && out.spots <= 20)) fail("invalid-argument", "People: 2 to 20.");
+    return out;
+  }
   if (!(out.price >= 500)) fail("invalid-argument", "The price per spot has to be at least $5.");
   if (out.price > 500000) fail("invalid-argument", "That price is too high.");
   if (!(out.spots >= 1 && out.spots <= 500)) fail("invalid-argument", "Spots: 1 to 500.");
@@ -1547,7 +1565,8 @@ function publicFields(c, host) {
   let hue = 0; c.title.split("").forEach(ch => { hue = (hue * 31 + ch.charCodeAt(0)) % 360; });
   return { title: c.title, about: c.about, category: c.category, items: c.items, imageURL: c.imageURL || host.photo || "", hue,
     startsAt: fromMs(c.startsAt), price: c.price, spots: c.spots, venueName: c.venue.name, city: c.venue.city, idCheck: !!c.idCheck,
-    lat: round3(c.venue.lat), lon: round3(c.venue.lon) }; // for the 🗺️ map pin (the place's name is public anyway; the street address isn't)
+    lat: round3(c.venue.lat), lon: round3(c.venue.lon), // for the 🗺️ map pin (the place's name is public anyway; the street address isn't)
+    ...(c.idea ? { idea: true, est: c.est, pays: c.pays } : {}) };
 }
 const ID_MSG = "This one is 21+ with ID checked at the door. Confirm you'll bring a valid photo ID.";
 /** 21+ events: the buyer (or invited guest) has to confirm they'll bring a photo ID. */
@@ -1644,21 +1663,28 @@ exports.editMeetup = onCall(async req => {
 
 /** Admin posts (or edits) an official Whisper+Me M&G. It's live right away. */
 async function postOfficialMeetup(req, id, data) {
-  const c = cleanMeetup(data || {}, { official: true });
+  const was = id ? (await mtRef(id).get()).data() : null;
+  const idea = was ? !!was.idea : data?.idea === true;   // a date idea stays a date idea
+  const c = cleanMeetup(data || {}, { official: true, idea });
+  if (idea) c.idea = true;
   const site = { name: "Whisper+Me", photo: `${APP_URL}/icon-192.png` };
   if (!id) {
     const ref = db.collection("meetups").doc();
     await ref.set({ ...publicFields(c, site), hostUid: req.auth.uid, hostName: site.name, hostPhoto: site.photo, official: true, sold: 0, held: 0, buyerUids: [],
-      hostFeePct: 100, status: "live", hidden: false, checkedIn: 0, hostDeposit: null, createdAt: nowTs(), approvedAt: nowTs() });
+      hostFeePct: 100, status: "live", hidden: false, checkedIn: 0, hostDeposit: null, createdAt: nowTs(), approvedAt: nowTs(), ...(idea ? { going: [] } : {}) });
     await mtPrivate(ref.id).set({ venue: c.venue, contact: { email: req.auth.token.email || "", phone: "" }, hostUid: req.auth.uid });
-    return { id: ref.id, message: `“${c.title}” is live for everyone` };
+    return { id: ref.id, message: idea ? `💡 “${c.title}” is up. Anyone can join free.` : `“${c.title}” is live for everyone` };
   }
-  const ref = mtRef(id), x = (await ref.get()).data();
+  const ref = mtRef(id), x = was;
   if (!x) fail("not-found", "Not found.");
   const cur = (await mtPrivate(id).get()).data() || {};
   const sold = (x.sold || 0) + (x.held || 0);
   const pub = publicFields(c, site);
-  if (sold) {
+  if (sold && idea) {
+    // People already said they're going: the time and place stay what they signed up for.
+    if (c.startsAt !== ms(x.startsAt) || c.venue.address !== cur.venue?.address) fail("failed-precondition", `${sold} ${sold === 1 ? "person is" : "people are"} going, so the time and place are locked. Cancel it and post a new one if they must change.`);
+    if (c.spots < sold) fail("invalid-argument", `${sold} already going.`);
+  } else if (sold) {
     if (c.price !== x.price || c.startsAt !== ms(x.startsAt) || c.venue.address !== cur.venue?.address) fail("failed-precondition", "People already bought spots, so the time, price and place are locked. Cancel & refund it and post a new one if they must change.");
     if (c.spots < sold) fail("invalid-argument", `Already sold ${sold}.`);
   }
@@ -1689,6 +1715,7 @@ exports.buyMeetupSpot = onCall(withStripe, async req => {
     const spot = (await tx.get(spotRef)).data();
     const c = (await tx.get(creditRef(uid))).data();
     if (!x || x.status !== "live" || x.hidden) fail("failed-precondition", "This M&G isn't available.");
+    if (x.idea) fail("failed-precondition", "This one is free. Tap “I'm going” instead.");
     if (x.hostUid === uid && !x.official) fail("failed-precondition", "You're the host.");
     needIdOk(x, req);
     if (ms(x.startsAt) < Date.now() + 2 * 3600000) fail("failed-precondition", "Sales for this one have closed.");
@@ -1736,6 +1763,7 @@ async function afterMeetupSale(id, x, uid, qty) {
 /** The ticket email: right after buying ("receipt") and the day before ("reminder"). */
 async function emailMeetupTicket(id, x, p, spot, kind) {
   if (!spot || !spot.uid || spot.status !== "paid") return false;
+  if (x.idea) return emailIdea(id, x, p, spot, kind);
   const qty = spot.qty || 1, start = ms(x.startsAt);
   const place = [p.venue?.name || x.venueName, p.venue?.address, p.venue?.city || x.city].filter(Boolean).join(", ");
   const cal = calendarLinks({ title: `M&G: ${x.title}`, start, place, details: `Your code: ${spot.code}. Show it at the door. ${APP_URL}` });
@@ -1899,6 +1927,102 @@ exports.reportMeetup = onCall(async req => {
 });
 
 /** Invite another member to an M&G: they get a notification that opens it. */
+/* ───────── 💡 Date ideas ─────────
+   Free, admin-made "let's go do this" dates (dinner for 2, bowling for 4…).
+   Members tap "I'm going" (free), see who else is going, chat, and each pays the
+   place themselves. Leaving is free at any time and never counts as a strike. */
+const IDEA_MAX_OPEN = 3;    // upcoming date ideas one member can hold at once
+async function ideaChatMembers(id, going) {
+  const m = {}; (going || []).forEach(g => { m[g.uid] = true; });
+  await rtdb.ref(`ideaChat/${id}/members`).set(Object.keys(m).length ? m : null);
+}
+exports.joinIdea = onCall(async req => {
+  const uid = requireUser(req);
+  notSuspended(await memberFor(uid, req.data?.birthYear));
+  const id = str(req.data?.meetupId, 64), ref = mtRef(id), spotRef = ref.collection("spots").doc(uid);
+  const me = await whisperProfile(uid);
+  if (!me.photo) fail("failed-precondition", "Add a profile photo first, so the people you're going with know who to look for.");
+  const mine = await db.collection("meetups").where("buyerUids", "array-contains", uid).limit(40).get();
+  const open = mine.docs.filter(d => { const z = d.data(); return z.idea && z.status === "live" && ms(z.startsAt) > Date.now() && d.id !== id; }).length;
+  if (open >= IDEA_MAX_OPEN) fail("resource-exhausted", `You're already going on ${open} date ideas. Go on one (or tap “Can't go”) before joining another.`);
+  let x, full = false;
+  await db.runTransaction(async tx => {
+    x = (await tx.get(ref)).data();
+    const spot = (await tx.get(spotRef)).data();
+    if (!x || !x.idea || x.status !== "live" || x.hidden) fail("failed-precondition", "This date idea isn't open anymore.");
+    needIdOk(x, req);
+    if (ms(x.startsAt) < Date.now() + 2 * 3600000) fail("failed-precondition", "This one starts soon, so it's closed. Check out the other date ideas.");
+    if (spot && spot.status === "paid") fail("already-exists", "You're already going.");
+    const going = (x.going || []).filter(g => g.uid !== uid);
+    if (going.length >= x.spots) fail("resource-exhausted", "It just filled up. Check out the other date ideas.");
+    going.push({ uid, name: me.name, photo: me.photo });
+    full = going.length >= x.spots;
+    tx.update(ref, { going, sold: going.length, buyerUids: FieldValue.arrayUnion(uid) });
+    tx.set(spotRef, { uid, role: "buyer", status: "paid", qty: 1, code: spot?.code || newCode(), paid: 0, cardPaid: 0, idea: true, name: me.name, photo: me.photo,
+      ...(x.idCheck ? { idOkAt: Date.now() } : {}), paidAt: nowTs(), createdAt: spot?.createdAt || nowTs() });
+    x.going = going;
+  });
+  await ideaChatMembers(id, x.going);
+  const others = x.going.filter(g => g.uid !== uid);
+  const first = n => String(n || "Someone").split(" ")[0];
+  for (const g of others) {
+    await push(g.uid, full ? `It's on! ${x.title} 💞` : `${first(me.name)} is going too 💞`,
+      full ? `Everyone's in for ${fmtWhen(x.startsAt)} at ${x.venueName}. Say hi in the chat.` : `${x.title}: ${x.going.length} of ${x.spots} going. Say hi in the chat.`, `${APP_URL}/?dates=cm`);
+  }
+  const p = (await mtPrivate(id).get()).data() || {};
+  await emailIdea(id, x, p, { uid, status: "paid" }, "joined");
+  return { message: full ? "You're in, and it's full! Say hi to everyone in the chat." : others.length ? `You're in! ${others.length} other${others.length === 1 ? " is" : "s are"} going. Say hi in the chat.` : "You're in! We'll tell you when someone else joins.", full };
+});
+exports.leaveIdea = onCall(async req => {
+  const uid = requireUser(req);
+  const id = str(req.data?.meetupId, 64), ref = mtRef(id), spotRef = ref.collection("spots").doc(uid);
+  let x;
+  await db.runTransaction(async tx => {
+    x = (await tx.get(ref)).data();
+    const spot = (await tx.get(spotRef)).data();
+    if (!x || !x.idea) fail("failed-precondition", "Not a date idea.");
+    if (!spot || spot.status !== "paid") fail("failed-precondition", "You're not going to this one.");
+    const going = (x.going || []).filter(g => g.uid !== uid);
+    tx.update(ref, { going, sold: going.length, buyerUids: FieldValue.arrayRemove(uid) });
+    tx.update(spotRef, { status: "left", leftAt: nowTs() });
+    x.going = going;
+  });
+  await ideaChatMembers(id, x.going);
+  const me = await whisperProfile(uid);
+  if (x.status === "live" && ms(x.startsAt) > Date.now())
+    for (const g of x.going) await push(g.uid, "Change of plans", `${String(me.name).split(" ")[0]} can't make ${x.title}. The spot is open again, so someone else can join.`, `${APP_URL}/?dates=cm`);
+  return { message: "No problem. You're off this one, and it doesn't count against you." };
+});
+/** Group chat for the people going on a date idea. The server writes (money talk is blocked); members read. */
+exports.ideaSay = onCall(async req => {
+  const uid = requireUser(req);
+  const id = str(req.data?.meetupId, 64), text = str(req.data?.text, 500);
+  if (!text) fail("invalid-argument", "Type a message.");
+  const x = (await mtRef(id).get()).data();
+  if (!x || !x.idea || !(x.going || []).some(g => g.uid === uid) || x.status !== "live") fail("permission-denied", "Only people going can chat.");
+  const bad = planTextOk(text, "messages");
+  if (bad) { await planFlag(uid, "idea", text, id); fail("invalid-argument", bad); }
+  const me = await whisperProfile(uid);
+  await rtdb.ref(`ideaChat/${id}/msgs`).push({ uid, name: me.name, text, ts: Date.now() });
+  for (const g of x.going) if (g.uid !== uid) await push(g.uid, `${me.name} · ${x.title}`, text.slice(0, 120), `${APP_URL}/?dates=cm`);
+  return { ok: true };
+});
+async function emailIdea(id, x, p, spot, kind) {
+  const start = ms(x.startsAt), remind = kind === "reminder";
+  const place = [p.venue?.name || x.venueName, p.venue?.address, p.venue?.city || x.city].filter(Boolean).join(", ");
+  const cal = calendarLinks({ title: `Date: ${x.title}`, start, place, details: `${APP_URL}/?dates=cm` });
+  const going = (x.going || []).filter(g => g.uid !== spot.uid).map(g => String(g.name).split(" ")[0]);
+  return sendEmail(spot.uid, remind ? `Tomorrow: ${x.title}` : `You're going: ${x.title}`, {
+    heading: remind ? `See you tomorrow at ${x.title}` : "You're going! 💞",
+    intro: remind ? `Here's everything for ${fmtWhen(start)}.` : "It's free. Everyone pays the place for what they get.",
+    rows: [["What", x.title], ["When", fmtWhen(start) + " (Central)"], ["Where", place], ["Place phone", p.venue?.phone || ""],
+      ["Who's going", going.length ? going.join(", ") : "Just you so far. We'll tell you when someone joins."],
+      ["Cost", (x.est ? `About ${fmtMoney(x.est)} each, ` : "") + (x.pays === "split" ? "split the bill at the place" : "each pays their own at the place")],
+      ["ID", x.idCheck ? "21+: bring a valid photo ID" : ""]],
+    button: ["Open it (chat + who's going)", `${APP_URL}/?dates=cm`], cal,
+    after: "Can't make it? Tap “Can't go” any time. It's free and never counts against you, and it opens the spot for someone else. Meet at the place, and never send money to someone you're meeting." }, { ics: cal.ics });
+}
+
 exports.inviteToMeetup = onCall(async req => {
   const uid = requireUser(req);
   const id = str(req.data?.meetupId, 64), to = str(req.data?.uid, 128);
@@ -1915,7 +2039,7 @@ exports.inviteToMeetup = onCall(async req => {
     return used + 1;
   });
   const me = await whisperProfile(uid);
-  await push(to, `${me.name} invited you to an M&G`, `${x.title} · ${fmtWhen(x.startsAt)} at ${x.venueName}. ${fmtMoney(x.price)} a spot.`, `${APP_URL}/?dates=1&meetup=${id}`);
+  await push(to, `${me.name} invited you to an M&G`, `${x.title} · ${fmtWhen(x.startsAt)} at ${x.venueName}. ${x.idea ? "Free to join, pay at the place." : fmtMoney(x.price) + " a spot."}`, `${APP_URL}/?dates=1&meetup=${id}`);
   return { message: "Invite sent", used: n };
 });
 
@@ -1930,6 +2054,15 @@ async function refundMeetup(id, reason) {
   if (!x) return false;
   const spots = await ref.collection("spots").get();
   let refunded = 0;
+  if (x.idea) {
+    for (const d of spots.docs) {
+      const sp = d.data(); if (sp.status !== "paid") continue;
+      await d.ref.update({ status: "canceled" });
+      await push(sp.uid, "Date idea canceled", `${x.title}: ${reason} Nothing was charged. Check out the other date ideas.`, `${APP_URL}/?dates=cm`);
+    }
+    await rtdb.ref(`ideaChat/${id}`).set(null);
+    return 0;
+  }
   for (const d of spots.docs) {
     const sp = d.data();
     if (sp.status === "paid") {
@@ -1978,7 +2111,7 @@ exports.myMeetups = onCall(async req => {
     const paid = spot.status === "paid";
     // An admin who bought a spot at their own official M&G sees both the host card and the ticket.
     const views = host && paid ? [true, false] : [host];
-    if (!host && !paid && !["refunded"].includes(spot.status)) continue;
+    if (!host && !paid && !["refunded", "canceled"].includes(spot.status)) continue;
     const p = host || paid ? ((await mtPrivate(d.id).get()).data() || {}) : {};
     const pct = x.hostFeePct ?? 10;
     let guests = null;
@@ -2000,6 +2133,7 @@ exports.myMeetups = onCall(async req => {
         payoutAt: asHost ? (ms(x.payoutAt) || settledAt) : 0, hostEarned: asHost ? (x.hostEarned || 0) : 0,
         hostCut: asHost && !x.official ? Math.round(x.price * (100 - pct) / 100) : 0,
         idCheck: !!x.idCheck, rating: avgOf(x.rating), ratings: x.rating?.n || 0,
+        idea: !!x.idea, est: x.est || 0, pays: x.pays || "", going: x.idea ? (x.going || []) : undefined,
         canRate: !asHost && paid && rateWindow(ms(x.startsAt)) && ["live", "paying", "review", "completed"].includes(x.status) });
     }
   }
@@ -2062,7 +2196,7 @@ async function meetupReminders(d, x, now) {
   let n = 0;
   for (const sp of spots.docs) {
     const spot = sp.data();
-    await push(spot.uid, "Tomorrow: " + x.title, `${fmtWhen(start)} at ${p.venue?.name || x.venueName}. Your code is under My tickets.`);
+    await push(spot.uid, "Tomorrow: " + x.title, x.idea ? `${fmtWhen(start)} at ${p.venue?.name || x.venueName}. Pay at the place. Can't make it? Tap “Can't go” so someone else can.` : `${fmtWhen(start)} at ${p.venue?.name || x.venueName}. Your code is under My tickets.`, x.idea ? `${APP_URL}/?dates=cm` : undefined);
     if (await emailMeetupTicket(d.id, x, p, spot, "reminder")) n++;
   }
   if (!x.official) {
@@ -2104,6 +2238,7 @@ async function payHost(id, x, s) {
 async function settleMeetup(id, s) {
   const x = (await mtRef(id).get()).data();
   if (!x || x.status !== "live") return;
+  if (x.idea) await rtdb.ref(`ideaChat/${id}`).set(null);
   if (x.official || !x.sold) { await payHost(id, x, s); return; }
   if (x.checkedIn > 0 && !x.reported) {
     const payoutAt = ms(x.startsAt) + (s.hostPayoutHours || 72) * 3600000;
@@ -3561,6 +3696,12 @@ exports.sitemap = onRequest({ cors: false }, async (req, res) => {
     res.status(200).send(await buildSitemap());
   } catch (e) { logger.error("sitemap", e.message); res.status(500).send("<?xml version=\"1.0\"?><urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"/>"); }
 });
+/* /site-info: the public contact email for every page (contact.js reads it). Cached by the CDN. */
+exports.siteInfo = onRequest({ cors: false, memory: "256MiB" }, async (req, res) => {
+  res.set("Content-Type", "application/json; charset=utf-8");
+  res.set("Cache-Control", "public, max-age=300, s-maxage=300");
+  res.status(200).send(JSON.stringify({ email: await contactEmail() }));
+});
 exports.dealPage = onRequest({ cors: false }, async (req, res) => {
   const parts = req.path.split("/").filter(Boolean);
   const id = parts[0] === "c" ? (parts[1] || "") : ""; // /c/{id} = one package, /connect = all of them
@@ -3726,5 +3867,5 @@ exports.partnerAttach = onValueCreated({ ref: "/userSrc/{uid}", region: "us-cent
 });
 
 if (process.env.DATES_TEST) {
-  module.exports.__test = { setStripe: s => { _stripe = s; }, handleStripeEvent, housekeeping, settleDate, getSettings, CATEGORIES, landingStats, chatPrune, buildSitemap, planHousekeeping, planTextOk, mapPins, planClash, partners: () => partners, dateOGPage, meetupOGPage, share, payAllReady, ringOnce, stopRingFlow, claimDevice, onDispute, onDisputeChanged, onFraudWarning, sentMail, meetupReminders, connectReminders, emailHTML, connectInviteToken: async orderId => ((await coRef(orderId).get()).data()?.seats || []).map(x => x.token) };
+  module.exports.__test = { setStripe: s => { _stripe = s; }, contactEmail, resetContact: () => { _contact = { at: 0, email: "" }; }, handleStripeEvent, housekeeping, settleDate, getSettings, CATEGORIES, landingStats, chatPrune, buildSitemap, planHousekeeping, planTextOk, mapPins, planClash, partners: () => partners, dateOGPage, meetupOGPage, share, payAllReady, ringOnce, stopRingFlow, claimDevice, onDispute, onDisputeChanged, onFraudWarning, sentMail, meetupReminders, connectReminders, emailHTML, connectInviteToken: async orderId => ((await coRef(orderId).get()).data()?.seats || []).map(x => x.token) };
 }

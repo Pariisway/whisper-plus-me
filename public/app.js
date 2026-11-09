@@ -1410,11 +1410,11 @@ function drawEventPins(){
     var html = "<div style='background:#0f0f18;color:#fff;border-radius:14px;overflow:hidden;min-width:210px;max-width:250px;border:1px solid " + m.color + "55'>"
       + (e.pic ? "<img src='" + sanitize(e.pic) + "' alt='' style='width:100%;height:96px;object-fit:cover;display:block'>" : "")
       + "<div style='padding:10px 12px'>"
-      + "<div style='font-size:10.5px;font-weight:800;letter-spacing:.08em;color:" + m.color + "'>" + m.icon + " " + (e.kind === "pd" ? "PLAN A DATE" : e.kind === "cm" ? "CONNECT ME" : "M&amp;G MEET &amp; GREET") + "</div>"
+      + "<div style='font-size:10.5px;font-weight:800;letter-spacing:.08em;color:" + m.color + "'>" + m.icon + " " + (e.kind === "pd" ? "PLAN A DATE" : e.kind === "cm" ? "CONNECT ME" : e.idea ? "DATE IDEA · FREE" : "M&amp;G MEET &amp; GREET") + "</div>"
       + "<div style='font-size:15px;font-weight:800;margin:2px 0'>" + sanitize(e.title) + "</div>"
       + "<div style='font-size:12px;color:#bbb;line-height:1.4'>" + sanitize(mapWhen(e.at, e.tz)) + "<br>📍 " + sanitize(e.place) + (e.city ? ", " + sanitize(String(e.city).split(",")[0]) : "") + "<br>" + (e.kind === "pd" ? "with " + sanitize(e.who) + " · " : "") + sanitize(e.price) + "</div>"
       + "<button onclick=\"Dates.openFromMap('" + e.kind + "','" + sanitize(e.id) + "')\" style='margin-top:9px;width:100%;padding:9px;border-radius:16px;border:none;background:linear-gradient(90deg,#7b2ff7," + m.color + ");color:#fff;font-weight:800;font-size:12.5px;cursor:pointer;min-height:38px'>"
-      + (e.kind === "pd" ? (e.mine ? "See who's interested" : "🙋 I'm interested") : e.kind === "cm" ? "💞 See the package" : "🎟️ Get a spot") + "</button></div></div>";
+      + (e.kind === "pd" ? (e.mine ? "See who's interested" : "🙋 I'm interested") : e.kind === "cm" ? "💞 See the package" : e.idea ? "💞 I'm going · free" : "🎟️ Get a spot") + "</button></div></div>";
     var popup = new mapboxgl.Popup({ offset: 24, closeButton: true, closeOnClick: true, maxWidth: "260px" }).setHTML(html);
     eventMarkers[key] = new mapboxgl.Marker(el).setLngLat([lng, lat]).setPopup(popup).addTo(mapInstance);
   });
