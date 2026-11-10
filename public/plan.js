@@ -204,19 +204,19 @@
       + (acts.length ? "<div class='dt-actions' style='margin-top:8px'>" + acts.join("") + "</div>" : "")
       + "</div>";
   }
-  function how() {
-    return "<div class='dt-box' style='border-color:rgba(0,227,174,.4)'><h3>📍 How Plan a Date works</h3><p>Plan your own date anywhere, at a real public place. Pick who you go with.</p><ol class='dt-steps'>"
+  function how(open) {
+    return window.dtFold("📍 How Plan a Date works", "<p>Plan your own date anywhere, at a real public place. Pick who you go with.</p><ol class='dt-steps'>"
       + "<li><b>1</b><strong>Post it</strong>The place, the time, the plan. " + (P.coins ? cw(P.coins) + " to post." : "Free to post.") + "</li>"
       + "<li><b>2</b><strong>Pick someone</strong>People tap “I'm interested.” You choose one.</li>"
       + "<li><b>3</b><strong>Meet up</strong>Both tap “I'm here.” You pay the place directly.</li></ol>"
-      + "<p style='margin:10px 0 0;font-size:12.5px'>No match by the time it starts? Your coin comes back. Asking is always free. <a href='/help/#plan-a-date' target='_blank' rel='noopener' style='color:#00e3ae'>Full guide with pictures →</a></p></div>"
+      + "<p style='margin:10px 0 0;font-size:12.5px'>No match by the time it starts? Your coin comes back. Asking is always free. <a href='/help/#plan-a-date' target='_blank' rel='noopener' style='color:#00e3ae'>Full guide with pictures →</a></p>", "rgba(0,227,174,.4)", open)
       + "<div class='dt-rules'>🛟 <b>Stay safe:</b> meet only at the place you picked, tell a friend where you'll be, and never send money to someone you're meeting. Anyone asking for money is breaking the rules: report them.</div>";
   }
   function panelHTML() {
     start();
-    if (!me()) return how();
+    if (!me()) return how(true);
     var live = P.mine.filter(function (x) { return ["draft", "live", "matched", "confirmed", "asked"].indexOf(x.status) > -1 || x.canRate || x.startsAt > Date.now() - 864e5; });
-    return (live.length ? "<div class='dt-sec'>📍 Your dates</div>" + live.map(box).join("") : "") + how();
+    return (live.length ? "<div class='dt-sec'>📍 Your dates</div>" + live.map(box).join("") : "") + how(!live.length);
   }
 
   /* ---------- deep links (?plan=ID from a notification or a shared link) ---------- */

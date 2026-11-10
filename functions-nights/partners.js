@@ -2,7 +2,7 @@
    🤝 PARTNER PROGRAM (whisperplusme.com/partner)
    Anyone applies; the admin approves. An approved partner gets a link
    (whisperplusme.com/go/CODE). People who open it and make a NEW account
-   within 30 days are theirs for 12 months, and the partner earns 20% of
+   within 30 days are theirs for 3 months (Admin → Partners can change it), and the partner earns 20% of
    what Whisper+Me keeps from those people on M&Gs, plus a share of Connect Me:
      - M&G spots they buy ........ M&G rate (20%) of the site fee on their spots
      - M&Gs they host ............ M&G rate (20%) of the site fee on that M&G
@@ -23,8 +23,8 @@
      partnerEarnings/{id}    one commission each, pending → paid (or reversed)
 ═══════════════════════════════════════════════════════════════ */
 module.exports = function makePartners(d) {
-  const { db, rtdb, admin, FieldValue, nowTs, ms, fromMs, push, sendEmail, logger, fail, str, APP_URL, getSettings, whisperProfile, ADMIN_UIDS } = d;
-  const DEFAULTS = { partnerPct: 20, partnerCmPct: 10, partnerMonths: 12, partnerHoldDays: 14 };
+  const { db, rtdb, admin, FieldValue, nowTs, ms, fromMs, push, sendEmail, logger, fail, str, APP_URL, getSettings, whisperProfile, ADMIN_UIDS, share } = d;
+  const DEFAULTS = { partnerPct: 20, partnerCmPct: 10, partnerMonths: 3, partnerHoldDays: 14 };
   const KINDS = ["mg", "host", "cm"]; // never coins or Plan a Date
   const cfg = async () => { const s = await getSettings(); const o = {}; for (const k of Object.keys(DEFAULTS)) o[k] = s[k] == null ? DEFAULTS[k] : Number(s[k]); return o; };
   const pRef = uid => db.doc(`partners/${uid}`);
@@ -151,12 +151,20 @@ module.exports = function makePartners(d) {
     const code = cleanCode(parts[1]);
     const where = { meet: "/meet/", plan: "/?dates=pd", connect: "/?dates=cm", mg: "/?dates=1" }[parts[2]] || "/";
     const dest = where + (where.includes("?") ? "&" : "?") + "via=" + encodeURIComponent(code);
+    // Link previews (iMessage, Facebook, WhatsApp…) are robots: show them the preview, don't count them as clicks.
+    const bot = /bot|crawl|spider|facebookexternalhit|whatsapp|telegram|slack|discord|twitter|linkedin|pinterest|preview|embed|skype|snapchat|vkshare|google-inspectiontool|applebot/i.test(String((req.get && req.get("user-agent")) || ""));
+    let invite = null;
     try {
-      const owner = code && (await codeRef(code).get()).data();
-      if (owner) await pRef(owner.uid).set({ clicks: FieldValue.increment(1), clicksByMonth: { [month(Date.now())]: FieldValue.increment(1) } }, { merge: true });
+      invite = share ? await share.partnerInvite(code) : null;
+      if (!bot) {
+        const owner = code && (await codeRef(code).get()).data();
+        if (owner) await pRef(owner.uid).set({ clicks: FieldValue.increment(1), clicksByMonth: { [month(Date.now())]: FieldValue.increment(1) } }, { merge: true });
+      }
     } catch (e) { logger.warn("partner click", e.message); }
     res.set("Cache-Control", "no-store");
-    res.redirect(302, `${APP_URL}${dest}`);
+    // People are sent straight on. Robots get a page with the partner's own share preview.
+    if (!bot || !share) return res.redirect(302, `${APP_URL}${dest}`);
+    res.status(200).set("Content-Type", "text/html; charset=utf-8").send(share.partnerGoPage(invite, dest, parts[2]));
   }
 
   /* ---------- apply ---------- */

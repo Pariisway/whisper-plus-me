@@ -561,7 +561,7 @@ exports.liveMicCharge = onRequest({ cors: true }, async (req, res) => {
       }
     }
 
-    /* No daily cap — members pay 1 coin per session, unlimited goes */
+    /* No daily cap. */
     /* check room isn't full (max 5 live mics) */
     const roomSnap = await db.ref("liveMics/" + room).once("value");
     const nowTs = Date.now();
@@ -570,23 +570,9 @@ exports.liveMicCharge = onRequest({ cors: true }, async (req, res) => {
     if (activeCount >= 5)
       return res.status(429).json({ error: "Room full — max 5 live mics" });
 
-    /* atomic coin deduction — admin goes free */
-    const COST = 0; /* Live mic is free */
-    const isMicAdmin = uid === "v6aIXY12MDY9ci1wWJmCiLOAKoG2";
-    let result = { committed: true };
-    if (false) {
-      result = await db.ref("users/" + uid).transaction(data => {
-        if (!data) return; /* abort — do NOT return null, that WRITES null and deletes the node */
-        const current = Number(data.coins || 0);
-        /* Live mic is free — no deduction */
-        /* if (current < COST) return; */
-        return data;
-      });
-    }
+    /* Live mic is free: no coins are taken. */
 
-    /* Free — no coin check needed */
-
-    /* write the live mic entry now that coin is confirmed */
+    /* write the live mic entry */
     const endTs    = Date.now() + 3 * 60 * 1000;
     const userSnap = await db.ref("users/" + uid + "/name").once("value");
     const now      = Date.now();

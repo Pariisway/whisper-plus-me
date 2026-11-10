@@ -480,8 +480,6 @@
       if (window.wpmConfirm) window.wpmConfirm("Clear your call log?", "Every call disappears from your log. Your coins and earnings don't change.", go);
       else if (confirm("Clear your call log? Every call disappears from your log. Your coins and earnings don't change.")) go();
     },
-    openLog: function () { if (typeof setActive === "function") setActive(3); P.tab("calls"); },
-    missedCount: function () { return unseenMissed(); },
     dirty: function () { dirty = true; },
     next: function () { var n = steps().filter(function (x) { return !x.done; })[0]; if (n) n.go(); },
     refresh: function () {
@@ -614,7 +612,7 @@
         box.innerHTML = "<div class='pm-dates-h'>" + (isMe ? "💞 Your dates" : "💞 Go on a date with " + first) + " <small>" + list.length + "</small></div>"
           + "<div class='pm-dates-row'>" + cards + "</div>";
         box.hidden = false;
-      });
+      }).catch(function () {});
     },
     openDate: function (kind, id) {
       closeProfileModal();

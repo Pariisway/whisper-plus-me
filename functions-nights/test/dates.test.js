@@ -1172,7 +1172,7 @@ async function test(name, fn) {
     assert.strictEqual(doc("planRequests/" + z + "_dA").status, "pending");
   });
 
-  await test("Partners: apply, approved, link clicks, new sign-ups counted, 20% of the site's share on M&G spots, hosted M&Gs and Connect Me (matchmaker), never coins or Plan a Date, for 12 months, hold then paid, chargeback cancels", async () => {
+  await test("Partners: apply, approved, link clicks, new sign-ups counted, 20% of the site's share on M&G spots, hosted M&Gs and Connect Me (matchmaker), never coins or Plan a Date, for a set number of months (3 unless changed), hold then paid, chargeback cancels", async () => {
     const ADM = "v6aIXY12MDY9ci1wWJmCiLOAKoG2", P = T.partners();
     const auth = require("firebase-admin").__auth;
     seedPeople("ptA", "ptB", "nm1", "nm2", "old1");
@@ -1197,6 +1197,11 @@ async function test(name, fn) {
     await P.go({ path: "/go/stl-dates" }, res);
     assert.strictEqual(red, "https://whisperplusme.com/?via=stl-dates");
     await P.go({ path: "/go/nobody" }, res);
+    assert.strictEqual(doc("partners/ptA").clicks, 2);
+    // link previews (robots) get the partner's own share preview and are not counted as clicks
+    let html = ""; const bres = { set() { return bres; }, status() { return bres; }, send: h => { html = h; }, redirect: () => assert.fail("robots get the preview page") };
+    await P.go({ path: "/go/stl-dates", get: () => "facebookexternalhit/1.1" }, bres);
+    assert.ok(/invited you to Whisper\+Me/.test(html) && html.includes("/s/pt/stl-dates/card.png") && html.includes("?via=stl-dates"), html.slice(0, 300));
     assert.strictEqual(doc("partners/ptA").clicks, 2);
     // sign-ups: brand-new accounts only, never yourself, never an old account
     fresh("nm1"); fresh("nm2"); fresh("ptA");

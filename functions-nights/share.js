@@ -298,6 +298,71 @@ module.exports = function makeShare({ db, rtdb, APP_URL, logger, ms, fmtMoney })
       scanRow(await qr(`${APP_URL}/connect${asker ? "?ask=" + asker.uid : ""}`), "whisperplusme.com/connect")), W, H);
   }
 
+  /* ---------- 🤝 partner program + partner invite links ---------- */
+  const PT_DEFAULTS = { partnerPct: 20, partnerCmPct: 10, partnerMonths: 3 };
+  async function partnerTerms() {
+    const st = (await db.doc("settings/platform").get()).data() || {};
+    const n = k => st[k] == null ? PT_DEFAULTS[k] : Number(st[k]);
+    return { pct: n("partnerPct"), cmPct: n("partnerCmPct"), months: n("partnerMonths") };
+  }
+  const monthsText = m => m === 1 ? "1 month" : m === 12 ? "a year" : `${m} months`;
+  /** The active partner behind a /go/{code} link (name + photo), or null. */
+  async function partnerInvite(code) {
+    code = String(code || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 20);
+    if (!code) return null;
+    const owner = (await db.doc(`partnerCodes/${code}`).get()).data();
+    const p = owner && (await db.doc(`partners/${owner.uid}`).get()).data();
+    if (!p || p.status !== "active") return null;
+    const u = (await rtdb.ref(`users/${owner.uid}`).once("value")).val() || {};
+    const name = String(u.name || p.name || "A friend").slice(0, 40);
+    return { code, uid: owner.uid, name, first: name.split(" ")[0], photoUrl: u.photo || p.photo || "" };
+  }
+  /** whisperplusme.com/partner: what partners earn right now (from Admin → Partners). */
+  async function partnerProgramCard(story) {
+    const icon = await appIcon(), t = await partnerTerms();
+    const W = story ? 1080 : 1200, H = story ? 1920 : 630, s = story ? 1.75 : 1;
+    const stat = (big, small, color) => h("div", { ...(story ? { width: 1000 } : { flex: 1 }), flexDirection: "column", gap: 4 * s, background: "rgba(255,255,255,0.07)", border: `2px solid ${C.line}`, borderRadius: 26 * s, padding: `${20 * s}px ${22 * s}px` },
+      h("div", { fontSize: 54 * s, fontWeight: 900, color, lineHeight: 1 }, big), h("div", { fontSize: 20 * s, color: C.muted, lineHeight: 1.3 }, small));
+    const stats = [stat(`${t.pct}%`, "of the site fee on meet & greets", "#7ff0d0"), stat(`${t.cmPct}%`, "of every date package", "#ff9cc2"), stat(monthsText(t.months), "of earnings from each person you bring", C.gold)];
+    return toPng(h("div", { width: W, height: H, backgroundImage: BG, padding: story ? "70px 40px 60px" : "34px 48px", flexDirection: "column", justifyContent: "space-between", alignItems: story ? "center" : "stretch", fontFamily: "Inter", color: C.text },
+      brand(icon, 24 * s),
+      h("div", { flexDirection: "column", gap: 10 * s, alignItems: story ? "center" : "flex-start" },
+        h("div", { fontSize: 24 * s, fontWeight: 800, color: "#7ff0d0", letterSpacing: 3 }, "🤝 PARTNER PROGRAM"),
+        h("div", { fontSize: 66 * s, fontWeight: 900, color: "#fff", lineHeight: 1.03, textAlign: story ? "center" : "left" }, "Share Whisper+Me."),
+        h("div", { fontSize: 66 * s, fontWeight: 900, color: "#7ff0d0", lineHeight: 1.03 }, "Get paid."),
+        h("div", { fontSize: 25 * s, color: C.muted, textAlign: story ? "center" : "left" }, "Your own link. Paid to your bank every month.")),
+      h("div", { flexDirection: story ? "column" : "row", gap: 16 * s }, stats),
+      story ? h("div", { width: 1000, flexDirection: "column" }, button("🤝  Apply free", 48, true)) : null,
+      story ? scanRow(await qr(`${APP_URL}/partner/`), "whisperplusme.com/partner") : null), W, H);
+  }
+  /** whisperplusme.com/go/{code}: "{Name} invited you". */
+  async function partnerInviteCard(v, story) {
+    const icon = await appIcon(), pic = await dataUrl(v.photoUrl);
+    const W = story ? 1080 : 1200, H = story ? 1920 : 630, s = story ? 1.8 : 1;
+    const face = pic ? img(pic, { width: 250 * s, height: 250 * s, borderRadius: 250 * s, objectFit: "cover", border: `${7 * s}px solid #fff` }) : initialCircle(v.name, 250 * s);
+    const words = h("div", { ...(story ? {} : { flex: 1 }), flexDirection: "column", gap: 14 * s, alignItems: story ? "center" : "flex-start" },
+      story ? null : brand(icon, 22),
+      h("div", { fontSize: 28 * s, fontWeight: 800, color: "#7ff0d0" }, `${clip(v.first, 18)} invited you 👋`),
+      h("div", { fontSize: 60 * s, fontWeight: 900, color: "#fff", lineHeight: 1.05, textAlign: story ? "center" : "left" }, "Real voices."),
+      h("div", { fontSize: 60 * s, fontWeight: 900, color: "#ff9cc2", lineHeight: 1.05 }, "Real dates."),
+      h("div", { fontSize: 24 * s, color: C.muted, lineHeight: 1.35, textAlign: story ? "center" : "left" }, "Voice chat, meet & greets and date nights. Free to join."),
+      h("div", { width: story ? 1000 : 460, flexDirection: "column", marginTop: 6 * s }, button("🎙️  Join free", 30 * s, true)));
+    if (!story) return toPng(h("div", { width: W, height: H, backgroundImage: BG, padding: "34px 56px", gap: 52, alignItems: "center", fontFamily: "Inter", color: C.text }, face, words), W, H);
+    return toPng(h("div", { width: W, height: H, backgroundImage: BG, padding: "70px 40px 60px", flexDirection: "column", alignItems: "center", justifyContent: "space-between", fontFamily: "Inter", color: C.text },
+      brand(icon, 40), face, words, scanRow(await qr(`${APP_URL}/go/${v.code}`), `whisperplusme.com/go/${v.code}`)), W, H);
+  }
+  /** What a /go/{code} link looks like when it's shared; people are sent straight on to the site. */
+  function partnerGoPage(v, dest, sub) {
+    const url = `${APP_URL}/go/${v ? v.code : ""}${sub ? "/" + sub : ""}`;
+    const what = { meet: "meet & greets and date nights", plan: "Plan a Date", connect: "date nights", mg: "meet & greets" }[sub] || "voice chat, meet & greets and date nights";
+    const title = v ? `${v.first} invited you to Whisper+Me` : "Whisper+Me: Real voices. Real moments.";
+    const desc = `Real people, real voices: ${what}. Free to join${v ? ` with ${v.first}'s link` : ""}.`;
+    const image = v ? `${APP_URL}/s/pt/${v.code}/card.png` : `${APP_URL}/og-image.jpg?v=6`;
+    const to = `${APP_URL}${dest}`;
+    return pageShell({ title, desc, url, image, canonical: `${APP_URL}/`,
+      body: `<script>location.replace(${JSON.stringify(to)});</script><div class="card"><div class="in" style="text-align:center"><h1 style="font-size:22px">${esc(title)}</h1><p>${esc(desc)}</p><div class="btns"><a class="b p" href="${esc(to)}">🎙️ Join free</a></div></div></div>` });
+  }
+
   /* ---------- fallback picture (unknown profile / M&G) ---------- */
   async function plainCard(story) {
     const icon = await appIcon();
@@ -318,6 +383,7 @@ module.exports = function makeShare({ db, rtdb, APP_URL, logger, ms, fmtMoney })
       else if (kind === "m") { const m = id && await meetupData(id); png = m ? await meetupCard(m, story) : await plainCard(story); }
       else if (kind === "c") { const c = id && await connectData(id); png = c ? await connectCard(c, story, await askerData(req.query && req.query.ask)) : await plainCard(story); }
       else if (kind === "l") png = await listCard(story, await askerData(req.query && req.query.ask));
+      else if (kind === "pt") { const v = id && id !== "program" ? await partnerInvite(id) : null; png = v ? await partnerInviteCard(v, story) : await partnerProgramCard(story); }
       else png = await plainCard(story);
     } catch (e) {
       logger.error("shareImage", req.path, e.stack || e.message);
@@ -548,5 +614,5 @@ ${asker ? "" : `<a class="b s" href="/connect" style="min-height:48px;font-size:
     return pageShell({ title, desc, url: `${APP_URL}/connect${asker ? "?ask=" + asker.uid : ""}`, canonical: `${APP_URL}/connect`, image: `${APP_URL}/s/l/connect/card.png?v=${v}${asker ? "&ask=" + asker.uid : ""}`, body, index: !asker, schema });
   }
 
-  return { liveConnects, shareImage, profilePage, meetupPage, planPage, connectPage, connectListPage, listCard, askerData, connectCard, connectData, profileCard, meetupCard, profileData, meetupData, plainCard };
+  return { partnerInvite, partnerGoPage, partnerProgramCard, partnerInviteCard, partnerTerms, liveConnects, shareImage, profilePage, meetupPage, planPage, connectPage, connectListPage, listCard, askerData, connectCard, connectData, profileCard, meetupCard, profileData, meetupData, plainCard };
 };

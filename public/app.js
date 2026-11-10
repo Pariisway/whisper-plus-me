@@ -251,7 +251,6 @@ const MAPBOX_TOKEN = "pk.eyJ1Ijoic3F1YXJlMXVwIiwiYSI6ImNtbmo1M3BtNjBqcGEycXB1bHo
 let chatMessages = [];
 let chatListener = null;
 let activeRoom = "general";
-window.__getActiveRoom = function(){ return activeRoom; };
 
 let liveMicClient = null, liveMicTrack = null, liveMicActive = false, liveMicTimer = null;
 let liveMicAudienceClient = null, liveMicRoomListener = null;
@@ -365,11 +364,6 @@ function loadPresetRoomsIntoApp(){
   } catch(e) {}
 }
 
-function isRoomMemberOnly(roomId){
-  if(!window.__roomMemberOnlyMap) return true; /* not loaded yet — fail safe/restrictive */
-  var v = window.__roomMemberOnlyMap[roomId];
-  return v !== false; /* default true unless explicitly set false — matches backend */
-}
 
 /* FIX: the check above depends on a cached map that's populated by the
    listener below — but that listener attaches at script load time, before
@@ -527,11 +521,6 @@ window.lpForgotPassword = function(){
 };
 
 /* Old helpers kept as aliases so older links/buttons still work. */
-window.lpSubmit = function(){ if(window.Landing) window.Landing.submit(); };
-window.lpScrollToAuth = function(){
-  var el = document.getElementById("lp-auth");
-  if(el) el.scrollIntoView({behavior:"smooth"});
-};
 
 /* Optional profile photo step — shown between form validation and actual
    account creation. Skipping just proceeds with no photo, same as before. */
@@ -631,11 +620,6 @@ window.exitGuestToSignup = function(){
 /* ═══════════════════════════════════════════
    STAGE HELPERS
 ═══════════════════════════════════════════ */
-function getClass(i){
-  /* Legacy — only used by setPhoneCallUI which targets .phone.center */
-  if(i === active) return "phone center";
-  return "phone phone-hidden-screen";
-}
 
 /* Content rendered INSIDE each phone panel — all solid backgrounds */
 function deviceContent(type, i){
@@ -2910,13 +2894,6 @@ window.doCreateMemberRoom = function(){
     }).catch(function(e){ showToast("Error checking rooms: " + e.message,"error"); });
 };
 
-window.deleteMemberRoom = function(roomId){
-  if(!currentUser) return;
-  showConfirm("Close this room?", function(){
-    firebase.database().ref("memberRooms/" + roomId).remove()
-      .catch(function(e){ showToast("Error: " + e.message,"error"); });
-  });
-};
 
 /* ── Member room Agora voice state ── */
 var memberRoomAgoraClient = null;
@@ -3353,48 +3330,7 @@ window.sendContactEmail = function(){
   if(subEl) subEl.value = "";
   if(msgEl) msgEl.value = "";
 };
-window.saveProfile = function(){
-  var user = firebase.auth().currentUser;
-  if(!user){ showToast("Not logged in","warn"); return; }
-  var g = function(id){ return ((document.getElementById(id)||{}).value||"").trim(); };
-  var updates = {};
-  var name = g("fi-name"); if(name) updates.name = name;
-  var bio  = g("fi-bio");  if(bio)  updates.bio  = bio;
-  var ig   = g("fi-ig");   if(ig)   updates.instagram = ig;
-  var tw   = g("fi-tw");   if(tw)   updates.twitter   = tw;
-  var web  = g("fi-web");  if(web)  updates.website   = web;
 
-  var fileEl = document.getElementById("photoInput");
-  var file   = fileEl && fileEl.files && fileEl.files[0];
-
-  var commit = function(photoUrl){
-    if(photoUrl) updates.photo = photoUrl;
-    firebase.database().ref("users/" + user.uid).update(updates)
-      .then(function(){ showToast("Profile saved ✓","success"); })
-      .catch(function(e){ showToast("Save failed: " + e.message,"error"); });
-  };
-
-  if(file){
-    /* max 3MB */
-    if(file.size > 3 * 1024 * 1024){ showToast("Photo must be under 3MB","warn"); return; }
-    firebase.storage().ref("profilePhotos/" + user.uid).put(file)
-      .then(function(s){ return s.ref.getDownloadURL(); })
-      .then(function(url){ commit(url); })
-      .catch(function(e){ showToast("Photo upload failed: " + e.message,"error"); });
-  } else {
-    commit();
-  }
-};
-
-window.savePrice = function(){
-  var user = firebase.auth().currentUser;
-  if(!user){ showToast("Not logged in","warn"); return; }
-  var sel = document.getElementById("priceSelect"); if(!sel) return;
-  var price = Number(sel.value||1);
-  firebase.database().ref("users/" + user.uid).update({ price:price })
-    .then(function(){ showToast("Price updated ✓","success"); })
-    .catch(function(e){ showToast("Error: " + e.message,"error"); });
-};
 
 /* ═══════════════════════════════════════════
    BUY COINS — Stripe Checkout via Cloud Function

@@ -28,7 +28,7 @@ Key facts:
 
 ## Meet up in real life
 
-- [Partner program](https://whisperplusme.com/partner/): creators and promoters earn a share of the M&G site fee from people who join through their link (12 months), and matchmakers create Connect Me date packages and earn a share of each one that happens
+- [Partner program](https://whisperplusme.com/partner/): creators and promoters earn a share of the M&G site fee from people who join through their link (3 months), and matchmakers create Connect Me date packages and earn a share of each one that happens
 - [Meet up in real life](https://whisperplusme.com/meet/): M&G, Connect Me and Plan a Date explained, with pictures and a short video
 - [Connect Me date ideas](https://whisperplusme.com/connect): every date-night package on sale now, with dates, places and prices
 - Live M&G pages are at https://whisperplusme.com/m/{id} and Connect Me packages at https://whisperplusme.com/c/{id}; all current ones are listed in the [sitemap](https://whisperplusme.com/sitemap.xml)

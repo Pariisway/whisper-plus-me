@@ -90,8 +90,14 @@
   var css = "\
 .dt-phone{height:100%;display:flex;flex-direction:column;background:#0b0b16;color:#fff;border-radius:inherit;overflow:hidden}\
 .dt-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:44px 14px 8px}\
-.dt-head h2{margin:0;font-size:20px;font-weight:800;letter-spacing:-.01em}\
-.dt-head small{font-size:11.5px;color:#9a8fb5}\
+.dt-head h2{margin:0;font-size:20px;font-weight:800;letter-spacing:-.01em;white-space:nowrap}\
+.dt-head small{font-size:11.5px;color:#9a8fb5;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\
+.dt-head>div:first-child{min-width:0}\
+.dt-fold{padding:0}.dt-fold>summary{list-style:none;cursor:pointer;padding:13px 14px;font-size:14.5px;font-weight:800;display:flex;align-items:center;justify-content:space-between;gap:10px}\
+.dt-fold>summary::-webkit-details-marker{display:none}.dt-fold>summary::after{content:'+';color:#9a8fb5;font-weight:400;font-size:18px;line-height:1}.dt-fold[open]>summary::after{content:'–'}\
+.dt-fold>summary em{font-style:normal;font-weight:700;font-size:12px;color:#d6b16b;margin-left:auto}\
+.dt-fold>:not(summary){margin-left:14px;margin-right:14px}.dt-fold>:last-child{margin-bottom:14px}.dt-fold>p{margin-top:0}\
+.dt-credit{display:flex;align-items:center;justify-content:space-between;gap:10px;border-color:rgba(0,227,174,.45);padding:10px 14px;text-align:left}.dt-credit b{display:block;font-size:14.5px}.dt-credit small{color:#9a8fb5;font-size:12px}.dt-credit .dt-btn{flex:none;min-height:36px;padding:6px 12px;font-size:12.5px}\
 .dt-mybtn{flex:none;border:1px solid rgba(0,227,174,.45);background:rgba(0,227,174,.1);color:#00e3ae;border-radius:999px;padding:7px 11px;font-size:12px;font-weight:800;cursor:pointer;min-height:34px;white-space:nowrap}\
 .dt-mybtn b{display:inline-grid;place-items:center;min-width:18px;height:18px;border-radius:9px;background:#00e3ae;color:#06281f;font-size:11px;margin-left:4px;padding:0 4px}\
 .dt-pill{font-size:10.5px;font-weight:800;padding:4px 9px;border-radius:999px;white-space:nowrap}\
@@ -311,7 +317,7 @@
     var pool = cm ? S.meetups.filter(isIdea).concat(S.connects) : S.meetups.filter(function (m) { return !isIdea(m); });
     var list = pool.filter(function (m) { return S.cat === "All" || m.category === S.cat; });
     var n = upcomingTickets().length;
-    var head = "<div class='dt-head'><div>" + (pd ? "<h2>📍 Plan a Date</h2><small>Anywhere · you pick who goes</small>" : cm ? "<h2>💞 Connect Me</h2><small>Night-out packages · invite who you want</small>" : "<h2>⭐ M&G</h2><small>Meet & Greet · meet people in person</small>") + "</div>"
+    var head = "<div class='dt-head'><div>" + (pd ? "<h2>📍 Plan a Date</h2><small>You pick who goes</small>" : cm ? "<h2>💞 Connect Me</h2><small>Date nights and free date ideas</small>" : "<h2>⭐ M&G</h2><small>Meet &amp; greets in person</small>") + "</div>"
       + "<div style='display:flex;gap:6px;align-items:center'><button class='dt-mybtn dt-share' onclick='Dates.shareSide()' aria-label='Share the meet-up side of Whisper+Me' title='Share'>↗</button>"
       + (S.anon ? "" : "<button class='dt-mybtn' onclick='Dates.showTickets()'>🎟️ My tickets" + (n ? "<b>" + n + "</b>" : "") + "</button>") + "</div></div>"
       + "<div class='dt-seg' role='tablist'><button aria-pressed='" + cm + "' onclick=\"Dates.setMode('cm')\">💞 Connect Me</button><button aria-pressed='" + (!cm && !pd) + "' onclick=\"Dates.setMode('mg')\">⭐ M&G</button><button aria-pressed='" + pd + "' onclick=\"Dates.setMode('pd')\">📍 Plan</button></div>";
@@ -412,19 +418,24 @@
       + "<div class='dt-body'><div class='v'><div class='t'><div>📍 " + esc(c.venueName) + (c.city ? ", " + esc(c.city.split(",")[0]) : "") + (c.venueRating && c.venueRating.n ? " · " + stars(c.venueRating.avg, c.venueRating.n) : "") + "</div><div>" + esc(when(c.startsAt)) + "</div><div>" + esc((c.items || []).slice(0, 2).join(" · ")) + "</div></div></div>"
       + "<div class='dt-price'><b>" + money(c.price) + "</b><small>for " + c.size + "</small>" + (c.idCheck ? "<span class='dt-idb'>🪪 21+ ID</span>" : "") + "</div></div></button>";
   }
-  function ideaHow() {
-    return "<div class='dt-box' style='border-color:rgba(0,227,174,.4)'><h3>💡 How date ideas work</h3><p>Fun things to do, picked by Whisper+Me. Free to join; everyone pays the place for what they get.</p><ol class='dt-steps'>"
+  /* "How it works" boxes fold away: open for someone new, one tappable line for everyone else. */
+  function fold(title, body, color, open) {
+    return "<details class='dt-box dt-fold'" + (open ? " open" : "") + (color ? " style='border-color:" + color + "'" : "") + "><summary>" + title + "</summary>" + body + "</details>";
+  }
+  window.dtFold = fold;
+  function ideaHow(open) {
+    return fold("💡 How date ideas work", "<p>Fun things to do, picked by Whisper+Me. Free to join; everyone pays the place for what they get.</p><ol class='dt-steps'>"
       + "<li><b>1</b><strong>Tap “I'm going”</strong>See who else is going. It's free.</li>"
       + "<li><b>2</b><strong>Say hi</strong>Chat with the others once someone joins.</li>"
       + "<li><b>3</b><strong>Go do it</strong>Meet at the place. Can't make it? Tap “Can't go” any time, no strike.</li>"
-      + "</ol></div>";
+      + "</ol>", "rgba(0,227,174,.4)", open);
   }
-  function connectHow() {
-    return "<div class='dt-box' style='border-color:rgba(224,69,123,.4)'><h3>How Connect Me works</h3><p>Night-out packages at real places, for a set day and time. You buy it, then bring who you want.</p><ol class='dt-steps'>"
+  function connectHow(open) {
+    return fold("💞 How Connect Me packages work", "<p>Night-out packages at real places, for a set day and time. You buy it, then bring who you want.</p><ol class='dt-steps'>"
       + "<li><b>1</b><strong>Buy it</strong>One price covers everyone (dinner for 2, bowling for 4…).</li>"
       + "<li><b>2</b><strong>Invite</strong>Pick a member here, or send a link anywhere. They join free to accept.</li>"
       + "<li><b>3</b><strong>Check in</strong>Each of you taps “I'm here” at the place, or shows your code.</li>"
-      + "</ol></div>";
+      + "</ol>", "rgba(224,69,123,.4)", open);
   }
   function conBox(o) {
     if (o.invite) return "<div class='dt-box' style='border-color:rgba(224,69,123,.5)'><div class='dt-row'><h3 style='margin:0'>💌 " + esc(o.buyerName) + " invited you</h3><span class='dt-pill purple'>Paid for</span></div>"
@@ -469,12 +480,12 @@
 
   /* ---------- panel below the phone ---------- */
   var ST = { draft: ["warn", "Deposit not paid"], pending: ["purple", "Being reviewed"], changes: ["warn", "Needs a change"], live: ["ok", "On sale"], review: ["warn", "Being checked"], paying: ["ok", "Payout coming"], completed: ["ok", "Done"], canceled: ["bad", "Canceled"], rejected: ["bad", "Not approved"], expired: ["bad", "Expired"] };
-  function howItWorks() {
-    return "<div class='dt-box'><h3>How M&G works</h3><p><b>M&G stands for Meet &amp; Greet:</b> real-life hangouts at public places with creators, hosts and members you know from Whisper+Me.</p><ol class='dt-steps'>"
+  function howItWorks(open) {
+    return fold("⭐ How M&G works", "<p><b>M&G stands for Meet &amp; Greet:</b> real-life hangouts at public places with creators, hosts and members you know from Whisper+Me.</p><ol class='dt-steps'>"
       + "<li><b>1</b><strong>Pick one</strong>Dinners, shows, game nights. Bring friends: up to " + MAX_QTY + " spots at once.</li>"
       + "<li><b>2</b><strong>Get your spot</strong>One price per person. The address and your code show up right away.</li>"
       + "<li><b>3</b><strong>Show your code</strong>At the door. If the host cancels or doesn't show, you get all your money back.</li>"
-      + "</ol></div>";
+      + "</ol>", "", open);
   }
   function ticketBox(m) {
     if (isIdea(m)) return ideaBox(m);
@@ -531,38 +542,34 @@
       + "</div></div>";
   }
   function hostPitch() {
-    return "<div class='dt-box' style='border-color:rgba(214,177,107,.4)'><h3>⭐ Host an M&G (Meet &amp; Greet)</h3>"
-      + "<p>Meet your fans or followers in person at a public place. You set the price per spot and keep <b>" + hostKeep() + "%</b>. Card fees are on us.</p>"
+    return fold("⭐ Host your own M&G <em>keep " + hostKeep() + "%</em>", "<p>Meet your fans or followers in person at a public place. You set the price per spot and keep <b>" + hostKeep() + "%</b>. Card fees are on us.</p>"
       + "<ol class='dt-steps' style='margin-bottom:12px'>"
       + "<li><b>1</b><strong>Post it</strong>Pick the place, time, price and spots.</li>"
       + "<li><b>2</b><strong>We review it</strong>Usually within a day. Then share your link.</li>"
       + "<li><b>3</b><strong>Get paid</strong>Check guests in. Your money hits your earnings " + payoutDays() + " days after, then your bank.</li></ol>"
       + "<p style='font-size:12px'>One-time deposit: one spot's price (or $5 for a 1-spot M&G). It stays on your account and covers all your M&Gs; it's only kept if you cancel late or don't show." + (S.depositOnFile ? " <b style='color:#fff'>You have " + money(S.depositOnFile) + " on file.</b>" : "") + " To cash out, set up payouts once in 👤 Profile → Wallet.</p>"
-      + "<button class='dt-btn gold' onclick='Dates.hostMeetup()'>⭐ Host one</button></div>";
+      + "<button class='dt-btn gold' onclick='Dates.hostMeetup()'>⭐ Host one</button>", "rgba(214,177,107,.4)", false);
   }
   function creditBox() {
-    return S.credit > 0 ? "<div class='dt-box' style='border-color:rgba(0,227,174,.45)'><div class='dt-row'><h3 style='margin:0'>💳 Whisper+Me credit</h3><span class='dt-pill ok'>" + money(S.credit) + "</span></div>"
-      + "<p style='margin:8px 0'>It's used first on your next M&G, Connect Me or date listing, with no card needed.</p><button class='dt-btn ghost' onclick='Dates.creditToCard(this)'>Send it to my card instead</button></div>" : "";
+    return S.credit > 0 ? "<div class='dt-box dt-credit'><div><b>💳 " + money(S.credit) + " credit</b><small>Used first on your next spot or package.</small></div><button class='dt-btn ghost' onclick='Dates.creditToCard(this)'>Send to my card</button></div>" : "";
   }
   function panelInner() {
     if (S.mode === "pd") return (me() ? creditBox() : "") + (window.Plan ? window.Plan.panelHTML() : "");
-    if (!me()) return S.anon ? (S.mode === "cm" ? connectHow() : howItWorks()) : "";
+    if (!me()) return S.anon ? (S.mode === "cm" ? (S.meetups.some(isIdea) ? ideaHow(true) : "") + connectHow(true) : howItWorks(true)) : "";
     var out = creditBox();
     var t = myTickets(), h = myHosted(), c = myCons();
     if (S.mode === "cm") {
-      var ti = t.filter(isIdea), tm = t.filter(function (m) { return !isIdea(m); });
+      var ti = t.filter(isIdea);
       out += ti.length ? "<div class='dt-sec'>💡 Date ideas you're going on</div>" + ti.map(ideaBox).join("") : "";
       out += c.length ? "<div class='dt-sec'>💞 Your Connect Me</div>" + c.map(conBox).join("") : "";
-      if (S.meetups.some(isIdea)) out += ideaHow();
-      out += connectHow();
-      if (tm.length) out += "<div class='dt-sec'>🎟️ M&G tickets</div>" + tm.map(ticketBox).join("");
+      if (S.meetups.some(isIdea)) out += ideaHow(!ti.length && !c.length);
+      out += connectHow(!ti.length && !c.length && !S.meetups.some(isIdea));
       return out;
     }
     t = t.filter(function (m) { return !isIdea(m); });   // date ideas are on 💞 Connect Me
     if (t.length) out += "<div class='dt-sec'>🎟️ My tickets</div>" + t.map(ticketBox).join("");
-    if (c.length) out += "<div class='dt-sec'>💞 Your Connect Me</div>" + c.map(conBox).join("");
     if (h.length) out += "<div class='dt-sec'>⭐ M&Gs you host</div>" + h.map(hostBox).join("");
-    if (!t.length) out += howItWorks();
+    out += howItWorks(!t.length && !h.length);
     out += hostPitch();
     var m = S.member;
     if (m && m.suspendedUntil && ms(m.suspendedUntil) > Date.now()) out = "<div class='dt-warn'>You're on a break from hosting and booking M&Gs until " + esc(when(m.suspendedUntil)) + ".</div>" + out;
@@ -681,7 +688,6 @@
     panelHTML: function () { if (typeof active !== "undefined" && active === 4) start(); return "<div id='datesPanel' class='dt-panel'>" + panelInner() + "</div>"; },
     boot: function () { start(); refresh(); loadMine(); },
     mounted: function () { start(); refresh(); },
-    setCat: function (c) { S.cat = c; refresh(); },
     setCatIdx: function (i) { S.cat = CATS[i] || "All"; refresh(); },
     setMode: function (m) { S.mode = m === "cm" || m === "pd" ? m : "mg"; S.cat = "All"; refresh(); if (m === "pd" && window.Plan) window.Plan.load(); },
     refresh: function () { refresh(); },
@@ -874,7 +880,7 @@
     postIdea: function () {
       if (!isAdminUser()) return;
       var minWhen = new Date(Date.now() + 3 * 3600000); minWhen = new Date(minWhen.getTime() - minWhen.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-      var ppl = 2, pays = "each";
+      var ppl = 2;
       openModal("<h3>💡 Post a free date idea</h3><p style='margin:-6px 0 0;color:#b3abcf;font-size:13px'>Free to join. Everyone pays the place. Goes up on Connect Me right away.</p>"
         + "<input class='dt-in' id='diTitle' maxlength='80' placeholder='Name: Bowling for 2'>"
         + "<textarea class='dt-in' id='diAbout' maxlength='800' rows='2' placeholder='What you will do (optional)'></textarea>"
@@ -1160,7 +1166,6 @@
           .then(function (r) { if (ed || !r.url) { closeModal(); toast(r.message || "Saved"); loadMine(); } else location.href = r.url; }, function (e) { err.textContent = e.message; });
       };
     },
-    editMeetup: function (id) { Dates.hostMeetup(id); },
     payHostDeposit: function (id, btn) { busy(btn, fn("payHostDeposit", { meetupId: id })).then(function (r) { if (r.url) location.href = r.url; else { toast(r.message); loadMine(); } }, function (e) { toast(e.message, "error"); }); },
     pickVenue: function (i) {
       var r = HF.results[i]; if (!r) return;

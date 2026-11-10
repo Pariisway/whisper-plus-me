@@ -3488,7 +3488,7 @@ async function ratingsFor(uid, kind, ids) {
      answered it and didn't decline, they get "Missed call from …".
    (Replaces notifyIncomingCall in the default functions codebase.)
 ═══════════════════════════════════════════════════════════════ */
-const RING_EVERY_MS = 5000, RINGS = 8; // about 40 seconds of ringing
+const RINGS = 8; // the caller's phone asks for one alert every 5 seconds: about 40 seconds of ringing
 const sleep = ms => new Promise(r => setTimeout(r, process.env.DATES_TEST ? 0 : ms));
 function callAlert(callId, call, n, extra = {}) {
   const name = String(call.callerName || "Someone").slice(0, 40);
@@ -3863,7 +3863,7 @@ exports.chatPrune = onSchedule({ schedule: "every 30 minutes", memory: "512MiB" 
 
 // Test hooks (only when running the local test script; never part of a deploy).
 /* 🤝 PARTNER PROGRAM (partners.js): links, sign-ups, commissions, the partner board. */
-const partners = require("./partners")({ db, rtdb, admin, FieldValue, nowTs, ms, fromMs, push, sendEmail, logger, fail, str, APP_URL, getSettings, whisperProfile, ADMIN_UIDS });
+const partners = require("./partners")({ db, rtdb, admin, FieldValue, nowTs, ms, fromMs, push, sendEmail, logger, fail, str, APP_URL, getSettings, whisperProfile, ADMIN_UIDS, share });
 exports.partnerGo = onRequest({ cors: false }, (req, res) => partners.go(req, res));
 exports.partnerApply = onCall(async req => { const uid = requireUser(req); return partners.apply(uid, req.data || {}, req.auth.token.email || ""); });
 exports.partnerMe = onCall(async req => { const uid = requireUser(req); return partners.me(uid); });
