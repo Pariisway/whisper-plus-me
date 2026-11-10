@@ -1397,9 +1397,9 @@ var eventPinOf = {};   // "kind:id" -> place key, so mapFocus can open the right
 function mapCardHTML(e){
   var m = MAP_KINDS[e.kind];
   return "<div class='evp-item' style='border-left:3px solid " + m.color + "'>"
-    + (e.pic ? "<img src='" + sanitize(e.pic) + "' alt='' loading='lazy'>" : "")
+    + (e.pic ? "<div class='evp-pic'><img src='" + sanitize(e.pic) + "' alt='' loading='lazy'><b>" + sanitize(e.title) + "</b></div>" : "")
     + "<div class='evp-k' style='color:" + m.color + "'>" + m.icon + " " + (e.kind === "pd" ? "PLAN A DATE" : e.kind === "cm" ? "CONNECT ME" : e.idea ? "DATE IDEA · FREE" : "M&amp;G MEET &amp; GREET") + "</div>"
-    + "<div class='evp-t'>" + sanitize(e.title) + "</div>"
+    + (e.pic ? "" : "<div class='evp-t'>" + sanitize(e.title) + "</div>")
     + "<div class='evp-s'>" + sanitize(mapWhen(e.at, e.tz)) + "<br>" + (e.kind === "pd" ? "with " + sanitize(e.who) + " · " : "") + sanitize(e.price) + "</div>"
     + "<button onclick=\"Dates.openFromMap('" + e.kind + "','" + sanitize(e.id) + "')\" style='background:linear-gradient(90deg,#7b2ff7," + m.color + ")'>"
     + (e.kind === "pd" ? (e.mine ? "See who's interested" : "🙋 I'm interested") : e.kind === "cm" ? "💞 See the package" : e.idea ? "💞 I'm going · free" : "🎟️ Get a spot") + "</button></div>";
@@ -1416,27 +1416,38 @@ function drawEventPins(){
       + ".evp-h{padding:10px 12px 8px;border-bottom:1px solid rgba(255,255,255,.08)}.evp-h b{display:block;font-size:14.5px;padding-right:18px}.evp-h small{color:#aaa;font-size:11.5px}"
       + ".evp-dir{display:inline-flex;align-items:center;gap:5px;margin-top:7px;padding:6px 11px;border-radius:999px;background:rgba(0,227,174,.14);border:1px solid rgba(0,227,174,.45);color:#00e3ae;font-size:12px;font-weight:800;text-decoration:none}"
       + ".evp-list{max-height:290px;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:8px;display:flex;flex-direction:column;gap:8px;overscroll-behavior:contain}"
-      + ".evp-item{background:rgba(255,255,255,.04);border-radius:10px;padding:9px 10px;overflow:hidden}.evp-item img{width:calc(100% + 20px);margin:-9px -10px 8px;height:84px;object-fit:cover;display:block}"
+      + ".evp-item{flex:none;background:rgba(255,255,255,.04);border-radius:10px;padding:9px 10px;overflow:hidden}"
+      + ".evp-pic{position:relative;margin:-9px -10px 8px;height:80px}.evp-pic img{width:100%;height:100%;object-fit:cover;display:block}"
+      + ".evp-pic b{position:absolute;left:0;right:0;bottom:0;padding:18px 10px 7px;font-size:14px;line-height:1.2;color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.85));text-shadow:0 1px 3px #000}"
       + ".evp-k{font-size:10px;font-weight:800;letter-spacing:.08em}.evp-t{font-size:14px;font-weight:800;margin:2px 0}.evp-s{font-size:11.5px;color:#bbb;line-height:1.4}"
       + ".evp-item button{margin-top:8px;width:100%;padding:8px;border-radius:14px;border:none;color:#fff;font-weight:800;font-size:12.5px;cursor:pointer;min-height:36px}"
       + ".evp-more{text-align:center;font-size:11px;color:#9a8fb5;padding:0 0 8px}"
       + ".ev-pin .ev-n{position:absolute;top:-6px;right:-6px;min-width:19px;height:19px;padding:0 5px;border-radius:999px;background:#ff4f8b;color:#fff;font:800 11px/19px system-ui,sans-serif;text-align:center;border:2px solid #0f0f18;filter:none}";
     document.head.appendChild(st);
   }
-  /* group what's showing by place: the same place name, or within ~150 m */
+  /* group only things at the SAME place (same place name in the same city, close together).
+     Different places never share a pin, even next door. */
   var groups = {}, order = [];
-  var near = function(a, b){ return Math.abs(a.lat - b.lat) < 0.0014 && Math.abs(a.lng - b.lng) < 0.0018; };
-  var samePlace = function(a, b){ return a.place && b.place && String(a.place).toLowerCase() === String(b.place).toLowerCase() && String(a.city || "").split(",")[0].toLowerCase() === String(b.city || "").split(",")[0].toLowerCase(); };
+  var norm = function(x){ return String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(); };
+  var placeKey = function(e){ return norm(e.place) + "|" + norm(String(e.city || "").split(",")[0]); };
   mapEventList.slice().sort(function(a, b){ return (a.kind + a.id) < (b.kind + b.id) ? -1 : 1; }).forEach(function(e){
     if(!window.__mapShow[e.kind] || !(e.lat && e.lng)) return;
-    var gk = null;
-    for(var i = 0; i < order.length; i++){ var f = groups[order[i]][0]; if(near(f, e) || samePlace(f, e)){ gk = order[i]; break; } }
-    if(!gk){ gk = e.lat.toFixed(4) + "," + e.lng.toFixed(4); groups[gk] = []; order.push(gk); }
+    var gk = null, pk = placeKey(e);
+    for(var i = 0; i < order.length; i++){ var f = groups[order[i]][0]; if(placeKey(f) === pk && Math.abs(f.lat - e.lat) < 0.003 && Math.abs(f.lng - e.lng) < 0.003){ gk = order[i]; break; } }
+    if(!gk){ gk = pk + "@" + e.lat.toFixed(3) + "," + e.lng.toFixed(3); groups[gk] = []; order.push(gk); }
     groups[gk].push(e);
+  });
+  /* two different places can land on the same rounded spot: nudge them apart so both pins can be tapped */
+  var taken = {};
+  order.forEach(function(gk){
+    var f = groups[gk][0], sk = f.lat.toFixed(3) + "," + f.lng.toFixed(3), n = taken[sk] = (taken[sk] || 0) + 1;
+    groups[gk].__lat = f.lat + (n > 1 ? Math.sin(n * 2.1) * 0.0006 : 0);
+    groups[gk].__lng = f.lng + (n > 1 ? Math.cos(n * 2.1) * 0.0008 : 0);
   });
   var seen = {}; eventPinOf = {};
   order.forEach(function(gk){
-    var list = groups[gk].sort(function(a, b){ return a.at - b.at; });
+    var plat = groups[gk].__lat, plng = groups[gk].__lng;
+    var list = groups[gk].slice().sort(function(a, b){ return a.at - b.at; });
     var sig = list.map(function(e){ return e.kind + ":" + e.id + ":" + e.price; }).join("|");
     list.forEach(function(e){ eventPinOf[e.kind + ":" + e.id] = gk; });
     seen[gk] = true;
@@ -1454,7 +1465,7 @@ function drawEventPins(){
       + "<div class='evp-list'>" + list.map(mapCardHTML).join("") + "</div>"
       + (list.length > 1 ? "<div class='evp-more'>Scroll for all " + list.length + "</div>" : "") + "</div>";
     var popup = new mapboxgl.Popup({ offset: 24, closeButton: true, closeOnClick: true, maxWidth: "270px" }).setHTML(html);
-    var mk = new mapboxgl.Marker(el).setLngLat([first.lng, first.lat]).setPopup(popup).addTo(mapInstance);
+    var mk = new mapboxgl.Marker(el).setLngLat([plng, plat]).setPopup(popup).addTo(mapInstance);
     mk.__sig = sig;
     eventMarkers[gk] = mk;
   });

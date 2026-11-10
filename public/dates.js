@@ -23,7 +23,7 @@
     started: false, uid: null, anon: false, cat: "All",
     settings: Object.assign({}, DEFAULTS),
     meetups: [], mine: [], loadedMine: false, member: undefined, hostContact: null,
-    mode: "mg", connects: [], myCon: [], credit: 0, depositOnFile: 0,
+    mode: "cm", connects: [], myCon: [], credit: 0, depositOnFile: 0,
     myDates: [], unsubs: []
   };
 
@@ -307,16 +307,16 @@
     var u = anyUser();
     if (!u) return "<div class='dt-empty'>Sign in to see M&Gs.</div>";
     var cm = S.mode === "cm", pd = S.mode === "pd";
-    // 💡 free date ideas show on both screens (first), since they're the free way in.
-    var pool = cm ? S.meetups.filter(isIdea).concat(S.connects) : S.meetups.filter(isIdea).concat(S.meetups.filter(function (m) { return !isIdea(m); }));
+    // 💡 free date ideas live only on 💞 Connect Me (first in the list).
+    var pool = cm ? S.meetups.filter(isIdea).concat(S.connects) : S.meetups.filter(function (m) { return !isIdea(m); });
     var list = pool.filter(function (m) { return S.cat === "All" || m.category === S.cat; });
     var n = upcomingTickets().length;
     var head = "<div class='dt-head'><div>" + (pd ? "<h2>📍 Plan a Date</h2><small>Anywhere · you pick who goes</small>" : cm ? "<h2>💞 Connect Me</h2><small>Night-out packages · invite who you want</small>" : "<h2>⭐ M&G</h2><small>Meet & Greet · meet people in person</small>") + "</div>"
       + "<div style='display:flex;gap:6px;align-items:center'><button class='dt-mybtn dt-share' onclick='Dates.shareSide()' aria-label='Share the meet-up side of Whisper+Me' title='Share'>↗</button>"
       + (S.anon ? "" : "<button class='dt-mybtn' onclick='Dates.showTickets()'>🎟️ My tickets" + (n ? "<b>" + n + "</b>" : "") + "</button>") + "</div></div>"
-      + "<div class='dt-seg' role='tablist'><button aria-pressed='" + (!cm && !pd) + "' onclick=\"Dates.setMode('mg')\">⭐ M&G</button><button aria-pressed='" + cm + "' onclick=\"Dates.setMode('cm')\">💞 Connect Me</button><button aria-pressed='" + pd + "' onclick=\"Dates.setMode('pd')\">📍 Plan</button></div>";
+      + "<div class='dt-seg' role='tablist'><button aria-pressed='" + cm + "' onclick=\"Dates.setMode('cm')\">💞 Connect Me</button><button aria-pressed='" + (!cm && !pd) + "' onclick=\"Dates.setMode('mg')\">⭐ M&G</button><button aria-pressed='" + pd + "' onclick=\"Dates.setMode('pd')\">📍 Plan</button></div>";
     if (pd) return head + (window.Plan ? window.Plan.phoneHTML() : "<div class='dt-empty'>Loading…</div>");
-    var adminIdea = isAdminUser() ? "<button class='dt-btn' style='width:100%;margin:0 0 10px;background:linear-gradient(90deg,#00b894,#00e3ae);color:#05221a' onclick='Dates.postIdea()'>➕ Post a 💡 free date idea <small style='opacity:.75'>(admin)</small></button>" : "";
+    var adminIdea = cm && isAdminUser() ? "<button class='dt-btn' style='width:100%;margin:0 0 10px;background:linear-gradient(90deg,#00b894,#00e3ae);color:#05221a' onclick='Dates.postIdea()'>➕ Post a 💡 free date idea <small style='opacity:.75'>(admin)</small></button>" : "";
     var askRow = adminIdea + (cm ? "<div class='dt-askrow'>" + (S.anon ? "" : "<button onclick='Dates.takeMeOut()'>🙋 Ask someone to take me out</button>") + "<button class='alt' onclick='Dates.shareIdeas()'>💡 Share date ideas</button></div>" : "");
     var cats = askRow + "<div class='dt-cats' data-noswipe role='group' aria-label='Categories' onwheel='Dates.catWheel(event,this)' onscroll='Dates.catScroll(this)'>" + CATS.map(function (c, i) {
       return "<button class='dt-cat' aria-pressed='" + (S.cat === c) + "' onclick='Dates.setCatIdx(" + i + ")'>" + CAT_ICON[c] + " " + esc(c) + "</button>";
@@ -558,11 +558,11 @@
       if (tm.length) out += "<div class='dt-sec'>🎟️ M&G tickets</div>" + tm.map(ticketBox).join("");
       return out;
     }
+    t = t.filter(function (m) { return !isIdea(m); });   // date ideas are on 💞 Connect Me
     if (t.length) out += "<div class='dt-sec'>🎟️ My tickets</div>" + t.map(ticketBox).join("");
     if (c.length) out += "<div class='dt-sec'>💞 Your Connect Me</div>" + c.map(conBox).join("");
     if (h.length) out += "<div class='dt-sec'>⭐ M&Gs you host</div>" + h.map(hostBox).join("");
     if (!t.length) out += howItWorks();
-    if (S.meetups.some(isIdea) && !t.some(isIdea)) out += ideaHow();
     out += hostPitch();
     var m = S.member;
     if (m && m.suspendedUntil && ms(m.suspendedUntil) > Date.now()) out = "<div class='dt-warn'>You're on a break from hosting and booking M&Gs until " + esc(when(m.suspendedUntil)) + ".</div>" + out;
@@ -599,6 +599,7 @@
     try { sessionStorage.removeItem("wpmMeetup"); } catch (e) {}
     var hit = S.meetups.filter(function (x) { return x.id === mid; })[0];
     if (hit && isIdea(hit) && S.mode !== "cm") { S.mode = "cm"; setTimeout(refresh, 0); }
+    if (hit && !isIdea(hit) && S.mode !== "mg") { S.mode = "mg"; setTimeout(refresh, 0); }
     if (hit) setTimeout(function () { Dates.openMeetup(mid); }, 50);
     else toast("That M&G isn't on sale anymore. Here's what's on.", "warn");
   }
@@ -705,7 +706,8 @@
     /* Opens one of those from the map. */
     openFromMap: function (kind, id) {
       try { sessionStorage.setItem(kind === "mg" ? "wpmMeetup" : kind === "cm" ? "wpmDeal" : "wpmPlan", id); } catch (e) {}
-      S.mode = kind === "cm" ? "cm" : kind === "pd" ? "pd" : "mg";
+      var mm = kind === "mg" && S.meetups.filter(function (x) { return x.id === id; })[0];
+      S.mode = kind === "cm" || (mm && isIdea(mm)) ? "cm" : kind === "pd" ? "pd" : "mg";
       if (window.setActive) window.setActive(4);
       setTimeout(refresh, 300);
     },
