@@ -1346,6 +1346,12 @@ async function test(name, fn) {
     for (let i = 0; i < 3; i++) more.push((await admin({ action: "postMeetup", data: { idea: true, title: "Idea " + i, category: "Dinner", venue, startsAt: Date.now() + (50 + i) * H, spots: 2 } })).id);
     await call("joinIdea", "di4", { meetupId: more[0], birthYear: 1991 }); await call("joinIdea", "di4", { meetupId: more[1] }); await call("joinIdea", "di4", { meetupId: more[2] });
     await call("joinIdea", "di4", { meetupId: r.id }).then(() => assert.fail("should block a 4th"), e => assert.ok(/already going on 3/.test(e.message)));
+    // Not full? Each person decides. "Still going" marks them ✅; nothing is canceled for them.
+    await assert.rejects(call("ideaStillGoing", "di1", { meetupId: r.id, yes: true }), /not going/);
+    const sg = await call("ideaStillGoing", "di2", { meetupId: r.id, yes: true });
+    assert.ok(/still going/.test(sg.message));
+    assert.deepStrictEqual(m().going.map(g => [g.uid, !!g.still]), [["di2", true], ["di3", false]]);
+    assert.strictEqual(m().status, "live");
     // Admin cancels: nothing to refund, nobody gets "credit"
     await admin({ action: "cancelMeetup", id: r.id, reason: "Rain." });
     assert.strictEqual(m().status, "canceled");

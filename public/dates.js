@@ -109,6 +109,7 @@
 .dt-card.official{border-color:rgba(0,227,174,.35)}\
 .dt-card.idea{border-color:rgba(0,227,174,.55)}\
 .dt-gorow{display:flex;align-items:center;gap:6px;min-width:0}.dt-faces{display:inline-flex}.dt-faces>*{margin-right:-7px;border:2px solid #14111f;border-radius:50%}.dt-faces+span{margin-left:8px}\
+.dt-still{font-style:normal;font-size:10px;margin-left:2px}\
 .dt-goer{display:inline-flex;flex-direction:column;align-items:center;gap:3px;background:none;border:0;color:#d8d2ee;font-size:11.5px;padding:0 4px;cursor:pointer;min-height:0}\
 .dt-card:active{transform:scale(.99)}\
 .dt-poster{position:relative;height:96px;padding:10px 12px;display:flex;flex-direction:column;justify-content:space-between}\
@@ -306,7 +307,8 @@
     var u = anyUser();
     if (!u) return "<div class='dt-empty'>Sign in to see M&Gs.</div>";
     var cm = S.mode === "cm", pd = S.mode === "pd";
-    var pool = cm ? S.meetups.filter(isIdea).concat(S.connects) : S.meetups.filter(function (m) { return !isIdea(m); });
+    // 💡 free date ideas show on both screens (first), since they're the free way in.
+    var pool = cm ? S.meetups.filter(isIdea).concat(S.connects) : S.meetups.filter(isIdea).concat(S.meetups.filter(function (m) { return !isIdea(m); }));
     var list = pool.filter(function (m) { return S.cat === "All" || m.category === S.cat; });
     var n = upcomingTickets().length;
     var head = "<div class='dt-head'><div>" + (pd ? "<h2>📍 Plan a Date</h2><small>Anywhere · you pick who goes</small>" : cm ? "<h2>💞 Connect Me</h2><small>Night-out packages · invite who you want</small>" : "<h2>⭐ M&G</h2><small>Meet & Greet · meet people in person</small>") + "</div>"
@@ -314,7 +316,7 @@
       + (S.anon ? "" : "<button class='dt-mybtn' onclick='Dates.showTickets()'>🎟️ My tickets" + (n ? "<b>" + n + "</b>" : "") + "</button>") + "</div></div>"
       + "<div class='dt-seg' role='tablist'><button aria-pressed='" + (!cm && !pd) + "' onclick=\"Dates.setMode('mg')\">⭐ M&G</button><button aria-pressed='" + cm + "' onclick=\"Dates.setMode('cm')\">💞 Connect Me</button><button aria-pressed='" + pd + "' onclick=\"Dates.setMode('pd')\">📍 Plan</button></div>";
     if (pd) return head + (window.Plan ? window.Plan.phoneHTML() : "<div class='dt-empty'>Loading…</div>");
-    var adminIdea = cm && isAdminUser() ? "<button class='dt-btn' style='width:100%;margin:0 0 10px;background:linear-gradient(90deg,#00b894,#00e3ae);color:#05221a' onclick='Dates.postIdea()'>➕ Post a 💡 free date idea <small style='opacity:.75'>(admin)</small></button>" : "";
+    var adminIdea = isAdminUser() ? "<button class='dt-btn' style='width:100%;margin:0 0 10px;background:linear-gradient(90deg,#00b894,#00e3ae);color:#05221a' onclick='Dates.postIdea()'>➕ Post a 💡 free date idea <small style='opacity:.75'>(admin)</small></button>" : "";
     var askRow = adminIdea + (cm ? "<div class='dt-askrow'>" + (S.anon ? "" : "<button onclick='Dates.takeMeOut()'>🙋 Ask someone to take me out</button>") + "<button class='alt' onclick='Dates.shareIdeas()'>💡 Share date ideas</button></div>" : "");
     var cats = askRow + "<div class='dt-cats' data-noswipe role='group' aria-label='Categories' onwheel='Dates.catWheel(event,this)' onscroll='Dates.catScroll(this)'>" + CATS.map(function (c, i) {
       return "<button class='dt-cat' aria-pressed='" + (S.cat === c) + "' onclick='Dates.setCatIdx(" + i + ")'>" + CAT_ICON[c] + " " + esc(c) + "</button>";
@@ -377,18 +379,26 @@
   function ideaBox(m) {
     var live = m.status === "live" && m.spotStatus === "paid", soon = m.startsAt > Date.now();
     var st = m.status === "canceled" || m.spotStatus === "canceled" ? ["bad", "Called off"] : live && soon ? ["ok", "You're going"] : ["purple", "Done"];
-    var maps = "https://maps.google.com/?q=" + encodeURIComponent(m.venueName + ", " + m.address + ", " + m.city);
+    var maps = "https://www.google.com/maps/dir/?api=1&destination=" + encodeURIComponent(m.venueName + ", " + m.address + ", " + m.city);
     var others = (m.going || []).filter(function (p) { return p.uid !== S.uid; });
+    var mineG = (m.going || []).filter(function (p) { return p.uid === S.uid; })[0] || {};
+    var short = live && soon && (m.going || []).length < m.spots && m.startsAt - Date.now() < 30 * 3600000;
+    var tick = function (p) { return p.still ? "<em class='dt-still' title='Still going'>✅</em>" : ""; };
+    var stillBox = !short ? "" : mineG.still
+      ? "<div class='dt-rules' style='margin-top:8px;border-color:rgba(0,227,174,.4)'>✅ <b>You said you're still going.</b> Only " + (m.going || []).length + " of " + m.spots + " signed up, and that's fine: it's free and you pay at the place. Changed your mind? Tap “Can't go”.</div>"
+      : "<div class='dt-warn' style='margin-top:8px'><b>Only " + (m.going || []).length + " of " + m.spots + " signed up.</b> We don't cancel free date ideas, so it's your call. Still want to go?"
+        + "<div class='dt-actions' style='margin-top:8px'><button class='dt-btn' onclick=\"Dates.stillGoing('" + m.id + "',this)\">👍 Still going</button><button class='dt-btn ghost' onclick=\"Dates.leaveIdea('" + m.id + "',this)\">Can't go</button></div></div>";
     return "<div class='dt-box' style='border-color:rgba(0,227,174,.45)'><div class='dt-row'><h3 style='margin:0'>💡 " + esc(m.title) + "</h3><span class='dt-pill " + st[0] + "'>" + st[1] + "</span></div>"
       + "<p style='margin:6px 0'>" + esc(when(m.startsAt)) + " · " + esc(ideaCost(m)) + "</p>"
-      + (live && m.address ? "<div class='dt-rules'>📍 <b>" + esc(m.venueName) + "</b><br>" + esc(m.address) + ", " + esc(m.city) + (m.venuePhone ? "<br>📞 <a href='tel:" + esc(String(m.venuePhone).replace(/[^0-9+]/g, "")) + "' style='color:#00e3ae'>" + esc(m.venuePhone) + "</a>" : "") + "<br><a href='" + maps + "' target='_blank' rel='noopener' style='color:#00e3ae'>Open in Maps</a></div>" : "")
+      + (live && m.address ? "<div class='dt-rules'>📍 <b>" + esc(m.venueName) + "</b><br>" + esc(m.address) + ", " + esc(m.city) + (m.venuePhone ? "<br>📞 <a href='tel:" + esc(String(m.venuePhone).replace(/[^0-9+]/g, "")) + "' style='color:#00e3ae'>" + esc(m.venuePhone) + "</a>" : "") + "<br><a href='" + maps + "' target='_blank' rel='noopener' style='color:#00e3ae'>🧭 Directions</a></div>" : "")
       + (live ? "<div style='margin-top:8px'><div class='lbl' style='font-size:11px;color:#9a8fb5;font-weight:800;letter-spacing:.08em'>WHO'S GOING (" + (m.going || []).length + " of " + m.spots + ")</div><div class='dt-gorow' style='flex-wrap:wrap;margin-top:6px'>"
-        + "<span class='dt-goer'>" + avatar({ name: "You", photo: ((window.me || {}).photo) || "" }, 34) + "<span>You</span></span>"
-        + others.map(function (p) { return "<button class='dt-goer' onclick=\"showProfileModal('" + esc(p.uid) + "')\">" + avatar(p, 34) + "<span>" + esc(String(p.name || "").split(" ")[0]) + "</span></button>"; }).join("")
+        + "<span class='dt-goer'>" + avatar({ name: "You", photo: ((window.me || {}).photo) || "" }, 34) + "<span>You" + tick(mineG) + "</span></span>"
+        + others.map(function (p) { return "<button class='dt-goer' onclick=\"showProfileModal('" + esc(p.uid) + "')\">" + avatar(p, 34) + "<span>" + esc(String(p.name || "").split(" ")[0]) + tick(p) + "</span></button>"; }).join("")
         + (others.length ? "" : "<span style='color:#9a8fb5;font-size:12.5px'>Waiting for someone to join. Share it!</span>") + "</div></div>" : "")
+      + stillBox
       + (live && m.idCheck ? "<div class='dt-rules' style='margin-top:8px'>🪪 <b>21+:</b> bring a valid photo ID.</div>" : "")
       + (live && soon ? "<div class='dt-actions' style='margin-top:10px'>" + (others.length ? "<button class='dt-btn' onclick=\"Dates.ideaChat('" + m.id + "')\">💬 Chat</button>" : "")
-        + "<button class='dt-btn ghost' onclick=\"Dates.shareMeetup('" + m.id + "')\">↗ Share</button><button class='dt-btn ghost' onclick=\"Dates.leaveIdea('" + m.id + "',this)\">Can't go</button></div>" : "")
+        + "<button class='dt-btn ghost' onclick=\"Dates.shareMeetup('" + m.id + "')\">↗ Share</button>" + (short && !mineG.still ? "" : "<button class='dt-btn ghost' onclick=\"Dates.leaveIdea('" + m.id + "',this)\">Can't go</button>") + "</div>" : "")
       + "</div>";
   }
 
@@ -552,6 +562,7 @@
     if (c.length) out += "<div class='dt-sec'>💞 Your Connect Me</div>" + c.map(conBox).join("");
     if (h.length) out += "<div class='dt-sec'>⭐ M&Gs you host</div>" + h.map(hostBox).join("");
     if (!t.length) out += howItWorks();
+    if (S.meetups.some(isIdea) && !t.some(isIdea)) out += ideaHow();
     out += hostPitch();
     var m = S.member;
     if (m && m.suspendedUntil && ms(m.suspendedUntil) > Date.now()) out = "<div class='dt-warn'>You're on a break from hosting and booking M&Gs until " + esc(when(m.suspendedUntil)) + ".</div>" + out;
@@ -892,6 +903,9 @@
       };
     },
     /* 💡 date ideas: back out (free, no strike) and the group chat */
+    stillGoing: function (id, btn) {
+      busy(btn, fn("ideaStillGoing", { meetupId: id, yes: true })).then(function (r) { toast(r.message); loadMine(); }, function (e) { toast(e.message, "error"); });
+    },
     leaveIdea: function (id, btn) {
       if (!confirm("Can't make it? No problem: it's free and never counts against you. Your spot opens for someone else.")) return;
       busy(btn, fn("leaveIdea", { meetupId: id })).then(function (r) { closeModal(); toast(r.message); loadMine(); }, function (e) { toast(e.message, "error"); });

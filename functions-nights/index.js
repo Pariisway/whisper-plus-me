@@ -2049,8 +2049,26 @@ exports.leaveIdea = onCall(async req => {
   await ideaChatMembers(id, x.going);
   const me = await whisperProfile(uid);
   if (x.status === "live" && ms(x.startsAt) > Date.now())
-    for (const g of x.going) await push(g.uid, "Change of plans", `${String(me.name).split(" ")[0]} can't make ${x.title}. The spot is open again, so someone else can join.`, `${APP_URL}/?dates=cm`);
+    for (const g of x.going) await push(g.uid, "Change of plans", `${String(me.name).split(" ")[0]} can't make ${x.title}. The spot is open again, so someone else can join.` + (ms(x.startsAt) - Date.now() < 30 * 3600000 ? " Still going? It's your call, since it's free: open it to say yes or back out." : ""), `${APP_URL}/?dates=cm`);
   return { message: "No problem. You're off this one, and it doesn't count against you." };
+});
+/** "Still going?" When a date idea isn't full, each person decides for themselves.
+    We never cancel it for them: yes marks them ✅ for the others; no = Can't go. */
+exports.ideaStillGoing = onCall(async req => {
+  const uid = requireUser(req);
+  const id = str(req.data?.meetupId, 64), ref = mtRef(id);
+  if (req.data?.yes !== true) fail("invalid-argument", "Use “Can't go” to back out.");
+  let x;
+  await db.runTransaction(async tx => {
+    x = (await tx.get(ref)).data();
+    if (!x || !x.idea || x.status !== "live") fail("failed-precondition", "This date idea isn't open.");
+    if (!(x.going || []).some(g => g.uid === uid)) fail("failed-precondition", "You're not going to this one.");
+    tx.update(ref, { going: x.going.map(g => g.uid === uid ? { ...g, still: true } : g) });
+    tx.update(ref.collection("spots").doc(uid), { still: true, stillAt: nowTs() });
+  });
+  const me = await whisperProfile(uid);
+  for (const g of x.going) if (g.uid !== uid) await push(g.uid, `${String(me.name).split(" ")[0]} is still going 👍`, `${x.title} · ${fmtWhen(x.startsAt)}. See you there?`, `${APP_URL}/?dates=cm`);
+  return { message: "Great, you're still going. We told the others." };
 });
 /** Group chat for the people going on a date idea. The server writes (money talk is blocked); members read. */
 exports.ideaSay = onCall(async req => {
@@ -2076,6 +2094,7 @@ async function emailIdea(id, x, p, spot, kind) {
     intro: remind ? `Here's everything for ${fmtWhen(start)}.` : "It's free. Everyone pays the place for what they get.",
     rows: [["What", x.title], ["When", fmtWhen(start) + " (Central)"], ["Where", place], ["Place phone", p.venue?.phone || ""],
       ["Who's going", going.length ? going.join(", ") : "Just you so far. We'll tell you when someone joins."],
+      ["Heads up", remind && (x.going || []).length < x.spots ? `Only ${(x.going || []).length} of ${x.spots} signed up. We don't cancel free date ideas, so it's your call: open it and tap “Still going” or “Can't go”.` : ""],
       ["Cost", (x.est ? `About ${fmtMoney(x.est)} each, ` : "") + (x.pays === "split" ? "split the bill at the place" : "each pays their own at the place")],
       ["ID", x.idCheck ? "21+: bring a valid photo ID" : ""]],
     button: ["Open it (chat + who's going)", `${APP_URL}/?dates=cm`], cal,
@@ -2255,7 +2274,9 @@ async function meetupReminders(d, x, now) {
   let n = 0;
   for (const sp of spots.docs) {
     const spot = sp.data();
-    await push(spot.uid, "Tomorrow: " + x.title, x.idea ? `${fmtWhen(start)} at ${p.venue?.name || x.venueName}. Pay at the place. Can't make it? Tap “Can't go” so someone else can.` : `${fmtWhen(start)} at ${p.venue?.name || x.venueName}. Your code is under My tickets.`, x.idea ? `${APP_URL}/?dates=cm` : undefined);
+    const short = x.idea && (x.going || []).length < x.spots;
+    if (short) await push(spot.uid, `Still going to ${x.title}? 🤔`, `Only ${(x.going || []).length} of ${x.spots} signed up for ${fmtWhen(start)}. It's free and you pay at the place, so it's your call: tap to say you're still going, or back out.`, `${APP_URL}/?dates=cm`);
+    else await push(spot.uid, "Tomorrow: " + x.title, x.idea ? `${fmtWhen(start)} at ${p.venue?.name || x.venueName}. Pay at the place. Can't make it? Tap “Can't go” so someone else can.` : `${fmtWhen(start)} at ${p.venue?.name || x.venueName}. Your code is under My tickets.`, x.idea ? `${APP_URL}/?dates=cm` : undefined);
     if (await emailMeetupTicket(d.id, x, p, spot, "reminder")) n++;
   }
   if (!x.official) {
