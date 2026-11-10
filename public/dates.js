@@ -314,7 +314,8 @@
       + (S.anon ? "" : "<button class='dt-mybtn' onclick='Dates.showTickets()'>🎟️ My tickets" + (n ? "<b>" + n + "</b>" : "") + "</button>") + "</div></div>"
       + "<div class='dt-seg' role='tablist'><button aria-pressed='" + (!cm && !pd) + "' onclick=\"Dates.setMode('mg')\">⭐ M&G</button><button aria-pressed='" + cm + "' onclick=\"Dates.setMode('cm')\">💞 Connect Me</button><button aria-pressed='" + pd + "' onclick=\"Dates.setMode('pd')\">📍 Plan</button></div>";
     if (pd) return head + (window.Plan ? window.Plan.phoneHTML() : "<div class='dt-empty'>Loading…</div>");
-    var askRow = cm ? "<div class='dt-askrow'>" + (S.anon ? "" : "<button onclick='Dates.takeMeOut()'>🙋 Ask someone to take me out</button>") + "<button class='alt' onclick='Dates.shareIdeas()'>💡 Share date ideas</button></div>" : "";
+    var adminIdea = cm && isAdminUser() ? "<button class='dt-btn' style='width:100%;margin:0 0 10px;background:linear-gradient(90deg,#00b894,#00e3ae);color:#05221a' onclick='Dates.postIdea()'>➕ Post a 💡 free date idea <small style='opacity:.75'>(admin)</small></button>" : "";
+    var askRow = adminIdea + (cm ? "<div class='dt-askrow'>" + (S.anon ? "" : "<button onclick='Dates.takeMeOut()'>🙋 Ask someone to take me out</button>") + "<button class='alt' onclick='Dates.shareIdeas()'>💡 Share date ideas</button></div>" : "");
     var cats = askRow + "<div class='dt-cats' data-noswipe role='group' aria-label='Categories' onwheel='Dates.catWheel(event,this)' onscroll='Dates.catScroll(this)'>" + CATS.map(function (c, i) {
       return "<button class='dt-cat' aria-pressed='" + (S.cat === c) + "' onclick='Dates.setCatIdx(" + i + ")'>" + CAT_ICON[c] + " " + esc(c) + "</button>";
     }).join("") + "</div><div class='dt-catbar' data-noswipe onclick='Dates.catJump(event,this)'><i></i></div>";
@@ -327,6 +328,8 @@
 
   /* ---------- 💡 Date ideas: free to join, everyone pays the place ---------- */
   function isIdea(m) { return !!(m && m.idea); }
+  var ADMIN = "v6aIXY12MDY9ci1wWJmCiLOAKoG2";   // same admin as database.rules.json
+  function isAdminUser() { return !!S.uid && S.uid === ADMIN; }
   function ideaPay(m) { return m.pays === "split" ? "Split the bill at the place" : "Each pays their own at the place"; }
   function ideaCost(m) { return (m.est ? "About " + money(m.est) + " each · " : "") + ideaPay(m).replace(" at the place", "").toLowerCase(); }
   function goingFaces(m, size) {
@@ -854,6 +857,40 @@
     catJump: function (e, bar) { var el = bar.previousElementSibling, r = bar.getBoundingClientRect(); if (el) el.scrollLeft = (e.clientX - r.left) / r.width * el.scrollWidth - el.clientWidth / 2; },
     catWheel: function (e, el) { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { el.scrollLeft += e.deltaY; e.preventDefault(); } },
 
+    /* 💡 Admin only: post a free date idea right from the app (same as Admin → M&G → 💡 Free date idea). */
+    postIdea: function () {
+      if (!isAdminUser()) return;
+      var minWhen = new Date(Date.now() + 3 * 3600000); minWhen = new Date(minWhen.getTime() - minWhen.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+      var ppl = 2, pays = "each";
+      openModal("<h3>💡 Post a free date idea</h3><p style='margin:-6px 0 0;color:#b3abcf;font-size:13px'>Free to join. Everyone pays the place. Goes up on Connect Me right away.</p>"
+        + "<input class='dt-in' id='diTitle' maxlength='80' placeholder='Name: Bowling for 2'>"
+        + "<textarea class='dt-in' id='diAbout' maxlength='800' rows='2' placeholder='What you will do (optional)'></textarea>"
+        + "<textarea class='dt-in' id='diItems' rows='2' placeholder='The plan, one per line (optional)&#10;2 games&#10;Fries after'></textarea>"
+        + "<select class='dt-in' id='diCat'>" + ["Dinner", "Activities", "Concerts", "Movies", "Other"].map(function (k) { return "<option>" + k + "</option>"; }).join("") + "</select>"
+        + "<div><div class='lbl'>Picture <small>(optional)</small></div><input type='file' id='diImg' accept='image/*' class='dt-in' style='padding:8px'></div>"
+        + "<div class='lbl'>Where</div><input class='dt-in' id='diVname' placeholder='Place name' style='margin-bottom:6px'><input class='dt-in' id='diVaddr' placeholder='Street address' style='margin-bottom:6px'>"
+        + "<div class='dt-row' style='gap:6px;flex-wrap:nowrap'><input class='dt-in' id='diVcity' placeholder='City, state'><input class='dt-in' id='diVphone' type='tel' placeholder='Place phone'></div>"
+        + "<div><div class='lbl'>When</div><input class='dt-in' id='diWhen' type='datetime-local' min='" + minWhen + "'></div>"
+        + "<div><div class='lbl'>How many people</div><div class='dt-row' id='diPpl' style='gap:6px'>" + [2, 4, 6, 8, 10].map(function (n) { return "<button class='dt-btn ghost" + (n === 2 ? " on" : "") + "' data-v='" + n + "' style='flex:1;padding:10px 0'>" + n + "</button>"; }).join("") + "</div></div>"
+        + "<div class='dt-row' style='gap:10px;flex-wrap:nowrap'><div style='flex:1'><div class='lbl'>About $ each <small>(optional)</small></div><input class='dt-in' id='diEst' type='number' min='0' step='1' inputmode='numeric' placeholder='25'></div>"
+        + "<div style='flex:1'><div class='lbl'>Who pays</div><select class='dt-in' id='diPays'><option value='each'>Each pays their own</option><option value='split'>Split the bill</option></select></div></div>"
+        + "<label class='dt-check'><input type='checkbox' id='diId'> <span>🪪 21+ with ID at the door</span></label>"
+        + "<div id='diErr' class='dt-err'></div><button class='dt-btn big' id='diGo'>🚀 Post it</button>");
+      var style = function () { [].forEach.call($i("diPpl").children, function (b) { var on = +b.getAttribute("data-v") === ppl; b.classList.toggle("on", on); b.style.background = on ? "#00e3ae" : ""; b.style.color = on ? "#05221a" : ""; }); };
+      [].forEach.call($i("diPpl").children, function (b) { b.onclick = function () { ppl = +b.getAttribute("data-v"); style(); }; }); style();
+      $i("diGo").onclick = function () {
+        var err = $i("diErr"), btn = this;
+        var data = { idea: true, title: $i("diTitle").value.trim(), about: $i("diAbout").value.trim(), category: $i("diCat").value, items: $i("diItems").value.split("\n").map(function (x) { return x.trim(); }).filter(Boolean).slice(0, 8),
+          venue: { name: $i("diVname").value.trim(), address: $i("diVaddr").value.trim(), city: $i("diVcity").value.trim(), phone: $i("diVphone").value.trim(), source: "other" },
+          startsAt: $i("diWhen").value ? new Date($i("diWhen").value).getTime() : 0, spots: ppl, price: 0, est: +$i("diEst").value || 0, pays: $i("diPays").value, idCheck: $i("diId").checked };
+        err.textContent = !data.title ? "Give it a name." : !data.venue.name || !data.venue.address || !data.venue.city ? "Add the place name, street address and city." : !data.startsAt ? "Pick a day and time." : "";
+        if (err.textContent) return;
+        var f = $i("diImg").files[0];
+        var up = f ? (f.size > 5 * 1024 * 1024 ? Promise.reject(new Error("The picture is over 5 MB.")) : firebase.storage().ref("nights/ticketImages/" + S.uid + "/" + Date.now()).put(f, { contentType: f.type }).then(function (r) { return r.ref.getDownloadURL(); })) : Promise.resolve("");
+        busy(btn, up.then(function (url) { data.imageURL = url; return fn("nightsAdminAction", { action: "postMeetup", data: data }); }))
+          .then(function (r) { closeModal(); toast(r.message || "Posted"); }, function (e) { err.textContent = e.message; });
+      };
+    },
     /* 💡 date ideas: back out (free, no strike) and the group chat */
     leaveIdea: function (id, btn) {
       if (!confirm("Can't make it? No problem: it's free and never counts against you. Your spot opens for someone else.")) return;

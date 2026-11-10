@@ -1355,6 +1355,27 @@ async function test(name, fn) {
     const page = await T.share.meetupPage(more[0]);
     assert.ok(page.includes("Free to join") && page.includes("💡 Date idea"));
   });
+  await test("🔗 Picture from a link: real pictures only, never private addresses", async () => {
+    seedPeople("pic1");
+    const dns = require("dns").promises, realLookup = dns.lookup, realFetch = global.fetch;
+    const PNG = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
+    dns.lookup = async h => h === "evil.test" ? [{ address: "10.0.0.5", family: 4 }] : h === "meta.test" ? [{ address: "169.254.169.254", family: 4 }] : [{ address: "93.184.216.34", family: 4 }];
+    const resp = (status, type, body, loc) => ({ status, ok: status >= 200 && status < 300, headers: { get: k => ({ "content-type": type, location: loc, "content-length": String(body.length) })[k.toLowerCase()] }, body: (async function* () { yield body; })() });
+    global.fetch = async u => { u = String(u);
+      if (u.includes("/ok.png")) return resp(200, "image/png", PNG);
+      if (u.includes("/hop")) return resp(302, "text/html", Buffer.from(""), "http://meta.test/latest");
+      if (u.includes("/page")) return resp(200, "text/html", Buffer.from("<html>"));
+      if (u.includes("/fake.png")) return resp(200, "image/png", Buffer.from("<script>alert(1)</script>"));
+      return resp(404, "text/html", Buffer.from("")); };
+    try {
+      const r = await call("fetchPicture", "pic1", { url: "https://pics.test/a/ok.png" });
+      assert.deepStrictEqual([r.type, r.name, Buffer.from(r.data, "base64").equals(PNG)], ["image/png", "ok.png", true]);
+      for (const [url, re] of [["file:///etc/passwd", /https/], ["http://localhost/x.png", /isn't allowed/], ["https://evil.test/x.png", /isn't allowed/], ["https://pics.test:8080/x.png", /isn't allowed/],
+        ["https://pics.test/hop", /isn't allowed/], ["https://pics.test/page", /web page/], ["https://pics.test/fake.png", /real picture/], ["not a link", /web address/]])
+        await assert.rejects(call("fetchPicture", "pic1", { url }), re, url);
+      await assert.rejects(call("fetchPicture", null, { url: "https://pics.test/a/ok.png" }));
+    } finally { dns.lookup = realLookup; global.fetch = realFetch; }
+  });
   await test("Contact email: admin sets it once, every page and email reply uses it", async () => {
     T.resetContact();
     assert.strictEqual(await T.contactEmail(), "whisper.me.support@gmail.com", "default");

@@ -1927,6 +1927,65 @@ exports.reportMeetup = onCall(async req => {
 });
 
 /** Invite another member to an M&G: they get a notification that opens it. */
+/* ───────── 🔗 Picture from a link ─────────
+   Anywhere the site says "choose a picture", members can paste a picture's web
+   address instead. The server downloads it (browsers usually can't, because of
+   CORS) and hands the bytes back; the page then uses it exactly like a picked file.
+   Guarded: only http(s), only public internet addresses, only real image types, max 8 MB. */
+const PIC_MAX = 8 * 1024 * 1024;
+const PIC_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/avif", "image/heic", "image/heif"];
+function privateIp(ip) {
+  const net = require("net");
+  if (net.isIPv4(ip)) {
+    const [a, b] = ip.split(".").map(Number);
+    return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224;
+  }
+  const x = ip.toLowerCase();
+  if (x.startsWith("::ffff:")) return privateIp(x.slice(7));
+  return x === "::1" || x === "::" || x.startsWith("fc") || x.startsWith("fd") || x.startsWith("fe8") || x.startsWith("fe9") || x.startsWith("fea") || x.startsWith("feb") || x.startsWith("ff");
+}
+async function safeUrl(raw) {
+  let u;
+  try { u = new URL(String(raw || "").trim()); } catch (e) { fail("invalid-argument", "That doesn't look like a web address. It should start with https://"); }
+  if (!/^https?:$/.test(u.protocol) || u.username || u.password) fail("invalid-argument", "Use a normal https:// picture link.");
+  if (u.port && !["80", "443"].includes(u.port)) fail("invalid-argument", "That link isn't allowed.");
+  const host = u.hostname.replace(/^\[|\]$/g, "");
+  if (/^(localhost|metadata(\.google\.internal)?)$/i.test(host) || /\.(internal|local|localhost)$/i.test(host)) fail("invalid-argument", "That link isn't allowed.");
+  const addrs = await require("dns").promises.lookup(host, { all: true }).catch(() => []);
+  if (!addrs.length) fail("not-found", "Couldn't reach that website. Check the link.");
+  if (addrs.some(a => privateIp(a.address))) fail("invalid-argument", "That link isn't allowed.");
+  return u;
+}
+exports.fetchPicture = onCall({ memory: "512MiB", timeoutSeconds: 30 }, async req => {
+  const uid = requireUser(req);
+  // A few dozen an hour is plenty for a person.
+  const lim = rtdb.ref(`limits/picLink/${uid}`);
+  const hour = Math.floor(Date.now() / 3600000);
+  const r = await lim.transaction(v => { const cur = v && v.h === hour ? v : { h: hour, n: 0 }; if (cur.n >= 40) return; return { h: hour, n: cur.n + 1 }; });
+  if (!r.committed) fail("resource-exhausted", "That's a lot of pictures. Try again in an hour.");
+  let u = await safeUrl(req.data?.url), res;
+  for (let hop = 0; hop < 4; hop++) {
+    try {
+      res = await fetch(u, { redirect: "manual", signal: AbortSignal.timeout(12000), headers: { "User-Agent": "WhisperPlusMe-PictureLink/1.0", Accept: "image/*" } });
+    } catch (e) { fail("unavailable", "Couldn't download that picture. Try another link."); }
+    if (res.status >= 300 && res.status < 400 && res.headers.get("location")) { u = await safeUrl(new URL(res.headers.get("location"), u).href); continue; }
+    break;
+  }
+  if (!res || !res.ok) fail("not-found", "That link didn't give us a picture. Right-click (or long-press) the picture and copy the image address.");
+  const type = String(res.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+  if (!PIC_TYPES.includes(type)) fail("invalid-argument", type.startsWith("text/html") ? "That's a web page, not a picture. Open the picture itself, then copy the image address." : "That link isn't a JPG, PNG, GIF or WebP picture.");
+  if (Number(res.headers.get("content-length") || 0) > PIC_MAX) fail("invalid-argument", "That picture is too big (8 MB max).");
+  const chunks = []; let size = 0;
+  for await (const c of res.body) { size += c.length; if (size > PIC_MAX) fail("invalid-argument", "That picture is too big (8 MB max)."); chunks.push(Buffer.from(c)); }
+  const buf = Buffer.concat(chunks);
+  // Check the bytes really are a picture (not just the label).
+  const hex = buf.subarray(0, 12).toString("hex");
+  const real = hex.startsWith("ffd8ff") || hex.startsWith("89504e47") || hex.startsWith("47494638") || (hex.startsWith("52494646") && buf.subarray(8, 12).toString() === "WEBP") || buf.subarray(4, 8).toString() === "ftyp";
+  if (!real) fail("invalid-argument", "That link isn't a real picture file.");
+  const name = (decodeURIComponent(u.pathname.split("/").pop() || "picture").replace(/[^\w.-]+/g, "_").slice(0, 60)) || "picture";
+  return { type, name, data: buf.toString("base64") };
+});
+
 /* ───────── 💡 Date ideas ─────────
    Free, admin-made "let's go do this" dates (dinner for 2, bowling for 4…).
    Members tap "I'm going" (free), see who else is going, chat, and each pays the

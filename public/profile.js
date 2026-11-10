@@ -390,7 +390,7 @@
     var tabs = [["profile", "✏️ Profile"], ["wallet", "🪙 Wallet"], ["calls", "📞 Calls" + (missed ? "<i aria-label='" + missed + " missed'>" + missed + "</i>" : "")], ["more", "⋯ More"]];
     var pane = tab === "wallet" ? paneWallet() : tab === "calls" ? paneCalls() : tab === "more" ? paneMore() : paneProfile();
     return "<div class='pf' id='pf'>"
-      + "<input type='file' id='photoInput' accept='image/*' hidden onchange='Profile.pickPhoto(this)'>"
+      + "<input type='file' id='photoInput' accept='image/*' hidden data-linkafter='.pf-hero-sub' data-linkroot='.pf' onchange='Profile.pickPhoto(this)'>"
       + "<div class='pf-hero'>"
       + "<label class='pf-avatar' id='pf-avatar' for='photoInput' title='Change photo'>"
       + (m.photo ? "<img src='" + esc(m.photo) + "' alt='Your photo'>" : "<span class='pf-init'>" + initial(m.name) + "</span>")
