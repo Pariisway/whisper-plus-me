@@ -30,7 +30,7 @@ if [ "$GHONLY" = 0 ]; then
 
   if [ "$MONEY" = 1 ]; then
     echo "▶ Updating the main app's money functions (calls, member rooms, coin purchases, account deletion)…"
-    firebase deploy --only functions:default:startCall,functions:default:completeCallPayout,functions:default:stripeWebhook,functions:default:joinMemberRoom,functions:default:processMemberRoomEarnings,functions:default:deleteAccount,functions:default:createCoinCheckout
+    firebase deploy --only functions:default:startCall,functions:default:completeCallPayout,functions:default:stripeWebhook,functions:default:joinMemberRoom,functions:default:processMemberRoomEarnings,functions:default:deleteAccount,functions:default:createCoinCheckout,functions:default:createStripeConnectLink
   fi
 
   if [ "$AGORA" = 1 ]; then

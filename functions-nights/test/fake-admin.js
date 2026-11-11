@@ -172,7 +172,7 @@ module.exports = {
   database: () => database,
   messaging: () => ({ send: async m => { checkFcm(m); pushes.push(m); } }),
   __checkFcm: m => checkFcm(m),
-  auth: () => ({ updateUser: async (uid, o) => { authState[uid] = Object.assign(authState[uid] || {}, o); }, revokeRefreshTokens: async uid => { authState[uid] = Object.assign(authState[uid] || {}, { revoked: true }); }, getUser: async uid => { if (authState[uid] && authState[uid].creationTime) return { uid, metadata: { creationTime: authState[uid].creationTime } }; throw new Error("no auth user"); } }),
+  auth: () => ({ listUsers: async () => ({ users: authState.__list || [] }), updateUser: async (uid, o) => { authState[uid] = Object.assign(authState[uid] || {}, o); }, revokeRefreshTokens: async uid => { authState[uid] = Object.assign(authState[uid] || {}, { revoked: true }); }, getUser: async uid => { if (authState[uid] && authState[uid].creationTime) return { uid, metadata: { creationTime: authState[uid].creationTime } }; throw new Error("no auth user"); } }),
   __auth: authState,
   __store: store, __rtdb: rtdbStore, __pushes: pushes, __Timestamp: Timestamp
 };

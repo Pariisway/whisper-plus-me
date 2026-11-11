@@ -68,6 +68,10 @@
         "appInstalled": {
           ".write": "auth != null && auth.uid === $uid && auth.token.firebase.sign_in_provider !== 'anonymous'",
           ".validate": "newData.isNumber()"
+        },
+        "emailOk": {
+          ".write": "auth != null && auth.uid === $uid && (auth.token.email_verified === true || (auth.token.firebase.sign_in_provider !== 'password' && auth.token.firebase.sign_in_provider !== 'anonymous'))",
+          ".validate": "newData.val() === true"
         }
       }
     },

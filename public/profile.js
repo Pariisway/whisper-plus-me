@@ -612,6 +612,7 @@
         + (u.photo ? "<img class='pm-ava' src='" + esc(u.photo) + "' alt=''>" : "<div class='pm-ava'>" + initial(u.name) + "</div>")
         + "<div class='pm-name'>" + esc(u.name || "Member") + "</div>"
         + (u.online ? "<div class='pm-on'><span class='pf-dot'></span>Online now</div>" : "")
+        + (u.emailOk === true ? "<div class='pm-vfy' title='This member confirmed their email address' style='text-align:center;margin:4px 0 0;font-size:12.5px;font-weight:700;color:#00e3ae'>✓ Verified email</div>" : "")
         + (u.bio ? "<div class='pm-bio'>" + esc(u.bio) + "</div>" : "")
         + "<div class='pm-meta'><span>📞 " + (u.calls || 0) + " call" + ((u.calls || 0) === 1 ? "" : "s") + "</span><span>🪙 " + price + " per call</span>"
         + (u.rating && u.rating.n ? "<span title='Rating from M&G guests'><b style='color:#ffc94d'>★ " + Number(u.rating.avg).toFixed(1) + "</b> host · " + u.rating.n + " rating" + (u.rating.n === 1 ? "" : "s") + "</span>" : "") + "</div>"

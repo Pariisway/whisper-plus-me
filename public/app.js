@@ -854,12 +854,36 @@ window.wpmSendVerify = function(btn){
   }, function(e){ showToast(/too-many/.test(e.code || "") ? "We just sent one. Check your inbox and spam folder." : "Couldn't send it: " + e.message, "error"); })
   .then(function(){ if(btn) btn.disabled = false; });
 };
+/* ✓ Confirmed email → a public mark on the profile card (the database only accepts it when it's true). */
+window.wpmMarkVerified = function(){
+  var u = firebase.auth().currentUser;
+  if(!u || u.isAnonymous || !u.email || window.wpmNeedsVerify()) return;
+  var ref = firebase.database().ref("users/" + u.uid + "/emailOk");
+  ref.once("value").then(function(s){ if(s.val() !== true) return ref.set(true); }).catch(function(){});
+};
+/* Members who never confirmed: one small reminder card, at most once a week, three times in all. */
+window.wpmVerifyNudge = function(){
+  if(!window.wpmNeedsVerify() || document.getElementById("wpmVfy") || document.getElementById("wpmCk")) return;
+  var st = {}; try{ st = JSON.parse(localStorage.getItem("wpmVfyNudge") || "{}"); }catch(e){}
+  if((st.n || 0) >= 3 || Date.now() - (st.t || 0) < 7 * 86400000) return;
+  try{ localStorage.setItem("wpmVfyNudge", JSON.stringify({ n: (st.n || 0) + 1, t: Date.now() })); }catch(e){}
+  var d = document.createElement("div"); d.id = "wpmVfy"; d.setAttribute("role", "dialog"); d.setAttribute("aria-label", "Confirm your email");
+  d.style.cssText = "position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:99980;max-width:400px;margin:0 auto;background:#161325;color:#ece8ff;border:1px solid rgba(255,255,255,.14);border-radius:18px;padding:14px 16px;box-shadow:0 16px 48px rgba(0,0,0,.55);font:14px/1.45 system-ui,-apple-system,sans-serif";
+  d.innerHTML = "<b style='display:block;font-size:15.5px;color:#fff;margin-bottom:4px'>✉️ One tap to get your ✓</b>"
+    + "<p style='margin:0 0 12px;color:#bdb5dc'>Confirm your email and your profile shows <b style='color:#00e3ae'>✓ Verified email</b>. You'll need it to join dates, host, or get paid.</p>"
+    + "<div style='display:flex;gap:8px'><button type='button' id='wpmVfyNo' style='flex:1;min-height:44px;border-radius:999px;border:1px solid rgba(255,255,255,.22);background:transparent;color:#ece8ff;font-weight:800;cursor:pointer'>Later</button>"
+    + "<button type='button' id='wpmVfyGo' style='flex:1.4;min-height:44px;border-radius:999px;border:0;background:linear-gradient(90deg,#7b2ff7,#ff4f8b);color:#fff;font-weight:800;cursor:pointer'>Send me the link</button></div>";
+  document.body.appendChild(d);
+  document.getElementById("wpmVfyNo").onclick = function(){ d.remove(); };
+  document.getElementById("wpmVfyGo").onclick = function(){ window.wpmSendVerify(); d.remove(); };
+};
 /* After they tap the link in the email: refresh so the server sees the email as verified. */
 window.wpmCheckVerified = function(quiet){
   var u = firebase.auth().currentUser; if(!u) return Promise.resolve(false);
   return u.reload().then(function(){ return firebase.auth().currentUser.getIdToken(true); }).then(function(){
     var ok = firebase.auth().currentUser.emailVerified;
     if(!quiet) showToast(ok ? "✅ Email verified. You're all set." : "Not verified yet. Open the link in the email we sent, then tap this again.", ok ? "success" : "warn");
+    if(ok){ window.wpmMarkVerified(); var n = document.getElementById("wpmVfy"); if(n) n.remove(); }
     if(ok && typeof render === "function") render();
     return ok;
   }).catch(function(){ return false; });
@@ -3543,6 +3567,7 @@ firebase.auth().onAuthStateChanged(async function(user){
   /* back from the "verify your email" link */
   if(user && /[?&]verified=1/.test(location.search) && !window.__verifyChecked){ window.__verifyChecked = true; setTimeout(function(){ window.wpmCheckVerified(false); }, 1200); }
   if(user && !user.isAnonymous){
+    window.wpmMarkVerified(); setTimeout(window.wpmVerifyNudge, 6000);
     firebase.database().ref("users/" + user.uid + "/partnerCode").once("value").then(function(s){ window.__myPartnerCode = String(s.val() || ""); }).catch(function(){});
   }
   /* New account: remember which ad / site brought them (once, only for accounts made in the last day). */

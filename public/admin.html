@@ -342,6 +342,7 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
         <button data-f="online" onclick="peopleFilter('online')">Online</button>
         <button data-f="creators" onclick="peopleFilter('creators')">Earning</button>
         <button data-f="banned" onclick="peopleFilter('banned')">Banned</button>
+        <button data-f="unconfirmed" onclick="peopleFilter('unconfirmed')">Unconfirmed email</button>
       </div>
     </div>
     <div id="people-list" class="list"><div class="empty">Loading…</div></div>
@@ -1053,18 +1054,38 @@ async function cleanupGuests() {
 }
 
 /* ───────── people ───────── */
-function peopleFilter(f) { peopleF = f; document.querySelectorAll("#people-filter button").forEach(b => b.classList.toggle("on", b.dataset.f === f)); renderPeople(); }
+/* Email sign-ups that never confirmed. The server knows for sure (unverifiedList); loaded when you open the filter. */
+const UV = { set: null, stale: [] };
+async function uvLoad() {
+  const r = await safely(() => dtCall("unverifiedList"), null, "Couldn't load");
+  if (r) { UV.set = new Set(r.unverified || []); UV.stale = r.stale || []; renderPeople(); }
+}
+async function uvClean() {
+  const list = UV.stale.filter(uid => { const u = S.users[uid] || {}; return !u.banned && !(u.coins > 0) && !(u.earnings > 0) && !u.stripeAccountId; }).slice(0, 200);
+  if (!list.length) return toast("Nothing to clean up. Nobody unconfirmed has been away 60+ days with an empty account.");
+  if (!await dialog({ title: "Remove " + list.length + " dead account" + (list.length === 1 ? "" : "s") + "?", body: "These signed up with an email, never confirmed it, haven't been on in 60+ days, and have no coins, earnings or payouts set up. Anyone with a purchase, credit, an M&G or partner earnings is skipped automatically. This can't be undone.", typed: "CLEAN", ok: "Remove them", danger: true })) return;
+  let gone = 0, kept = 0;
+  for (const uid of list) {
+    $("uv-status").textContent = "Working… " + (gone + kept + 1) + " of " + list.length;
+    try { await api("deleteAccount", { targetUid: uid }); db.ref("userPrivate/" + uid).remove().catch(() => {}); gone++; } catch (e) { kept++; }
+  }
+  toast("Removed " + gone + (kept ? ". Kept " + kept + " that still have something on their account." : "."));
+  logAct("Cleaned up " + gone + " unconfirmed accounts"); uvLoad();
+}
+function peopleFilter(f) { peopleF = f; if (f === "unconfirmed" && !UV.set) uvLoad(); document.querySelectorAll("#people-filter button").forEach(b => b.classList.toggle("on", b.dataset.f === f)); renderPeople(); }
 function renderPeople() {
   const q = ($("people-q").value || "").trim().toLowerCase();
   let rows = Object.entries(S.users).filter(([, u]) => u);
   if (peopleF === "online") rows = rows.filter(([, u]) => u.online);
   if (peopleF === "creators") rows = rows.filter(([, u]) => (u.earnings || 0) > 0);
   if (peopleF === "banned") rows = rows.filter(([, u]) => u.banned);
+  if (peopleF === "unconfirmed") rows = rows.filter(([uid]) => UV.set && UV.set.has(uid));
+  const uvBar = peopleF !== "unconfirmed" ? "" : !UV.set ? `<div class="empty">Loading…</div>` : `<div class="item" style="display:block"><div class="help" style="margin:0 0 8px"><b>${UV.set.size}</b> member${UV.set.size === 1 ? "" : "s"} signed up with an email and never confirmed it. They can chat, but can't host, join dates, become a partner or get paid. <b>${UV.stale.length}</b> of them haven't been on in 60+ days.</div><div class="row"><button class="btn red sm" onclick="uvClean()">🧹 Remove the dead ones (60+ days, empty accounts)</button><span class="help" id="uv-status" style="margin:0"></span></div></div>`;
   if (q) rows = rows.filter(([uid, u]) => (u.name || "").toLowerCase().includes(q) || emailOf(uid).toLowerCase().includes(q) || uid.toLowerCase().startsWith(q));
   rows.sort((a, b) => ((b[1].online ? 1 : 0) - (a[1].online ? 1 : 0)) || ((b[1].lastSeen || 0) - (a[1].lastSeen || 0)));
   const total = rows.length; rows = rows.slice(0, 60);
-  $("people-list").innerHTML = rows.length ? rows.map(([uid, u]) => `<div class="item">${ava(u)}<div class="who"><b>${h(u.name || "(no name)")} ${u.online ? `<span class="pill on">Online</span>` : ""} ${u.banned ? `<span class="pill bad">Banned</span>` : ""}</b><span>${h(emailOf(uid) || uid)} · 🪙 ${Number(u.coins || 0)} · ${money(u.earnings)} earned · seen ${ago(u.lastSeen)}</span></div>
-    <div class="acts"><button class="btn sm" onclick="person(${j(uid)})">Open</button><button class="btn sm teal" onclick="setCoins(${j(uid)})">🪙 Coins</button></div></div>`).join("") + (total > 60 ? `<div class="empty">Showing 60 of ${total}. Search to narrow it down.</div>` : "") : `<div class="empty">Nobody matches.</div>`;
+  $("people-list").innerHTML = uvBar + (rows.length ? rows.map(([uid, u]) => `<div class="item">${ava(u)}<div class="who"><b>${h(u.name || "(no name)")} ${u.online ? `<span class="pill on">Online</span>` : ""} ${u.banned ? `<span class="pill bad">Banned</span>` : ""}</b><span>${h(emailOf(uid) || uid)} · 🪙 ${Number(u.coins || 0)} · ${money(u.earnings)} earned · seen ${ago(u.lastSeen)}</span></div>
+    <div class="acts"><button class="btn sm" onclick="person(${j(uid)})">Open</button><button class="btn sm teal" onclick="setCoins(${j(uid)})">🪙 Coins</button></div></div>`).join("") + (total > 60 ? `<div class="empty">Showing 60 of ${total}. Search to narrow it down.</div>` : "") : `<div class="empty">Nobody matches.</div>`);
 }
 function person(uid) {
   const u = S.users[uid] || {};

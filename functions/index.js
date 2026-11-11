@@ -467,6 +467,9 @@ exports.createStripeConnectLink = onRequest(
 
     try {
       const user   = await verifyToken(req);
+      /* Getting paid needs an email we can actually reach (Google sign-ins are already confirmed). */
+      if (user.email_verified === false && (!user.firebase || user.firebase.sign_in_provider === "password"))
+        return res.status(403).json({ error: "Confirm your email first, so we can reach you about your payouts. Open 👤 Profile and tap “Verify my email”." });
       const stripe = require("stripe")(STRIPE_SECRET_KEY.value());
 
       const userSnap  = await db.ref("users/" + user.uid).once("value");

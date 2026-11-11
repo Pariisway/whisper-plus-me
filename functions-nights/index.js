@@ -1206,6 +1206,22 @@ exports.nightsAdminAction = onCall(withStripe, async req => {
       await push(x.hostUid, "Your M&G wasn't approved", str(reason, 140) || "Contact support for details.");
       await log(req, action, id, reason); return { message: "Rejected. The host's deposit stays on their account." };
     }
+    case "unverifiedList": {
+      // Email sign-ups that never opened the confirmation link. "stale" = also not seen in 60+ days.
+      const cut = Date.now() - 60 * 86400000, unverified = [], stale = [];
+      let token, pages = 0;
+      do {
+        const r = await admin.auth().listUsers(1000, token); token = r.pageToken; pages++;
+        for (const u of r.users) {
+          if (ADMIN_UIDS.includes(u.uid) || u.emailVerified || !u.email) continue;
+          if (!(u.providerData || []).length || !(u.providerData || []).every(p => p.providerId === "password")) continue;
+          unverified.push(u.uid);
+          const seen = Math.max(Date.parse(u.metadata.lastRefreshTime || 0) || 0, Date.parse(u.metadata.lastSignInTime || 0) || 0, Date.parse(u.metadata.creationTime || 0) || 0);
+          if (seen < cut) stale.push(u.uid);
+        }
+      } while (token && pages < 30);
+      return { unverified, stale };
+    }
     case "moveMeetup": { const r = await moveMeetup(id, data?.startsAt, true, req.auth.uid); await log(req, action, id, String(data?.startsAt)); return r; }
     case "payMeetupHost": {
       const x = (await mtRef(id).get()).data();
@@ -2165,6 +2181,7 @@ async function ideaChatMembers(id, going) {
 }
 exports.joinIdea = onCall(async req => {
   const uid = requireUser(req);
+  needVerifiedEmail(req, "the plans, since you'll be meeting in person");
   notSuspended(await memberFor(uid, req.data?.birthYear));
   const id = str(req.data?.meetupId, 64), ref = mtRef(id), spotRef = ref.collection("spots").doc(uid);
   const me = await whisperProfile(uid);
@@ -2781,6 +2798,7 @@ exports.connectInvite = onCall(async req => {
 /** Accept an invite: needs a free account (21+). The guest gets their own code and the address. */
 exports.acceptConnect = onCall({ secrets: [GMAIL_PASS] }, async req => {
   const uid = requireUser(req);
+  needVerifiedEmail(req, "the plans, since you'll be meeting in person");
   notSuspended(await memberFor(uid, req.data?.birthYear));
   const token = str(req.data?.token, 20).toLowerCase();
   const inv = (await db.doc(`connectInvites/${token}`).get()).data();
@@ -3149,6 +3167,7 @@ async function blockedEitherWay(a, b) {
 /** "I'm interested": free. Needs a photo, 21+, and not too many open requests. */
 exports.requestPlan = onCall(async req => {
   const uid = requireUser(req);
+  needVerifiedEmail(req, "the plans, since you'll be meeting in person");
   notSuspended(await memberFor(uid, req.data?.birthYear));
   const id = str(req.data?.planId, 64), note = str(req.data?.note, 200);
   const x = (await plRef(id).get()).data();

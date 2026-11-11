@@ -1516,6 +1516,28 @@ async function test(name, fn) {
     assert.ok(rt.chat.general.welcome && rt.chat.general.m129 && !rt.chat.general.m000);
   });
 
+  await test("Unconfirmed email: can't join dates in person; admin gets the list of never-confirmed sign-ups", async () => {
+    const un = (fn, uid, data) => F[fn].run({ data, auth: { uid, token: { email: uid + "@x.com", email_verified: false, firebase: { sign_in_provider: "password" } } }, rawRequest: {} });
+    await assert.rejects(un("joinIdea", "nov1", { meetupId: "x", birthYear: 1990 }), /Verify your email/);
+    await assert.rejects(un("requestPlan", "nov1", { planId: "x" }), /Verify your email/);
+    await assert.rejects(un("acceptConnect", "nov1", { token: "x" }), /Verify your email/);
+    // a Google sign-in counts as confirmed: it gets past the email check (and fails later for another reason)
+    await assert.rejects(F.joinIdea.run({ data: { meetupId: "nope", birthYear: 1990 }, auth: { uid: "goog1", token: { email: "g@x.com", email_verified: false, firebase: { sign_in_provider: "google.com" } } }, rawRequest: {} }), e => !/Verify your email/.test(e.message));
+    const old = new Date(Date.now() - 90 * 86400000).toUTCString(), fresh = new Date(Date.now() - 2 * 86400000).toUTCString(), pw = [{ providerId: "password" }];
+    fake.__auth.__list = [
+      { uid: "deadOne", email: "d@x.com", emailVerified: false, providerData: pw, metadata: { creationTime: old, lastSignInTime: old } },
+      { uid: "newOne", email: "n@x.com", emailVerified: false, providerData: pw, metadata: { creationTime: fresh, lastSignInTime: fresh } },
+      { uid: "okOne", email: "o@x.com", emailVerified: true, providerData: pw, metadata: { creationTime: old, lastSignInTime: old } },
+      { uid: "googOne", email: "g@x.com", emailVerified: false, providerData: [{ providerId: "google.com" }], metadata: { creationTime: old, lastSignInTime: old } },
+      { uid: "guest", providerData: [], metadata: { creationTime: old, lastSignInTime: old } },
+      { uid: "v6aIXY12MDY9ci1wWJmCiLOAKoG2", email: "a@x.com", emailVerified: false, providerData: pw, metadata: { creationTime: old, lastSignInTime: old } },
+    ];
+    const r = await F.nightsAdminAction.run({ data: { action: "unverifiedList" }, auth: { uid: "v6aIXY12MDY9ci1wWJmCiLOAKoG2", token: {} } });
+    assert.deepStrictEqual(r.unverified, ["deadOne", "newOne"]);
+    assert.deepStrictEqual(r.stale, ["deadOne"]);
+    await assert.rejects(un("nightsAdminAction", "nov1", { action: "unverifiedList" }));
+  });
+
   Date.now = realNow;
   const failed = results.filter(r => r[0] === "FAIL");
   results.forEach(r => console.log(r[0] === "ok" ? "  ✓" : "  ✗", r[1], r[2] ? "\n      " + r[2] : ""));
