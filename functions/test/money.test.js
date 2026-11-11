@@ -7,7 +7,9 @@ process.env.FIREBASE_CONFIG = JSON.stringify({ projectId: "demo-test", databaseU
 
 // The same in-memory Firebase the Dates tests use (its transactions behave like the real SDK's: first try sees null).
 const fake = require("../../functions-nights/test/fake-admin");
-fake.auth = () => ({ verifyIdToken: async t => ({ uid: t, firebase: { sign_in_provider: "password" } }) });
+const deleted = [];
+fake.auth = () => ({ verifyIdToken: async t => ({ uid: t, firebase: { sign_in_provider: "password" } }), deleteUser: async uid => { deleted.push(uid); } });
+fake.storage = fake.storage || (() => ({ bucket: () => ({ file: () => ({ delete: async () => {} }) }) }));
 const adminPath = require.resolve("firebase-admin", { paths: [path.join(__dirname, "..")] });
 require.cache[adminPath] = { id: adminPath, filename: adminPath, loaded: true, exports: fake };
 // Stripe stand-in: the webhook body is trusted as the event.
@@ -77,6 +79,23 @@ const user = (uid, o) => { rtdb.users = rtdb.users || {}; rtdb.users[uid] = Obje
       await run("stripeWebhook", null, { type: "checkout.session.completed", data: { object: { id: "cs_" + kind, payment_status: "paid", metadata: { app: "dates", kind, uid: "fan", qty: "2", dateId: "m1" } } } });
     }
     assert.strictEqual(rtdb.users.fan.coins, 0);
+  });
+  await test("Deleting an account: not while people have paid for your M&G; money left behind needs a clear yes", async () => {
+    const fs = fake.firestore(), ts = ms => ({ toMillis: () => ms });
+    user("hosty", { earnings: 0 }); user("richy", { earnings: 12.5, coins: 3 }); user("plain", {});
+    await fs.doc("meetups/mA").set({ hostUid: "hosty", title: "Brunch", status: "live", sold: 2, held: 0, startsAt: ts(Date.now() + 9e7) });
+    let r = await run("deleteAccount", "hosty", {});
+    assert.ok(r.status === 409 && r.body.blocked && /Cancel it first/.test(r.body.error), JSON.stringify(r.body));
+    assert.ok(rtdb.users.hosty, "nothing was removed");
+    await fs.doc("meetups/mA").set({ hostUid: "hosty", title: "Brunch", status: "canceled", sold: 0, held: 0 });
+    assert.deepStrictEqual((await run("deleteAccount", "hosty", {})).body, { deleted: "hosty" });
+    r = await run("deleteAccount", "richy", {});
+    assert.ok(r.status === 409 && r.body.needsConfirm && r.body.lose.length === 2 && /\$12\.50/.test(r.body.lose[0]), JSON.stringify(r.body));
+    assert.ok(rtdb.users.richy);
+    assert.deepStrictEqual((await run("deleteAccount", "richy", { confirmLoss: true })).body, { deleted: "richy" });
+    assert.deepStrictEqual((await run("deleteAccount", "plain", {})).body, { deleted: "plain" });
+    assert.strictEqual((await run("deleteAccount", "plain2", { targetUid: "someoneElse" })).status, 403);
+    assert.deepStrictEqual(deleted, ["hosty", "richy", "plain"]);
   });
   await test("Admin calls are free and pay nobody", async () => {
     user(ADMIN, { coins: 0 }); user("s5", { price: 4, earnings: 0 });

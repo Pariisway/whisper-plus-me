@@ -1359,6 +1359,61 @@ async function test(name, fn) {
     const e = doc(`partnerEarnings/mg_${r.id}_vb`);
     assert.ok(e && e.partnerUid === "pv" && e.amount > 0 && e.status === "pending", JSON.stringify(e));
   });
+  await test("Sold out → waitlist; move the date once → buyers keep their spot or take credit; pause stops new purchases; reminder emails can be turned off", async () => {
+    seedPeople("mvHost", "w1", "w2", "w3"); ["mvHost", "w1", "w2", "w3"].forEach(u => { rtdb.users[u].email = u + "@x.com"; });
+    const { id } = await call("createMeetup", "mvHost", mgData({ title: "Wine night", price: 40, spots: 2, birthYear: 1990 }));
+    await completeLastCheckout("mvHost"); await admin({ action: "approveMeetup", id });
+    const m = () => doc("meetups/" + id);
+    await call("buyMeetupSpot", "w1", { meetupId: id, birthYear: 1990 }); await completeLastCheckout("w1");
+    await assert.rejects(call("joinWaitlist", "w3", { meetupId: id }), /spot open right now/);
+    await call("buyMeetupSpot", "w2", { meetupId: id, birthYear: 1990 }); await completeLastCheckout("w2");
+    // sold out: w3 waits
+    await assert.rejects(call("buyMeetupSpot", "w3", { meetupId: id, birthYear: 1990 }), /Sold out/);
+    assert.ok((await call("joinWaitlist", "w3", { meetupId: id })).on);
+    assert.deepStrictEqual([m().waiting, (await call("joinWaitlist", "w3", { meetupId: id, check: true })).on], [1, true]);
+    await assert.rejects(call("joinWaitlist", "w1", { meetupId: id }), /already have a spot/);
+    await T.housekeeping(); assert.ok(!m().waitTold, "nothing open, nobody told");
+    // host moves the date (once, 24h+ ahead)
+    const oldStart = m().startsAt.toMillis(), newStart = oldStart + 3 * 24 * H;
+    await assert.rejects(call("rescheduleMeetup", "w1", { meetupId: id, startsAt: newStart }), /Only the host/);
+    await assert.rejects(call("rescheduleMeetup", "mvHost", { meetupId: id, startsAt: Date.now() + 2 * H }), /at least 24 hours/);
+    const mails0 = T.sentMail.length;
+    const mv = await call("rescheduleMeetup", "mvHost", { meetupId: id, startsAt: newStart });
+    assert.ok(/2 buyers were told/.test(mv.message), mv.message);
+    assert.deepStrictEqual([m().startsAt.toMillis(), m().movedFrom.toMillis(), T.sentMail.slice(mails0).filter(x => /New date/.test(x.subject)).length], [newStart, oldStart, 2]);
+    await assert.rejects(call("rescheduleMeetup", "mvHost", { meetupId: id, startsAt: newStart + 24 * H }), /already moved once/);
+    // w2 can't make it: money back as credit, the spot reopens, and the waitlist hears about it
+    const t2 = (await call("myMeetups", "w2")).meetups.find(x => x.id === id);
+    assert.ok(t2.canDeclineMove && t2.movedFrom === oldStart);
+    const dm = await call("declineMove", "w2", { meetupId: id });
+    assert.ok(/\$40/.test(dm.message));
+    assert.deepStrictEqual([m().sold, doc("credits/w2").balance, doc(`meetups/${id}/spots/w2`).status], [1, 4000, "refunded"]);
+    await assert.rejects(call("declineMove", "w2", { meetupId: id }), /don't have a spot/);
+    const mails1 = T.sentMail.length;
+    await T.housekeeping();
+    assert.ok(m().waitTold && T.sentMail.slice(mails1).some(x => /A spot opened/.test(x.subject)), "waitlist told");
+    await T.housekeeping();
+    assert.strictEqual(T.sentMail.slice(mails1).filter(x => /A spot opened/.test(x.subject)).length, 1, "told once per opening");
+    // w3 turned reminder emails off with the one-tap link: no more optional emails, receipts still arrive
+    let page = ""; const res = { set() { return res; }, status() { return res; }, send: h => { page = h; }, on() {}, once() {}, emit() {}, setHeader() {}, getHeader() {}, removeHeader() {} };
+    await F.emailPrefs({ query: { u: "w3", t: "wrong" }, headers: {}, method: "GET" }, res); await new Promise(r => setTimeout(r, 20)); assert.ok(/didn't work/.test(page));
+    const link = T.sentMail.slice(mails1).find(x => /A spot opened/.test(x.subject)).parts.unsub;
+    const q = Object.fromEntries(new URL(link).searchParams);
+    await F.emailPrefs({ query: q, headers: {}, method: "GET" }, res); await new Promise(r => setTimeout(r, 20));
+    assert.ok(/No more reminder emails/.test(page) && rtdb.userPrivate.w3.emailOff === true);
+    // paused: no new purchases or postings; what people already have still works
+    rtdb.landing = Object.assign(rtdb.landing || {}, { pause: { on: true, msg: "Back in 10 minutes." } });
+    await assert.rejects(call("buyMeetupSpot", "w3", { meetupId: id, birthYear: 1990 }), /Back in 10 minutes/);
+    await assert.rejects(call("createMeetup", "mvHost", mgData({ title: "Another" })), /Back in 10 minutes/);
+    assert.ok((await call("myMeetups", "w1")).meetups.find(x => x.id === id).code, "tickets still open");
+    rtdb.landing.pause = { on: false };
+    const mails2 = T.sentMail.length;
+    await call("buyMeetupSpot", "w3", { meetupId: id, birthYear: 1990 }); await completeLastCheckout("w3");
+    assert.ok(T.sentMail.slice(mails2).some(x => /You're in/.test(x.subject)), "receipt still sent with reminders off");
+    advanceHours(Math.round((newStart - Date.now()) / H) - 20); await T.housekeeping();
+    const rem = T.sentMail.filter(x => /^Tomorrow: Wine night/.test(x.subject)).map(x => x.to);
+    assert.ok(rem.length === 1, "w1 gets the reminder, w3 (emails off) doesn't: " + JSON.stringify(rem));
+  });
   await test("💡 Date ideas: admin-only, free to join, pay at the place, leave any time with no strike", async () => {
     const pic = u => { seedPeople(u); rtdb.users[u].photo = "https://x/p.jpg"; };
     ["di1", "di2", "di3", "di4"].forEach(pic); seedPeople("dinopic");

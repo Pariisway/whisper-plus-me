@@ -311,6 +311,9 @@
         "email": {
           ".validate": "newData.isString() && newData.val().length <= 200"
         },
+        "emailOff": {
+          ".validate": "newData.isBoolean()"
+        },
         "$other": {
           ".validate": "false"
         }

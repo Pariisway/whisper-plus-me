@@ -828,6 +828,42 @@ var SS_CSS = ".ss{padding:18px 16px 16px;color:#f3f0fb;text-align:left;position:
   + ".ss-copy input{flex:1;min-width:0;background:none;border:0;color:#b3abcf;font-size:13px;outline:0;padding:0;margin:0}"
   + ".ss-copy button{flex:none;border:0;border-radius:999px;background:#fff;color:#111;font-weight:800;padding:9px 16px;cursor:pointer;min-height:0;margin:0;width:auto}"
   + ".ss-emb{display:block;margin:12px auto 0;background:none;border:0;color:#9d97b8;font-size:13px;text-decoration:underline;cursor:pointer;width:auto;min-height:0}";
+/* ⏸ Admin → Landing → "Pause purchases": a thin banner tells everyone why buying is off for a moment. */
+(function(){
+  function show(v){
+    var el = document.getElementById("wpmPause");
+    if(!v || !v.on){ if(el) el.remove(); return; }
+    if(!el){ el = document.createElement("div"); el.id = "wpmPause"; el.setAttribute("role", "status");
+      el.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:99990;background:#d6b16b;color:#1a1308;font:700 13px/1.35 system-ui,-apple-system,sans-serif;padding:8px 14px;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.4)";
+      document.body.appendChild(el); }
+    el.textContent = "⏸ " + (String(v.msg || "").slice(0, 200) || "Buying and posting are paused for a few minutes while we update the site. Everything you already have still works.");
+  }
+  function start(){ try{ firebase.database().ref("landing/pause").on("value", function(s){ show(s.val()); }, function(){}); }catch(e){} }
+  if(window.firebase && firebase.database) start(); else window.addEventListener("load", start);
+})();
+/* Verify-email helpers (Profile shows the button when it's needed). */
+window.wpmNeedsVerify = function(){
+  var u = firebase.auth().currentUser;
+  return !!(u && !u.isAnonymous && !u.emailVerified && u.email && (u.providerData || []).every(function(p){ return p.providerId === "password"; }));
+};
+window.wpmSendVerify = function(btn){
+  var u = firebase.auth().currentUser; if(!u) return;
+  if(btn) btn.disabled = true;
+  u.sendEmailVerification({ url: "https://whisperplusme.com/?verified=1" }).then(function(){
+    showToast("We sent a link to " + u.email + ". Open it, then come back here.", "success");
+  }, function(e){ showToast(/too-many/.test(e.code || "") ? "We just sent one. Check your inbox and spam folder." : "Couldn't send it: " + e.message, "error"); })
+  .then(function(){ if(btn) btn.disabled = false; });
+};
+/* After they tap the link in the email: refresh so the server sees the email as verified. */
+window.wpmCheckVerified = function(quiet){
+  var u = firebase.auth().currentUser; if(!u) return Promise.resolve(false);
+  return u.reload().then(function(){ return firebase.auth().currentUser.getIdToken(true); }).then(function(){
+    var ok = firebase.auth().currentUser.emailVerified;
+    if(!quiet) showToast(ok ? "✅ Email verified. You're all set." : "Not verified yet. Open the link in the email we sent, then tap this again.", ok ? "success" : "warn");
+    if(ok && typeof render === "function") render();
+    return ok;
+  }).catch(function(){ return false; });
+};
 /* 🤝 If you're a partner, every Whisper+Me link you share carries your code (?via=CODE),
    so you get credit for whoever buys or joins through it. Links to other sites are left alone. */
 window.wpmShareTag = function(url){
@@ -3181,18 +3217,21 @@ window.confirmDeleteOwnAccount = function(){
 /* Shared by both the member's own delete button and the admin panel's
    version. selfDelete signs the browser out afterward; admin-triggered
    deletions of someone else's account don't need that. */
-function runDeleteAccount(targetUid, selfDelete){
+function runDeleteAccount(targetUid, selfDelete, confirmLoss){
   if(!currentUser) return;
-  /* Private email isn't covered by the server cleanup yet, so clear it first */
-  firebase.database().ref("userPrivate/" + targetUid).remove().catch(function(){})
-  .then(function(){ return currentUser.getIdToken(); }).then(function(idToken){
+  currentUser.getIdToken().then(function(idToken){
     return fetch(CF_BASE + "/deleteAccount", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": "Bearer " + idToken },
-      body: JSON.stringify({ targetUid: targetUid })
+      body: JSON.stringify({ targetUid: targetUid, confirmLoss: !!confirmLoss })
     });
   }).then(function(res){ return res.json().then(function(data){ return { ok: res.ok, data: data }; }); })
     .then(function(result){
+      /* Money or tickets still on the account: show exactly what would be lost and ask once more. */
+      if(!result.ok && result.data && result.data.needsConfirm && !confirmLoss){
+        if(confirm("Before you go, you still have:\n\n• " + (result.data.lose || []).join("\n• ") + "\n\nDeleting your account gives these up for good. Get paid or use them first if you want them.\n\nDelete anyway?")) runDeleteAccount(targetUid, selfDelete, true);
+        return;
+      }
       if(!result.ok) throw new Error(result.data.error || "Delete failed");
       showToast("Account deleted","success");
       if(selfDelete){
@@ -3431,6 +3470,8 @@ window.doSignUp = function(){
   firebase.auth().createUserWithEmailAndPassword(email, pass)
     .then(function(cred){
       /* Save display name from landing page sign-up form */
+      /* a real, reachable email: needed before hosting or becoming a partner */
+      try{ if(cred.user && !cred.user.emailVerified) cred.user.sendEmailVerification({ url: "https://whisperplusme.com/?verified=1" }).catch(function(){}); }catch(e){}
       var name = (window.__pendingDisplayName || "").trim();
       if(name && cred.user){
         firebase.database().ref("users/" + cred.user.uid).update({ name: name });
@@ -3499,6 +3540,8 @@ firebase.auth().onAuthStateChanged(async function(user){
   currentUser = user;
   /* 🤝 Partners: their code is added to every link they share (see wpmShareTag). */
   window.__myPartnerCode = "";
+  /* back from the "verify your email" link */
+  if(user && /[?&]verified=1/.test(location.search) && !window.__verifyChecked){ window.__verifyChecked = true; setTimeout(function(){ window.wpmCheckVerified(false); }, 1200); }
   if(user && !user.isAnonymous){
     firebase.database().ref("users/" + user.uid + "/partnerCode").once("value").then(function(s){ window.__myPartnerCode = String(s.val() || ""); }).catch(function(){});
   }

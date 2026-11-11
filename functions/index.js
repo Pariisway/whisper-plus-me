@@ -314,6 +314,9 @@ exports.createCoinCheckout = onRequest(
     try {
       const user   = await verifyToken(req);
       const qty    = Math.max(1, Math.min(500, parseInt(req.body.qty) || 1));
+      /* ⏸ Admin → Landing → "Pause purchases" */
+      const pause = (await db.ref("landing/pause").once("value")).val();
+      if (pause && pause.on) return res.status(503).json({ error: String(pause.msg || "").slice(0, 200) || "Buying is paused for a few minutes while we update the site. Try again shortly." });
 
       /* FIX: Rate limit — max 5 checkout attempts per hour to prevent abuse */
       const hourAgo       = Date.now() - 3600000;
@@ -1242,6 +1245,46 @@ exports.deleteAccount = onRequest({ cors: true }, async (req, res) => {
     }
     if (targetUid === "v6aIXY12MDY9ci1wWJmCiLOAKoG2" && !isAdmin) {
       return res.status(403).json({ error: "Cannot delete the admin account this way" });
+    }
+
+    /* Before anything is removed: does this account still owe people something, or hold money?
+       - Hosting an M&G (or selling a date package) that people have paid for: it has to be
+         canceled first, so buyers get their money back. Nobody can delete their way out of it.
+       - Unpaid earnings, credit, a deposit or upcoming tickets: these are lost with the account,
+         so the member has to say they understand (confirmLoss), after seeing the list. */
+    const force = isAdmin && req.body && req.body.force === true;
+    const money = c => "$" + (c / 100).toFixed(2);
+    try {
+      const fs = admin.firestore(), now = Date.now();
+      const OPEN = ["pending", "live", "paying", "review", "changes", "settling"];
+      const hosted = await fs.collection("meetups").where("hostUid", "==", targetUid).limit(60).get();
+      const owing = hosted.docs.map(d => d.data()).filter(m => OPEN.includes(m.status) && !m.official && (Number(m.sold || 0) + Number(m.held || 0)) > 0);
+      const packs = await fs.collection("connects").where("partnerUid", "==", targetUid).limit(60).get();
+      const owingPk = packs.docs.map(d => d.data()).filter(c => c.status === "live" && Number(c.sold || 0) > 0);
+      if ((owing.length || owingPk.length) && !force) {
+        const names = owing.map(m => m.title).concat(owingPk.map(c => c.title)).slice(0, 3).join(", ");
+        return res.status(409).json({ blocked: true, error: `People have paid for ${names}. Cancel ${owing.length + owingPk.length > 1 ? "them" : "it"} first (buyers get their money back), or wait until ${owing.length + owingPk.length > 1 ? "they're" : "it's"} over and paid out. Then you can delete your account.` });
+      }
+      const u = (await db.ref("users/" + targetUid).once("value")).val() || {};
+      const credit = ((await fs.doc("credits/" + targetUid).get()).data() || {}).balance || 0;
+      const deposit = (((await fs.doc("members/" + targetUid).get()).data() || {}).hostDeposit || {}).held || 0;
+      const tickets = await fs.collection("meetups").where("buyerUids", "array-contains", targetUid).limit(60).get();
+      const upcoming = tickets.docs.map(d => d.data()).filter(m => m.status === "live" && m.startsAt && m.startsAt.toMillis() > now).length;
+      const lose = [];
+      if (Number(u.earnings) > 0) lose.push(money(Math.round(Number(u.earnings) * 100)) + " in earnings that haven't been paid out");
+      if (credit > 0) lose.push(money(credit) + " of Whisper+Me credit");
+      if (deposit > 0) lose.push(money(deposit) + " host deposit");
+      if (Number(u.coins) > 0) lose.push(u.coins + " coin" + (Number(u.coins) === 1 ? "" : "s"));
+      if (upcoming) lose.push(upcoming + " upcoming ticket" + (upcoming === 1 ? "" : "s"));
+      if (lose.length && !(req.body && req.body.confirmLoss === true) && !force && targetUid === caller.uid) {
+        return res.status(409).json({ needsConfirm: true, lose, error: "You'd lose: " + lose.join(", ") + "." });
+      }
+      // their partner link stops working
+      await fs.doc("partners/" + targetUid).set({ status: "paused", pauseReason: "Account deleted" }, { merge: true }).catch(() => {});
+      await fs.collection("ledger").add({ kind: "accountDeleted", uid: targetUid, by: caller.uid, lost: lose, at: admin.firestore.FieldValue.serverTimestamp() }).catch(() => {});
+    } catch (e) {
+      console.error("deleteAccount checks failed", e);
+      return res.status(500).json({ error: "Couldn't check the account. Try again in a minute." });
     }
 
     const cleanupPaths = [

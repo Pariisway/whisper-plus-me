@@ -200,7 +200,18 @@
       + "<button class='pf-btn' onclick=\"showProfileModal(" + jsAttr(myUid()) + ")\">👁 Preview</button></div>"
       /* 💞 Matchmakers (Whisper+Me partners) can suggest you to someone who bought a date night. You always decide. */
       + "<div class='pf-card pf-toggle' style='margin-top:14px'><div><b>💞 Open to matchmaker intros</b><div class='pf-muted'>Whisper+Me matchmakers can suggest you to someone who bought a date night at a public place. They invite you; you say yes or no. 21+. Nobody pays you or asks you for money.</div></div>"
-      + "<button class='pf-switch" + (m.introOk ? " on" : "") + "' role='switch' aria-checked='" + !!m.introOk + "' aria-label='Open to matchmaker intros' onclick='Profile.toggleIntro(this)'></button></div>";
+      + "<button class='pf-switch" + (m.introOk ? " on" : "") + "' role='switch' aria-checked='" + !!m.introOk + "' aria-label='Open to matchmaker intros' onclick='Profile.toggleIntro(this)'></button></div>"
+      /* ✉️ Reminder and update emails can be turned off. Receipts, tickets, refunds and payouts always arrive. */
+      + "<div class='pf-card pf-toggle' style='margin-top:10px'><div><b>✉️ Reminder emails</b><div class='pf-muted'>Day-before reminders and updates. Receipts, tickets, refunds and payouts are always sent.</div></div>"
+      + "<button class='pf-switch on' id='pfMailSw' role='switch' aria-checked='true' aria-label='Reminder emails' onclick='Profile.toggleMail(this)'></button></div>"
+      + "<img alt='' width='0' height='0' style='display:none' src='data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA=' onload='Profile.syncMail()'>";
+  }
+  /* "Verify my email" card: shown at the top of the profile until the email is verified (email + password sign-ups only). */
+  function verifyCard() {
+    if (!window.wpmNeedsVerify || !window.wpmNeedsVerify()) return "";
+    var em = (firebase.auth().currentUser || {}).email || "your email";
+    return "<div class='pf-card' style='border-color:rgba(214,177,107,.55);margin-bottom:12px'><b>✉️ Verify your email</b><div class='pf-muted' style='margin:4px 0 10px'>We sent a link to " + esc(em) + ". Tap it so your tickets and receipts reach you. You need it before you can host or become a partner.</div>"
+      + "<div class='pf-row' style='margin:0'><button class='pf-btn' onclick='wpmSendVerify(this)'>Send it again</button><button class='pf-btn' onclick='wpmCheckVerified()'>I tapped the link</button></div></div>";
   }
 
   function paneWallet() {
@@ -402,6 +413,7 @@
       + "<button class='pf-stat' onclick=\"Profile.tab('wallet')\"><b class='dash-coin-count'>" + (m.coins || 0) + "</b><span>Coins</span></button>"
       + "<button class='pf-stat' onclick=\"Profile.tab('wallet')\"><b>" + money(m.earnings) + "</b><span>Earned</span></button>"
       + "<button class='pf-stat' onclick=\"Profile.tab('calls')\"><b>" + (m.calls || 0) + "</b><span>Calls</span></button></div>"
+      + verifyCard()
       + (next ? "<div class='pf-setup'><div class='pf-setup-top'><span>🚀 Finish your profile</span><span>" + done + " of " + s.length + "</span></div>"
           + "<div class='pf-bar'><i style='width:" + Math.round(done / s.length * 100) + "%'></i></div>"
           + "<div class='pf-next'><span><b>Next:</b> " + next.label + ". " + next.why + "</span><button onclick='Profile.next()'>Do it</button></div></div>" : "")
@@ -447,6 +459,24 @@
   var P = {
     phoneHTML: phoneHTML,
     panelHTML: panelHTML,
+    /* show the saved setting on the ✉️ switch */
+    syncMail: function () {
+      var uid = myUid(), sw = document.getElementById("pfMailSw"); if (!uid || !sw) return;
+      if (P._mailOff != null) { sw.classList.toggle("on", !P._mailOff); sw.setAttribute("aria-checked", !P._mailOff); return; }
+      firebase.database().ref("userPrivate/" + uid + "/emailOff").once("value").then(function (s) {
+        P._mailOff = s.val() === true; var b = document.getElementById("pfMailSw");
+        if (b) { b.classList.toggle("on", !P._mailOff); b.setAttribute("aria-checked", !P._mailOff); }
+      }).catch(function () {});
+    },
+    toggleMail: function (btn) {
+      var uid = myUid(); if (!uid) return;
+      var off = btn.classList.contains("on");   // on now → turning off
+      btn.disabled = true;
+      firebase.database().ref("userPrivate/" + uid + "/emailOff").set(off ? true : null).then(function () {
+        P._mailOff = off; btn.disabled = false; btn.classList.toggle("on", !off); btn.setAttribute("aria-checked", !off);
+        showToast(off ? "Reminder emails are off. You'll still get receipts and tickets." : "Reminder emails are on.", "success");
+      }, function (e) { btn.disabled = false; showToast("Couldn't save: " + e.message, "error"); });
+    },
     toggleIntro: function (btn) {
       var uid = myUid(), m = me(), on = !m.introOk;
       if (!uid) return;

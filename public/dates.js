@@ -114,6 +114,7 @@
 .dt-card{flex:none;display:block;width:100%;text-align:left;border:1px solid rgba(255,255,255,.08);background:#12122a;border-radius:16px;overflow:hidden;padding:0;color:#fff;cursor:pointer}\
 .dt-card.official{border-color:rgba(0,227,174,.35)}\
 .dt-card.idea{border-color:rgba(0,227,174,.55)}\
+.dt-card.soldout .dt-poster{filter:saturate(.45) brightness(.8)}\
 .dt-gorow{display:flex;align-items:center;gap:6px;min-width:0}.dt-faces{display:inline-flex}.dt-faces>*{margin-right:-7px;border:2px solid #14111f;border-radius:50%}.dt-faces+span{margin-left:8px}\
 .dt-still{font-style:normal;font-size:10px;margin-left:2px}\
 .dt-goer{display:inline-flex;flex-direction:column;align-items:center;gap:3px;background:none;border:0;color:#d8d2ee;font-size:11.5px;padding:0 4px;cursor:pointer;min-height:0}\
@@ -233,7 +234,7 @@
     S.unsubs.push(f.doc("settings/platform").onSnapshot(function (s) { S.settings = Object.assign({}, DEFAULTS, s.exists ? s.data() : {}); refresh(); }, function () {}));
     S.unsubs.push(f.collection("meetups").where("status", "==", "live").where("hidden", "==", false).orderBy("startsAt").limit(80).onSnapshot(function (s) {
       var now = Date.now();
-      S.meetups = s.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }).filter(function (m) { return ms(m.startsAt) > now + 2 * 3600000 && (left(m) > 0 || m.hostUid === S.uid); });
+      S.meetups = s.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }).filter(function (m) { return ms(m.startsAt) > now + 2 * 3600000; });   // sold-out ones stay listed (🔔 waitlist)
       refresh();
     }, function (e) { console.warn("M&G list", e.message); }));
     S.unsubs.push(f.collection("connects").where("status", "==", "live").where("hidden", "==", false).orderBy("startsAt").limit(60).onSnapshot(function (s) {
@@ -300,8 +301,8 @@
   function card(m) {
     var l = left(m), sold = m.sold || 0;
     var top = m.official ? "⭐ Whisper+Me pick" : (CAT_ICON[m.category] || "⭐") + " " + esc(m.category || "M&G");
-    var badge = l <= 5 ? "<span class='dt-hot'>" + l + " left</span>" : "<span>" + esc(day(m.startsAt).split(",")[0]) + "</span>";
-    return "<button class='dt-card" + (m.official ? " official" : "") + "' onclick=\"Dates.openMeetup('" + m.id + "')\">"
+    var badge = l <= 0 ? "<span class='dt-hot' style='background:#3a3550'>Sold out · 🔔 waitlist</span>" : l <= 5 ? "<span class='dt-hot'>" + l + " left</span>" : "<span>" + esc(day(m.startsAt).split(",")[0]) + "</span>";
+    return "<button class='dt-card" + (m.official ? " official" : "") + (l <= 0 ? " soldout" : "") + "' onclick=\"Dates.openMeetup('" + m.id + "')\">"
       + "<div class='dt-poster' style='background:" + grad(m.hue != null ? m.hue : hue(m.title)) + "'>" + (m.imageURL ? "<img src='" + esc(m.imageURL) + "' alt=''>" : "")
       + "<div class='k'><span>" + top + "</span>" + badge + "</div>"
       + "<b>" + esc(m.title) + "</b></div>"
@@ -334,6 +335,20 @@
     return head + cats + "<div class='dt-list'>" + body + "</div>";
   }
 
+  /* ---------- 🔔 waitlist (sold out) ---------- */
+  function waitHTML(m) {
+    return "<div class='dt-rules' style='text-align:center'><b>" + (isIdea(m) ? "This one is full." : "Sold out.") + "</b> Spots do open up. Want to know the moment one does?</div>"
+      + "<button class='dt-btn big' id='dtWait' data-id='" + m.id + "'>" + (S.anon ? "Sign up free to join the waitlist" : "🔔 Tell me if a spot opens") + "</button>"
+      + "<p class='dt-fine'>Free. Everyone waiting is told at the same time, so it's first come, first served.</p>";
+  }
+  function waitWire(m) {
+    var b = $i("dtWait"); if (!b) return;
+    var on = false, paint = function () { b.textContent = on ? "✅ You're on the waitlist · tap to leave" : "🔔 Tell me if a spot opens"; b.classList.toggle("ghost", on); };
+    if (S.anon) { b.onclick = function () { try { sessionStorage.setItem("wpmMeetup", m.id); } catch (e) {} if (window.promptGuestUpgrade) window.promptGuestUpgrade("Joining a waitlist"); }; return; }
+    fn("joinWaitlist", { meetupId: m.id, check: true }).then(function (r) { on = !!r.on; paint(); }, function () {});
+    b.onclick = function () { busy(b, fn("joinWaitlist", { meetupId: m.id, off: on })).then(function (r) { on = !!r.on; paint(); toast(r.message); }, function (e) { toast(e.message, e.message.indexOf("Good news") === 0 ? "success" : "error"); if (e.message.indexOf("Good news") === 0) { closeModal(); setTimeout(function () { Dates.openMeetup(m.id); }, 400); } }); };
+  }
+
   /* ---------- 💡 Date ideas: free to join, everyone pays the place ---------- */
   function isIdea(m) { return !!(m && m.idea); }
   var ADMIN = "v6aIXY12MDY9ci1wWJmCiLOAKoG2";   // same admin as database.rules.json
@@ -349,7 +364,7 @@
     var l = left(m);
     return "<button class='dt-card idea' onclick=\"Dates.openMeetup('" + m.id + "')\">"
       + "<div class='dt-poster' style='background:" + grad(m.hue != null ? m.hue : hue(m.title)) + "'>" + (m.imageURL ? "<img src='" + esc(m.imageURL) + "' alt=''>" : "")
-      + "<div class='k'><span>💡 Date idea · free</span>" + (l === 1 && m.spots > 1 ? "<span class='dt-hot'>1 spot left</span>" : "<span>For " + m.spots + "</span>") + "</div>"
+      + "<div class='k'><span>💡 Date idea · free</span>" + (l <= 0 ? "<span class='dt-hot' style='background:#3a3550'>Full · 🔔 waitlist</span>" : l === 1 && m.spots > 1 ? "<span class='dt-hot'>1 spot left</span>" : "<span>For " + m.spots + "</span>") + "</div>"
       + "<b>" + esc(m.title) + "</b></div>"
       + "<div class='dt-body'><div class='v'><div class='t'><div>📍 " + esc(m.venueName) + (m.city ? ", " + esc(m.city.split(",")[0]) : "") + "</div><div>" + esc(when(m.startsAt)) + "</div><div class='dt-gorow'>" + goingFaces(m, 22) + "</div></div></div>"
       + "<div class='dt-price'><b>Free</b><small>pay at the place</small>" + (m.idCheck ? "<span class='dt-idb'>🪪 21+ ID</span>" : "") + "</div></div></button>";
@@ -367,12 +382,14 @@
       + "<div><div class='lbl'>Who's going</div><div class='dt-gorow' style='flex-wrap:wrap'>" + (g.length ? g.map(function (p) { return "<button class='dt-goer' onclick=\"showProfileModal('" + esc(p.uid) + "')\">" + avatar(p, 34) + "<span>" + esc(String(p.name || "").split(" ")[0]) + "</span></button>"; }).join("") : "<span style='color:#9a8fb5;font-size:13px'>Nobody yet. Be the first, and we'll tell you when someone joins.</span>") + "</div></div>"
       + "<div class='dt-rules'>💳 <b>" + esc(ideaPay(m)) + ".</b> Nothing is paid on Whisper+Me. The exact address shows once you're going.</div>"
       + (have ? "<div class='dt-rules' style='text-align:center;color:#00e3ae'>💞 You're going!</div><div class='dt-actions'><button class='dt-btn' style='flex:1' onclick=\"Dates.ideaChat('" + m.id + "')\">💬 Chat with who's going</button><button class='dt-btn ghost' style='flex:1' onclick=\"Dates.leaveIdea('" + m.id + "',this)\">Can't go</button></div>"
+        : l <= 0 ? waitHTML(m)
         : (needYear ? birthYearField("dtMgYear") : "") + (m.idCheck && !S.anon ? "<label class='dt-check dt-idok'><input type='checkbox' id='dtMgIdOk'> <span>🪪 <b>21+, ID checked at the door.</b> I'll bring a valid photo ID.</span></label>" : "")
           + "<div id='dtMgErr' class='dt-err'></div>"
           + "<button class='dt-btn big' id='dtIdeaGo'>" + (S.anon ? "Sign up free to go" : "💞 I'm going · free") + "</button>"
           + "<p class='dt-fine'>Free, and you can back out any time with no strike. Meet at the place, and never send money to someone you're meeting.</p>")
       + "<div class='dt-actions'><button class='dt-btn ghost' style='flex:1' onclick=\"Dates.shareMeetup('" + m.id + "')\">↗ Share</button>"
       + (S.anon ? "" : "<button class='dt-btn ghost' style='flex:1' onclick=\"Dates.inviteMember('" + m.id + "')\">👋 Invite someone</button>") + "</div>");
+    waitWire(m);
     var b = $i("dtIdeaGo");
     if (b) b.onclick = function () {
       if (S.anon) { try { sessionStorage.setItem("wpmMeetup", m.id); } catch (e) {} if (window.promptGuestUpgrade) window.promptGuestUpgrade("Going on a date idea"); return; }
@@ -489,16 +506,18 @@
   }
   function ticketBox(m) {
     if (isIdea(m)) return ideaBox(m);
-    var st = m.status === "live" ? (m.guestCheckedIn ? ["ok", "Checked in"] : ["ok", "You're going"]) : m.status === "canceled" ? ["bad", "Canceled · money back as credit"] : m.status === "completed" || m.status === "paying" ? ["purple", "Done"] : ST[m.status] || ["warn", m.status];
+    var st = m.spotStatus === "refunded" && m.status !== "canceled" ? ["purple", "Money back as credit"] : m.status === "live" ? (m.guestCheckedIn ? ["ok", "Checked in"] : ["ok", "You're going"]) : m.status === "canceled" ? ["bad", "Canceled · money back as credit"] : m.status === "completed" || m.status === "paying" ? ["purple", "Done"] : ST[m.status] || ["warn", m.status];
     var maps = "https://maps.google.com/?q=" + encodeURIComponent(m.venueName + ", " + m.address + ", " + m.city);
     return "<div class='dt-box'><div class='dt-row'><h3 style='margin:0'>" + esc(m.title) + "</h3><span class='dt-pill " + st[0] + "'>" + st[1] + "</span></div>"
       + "<p style='margin:6px 0'>" + (m.official ? "Whisper+Me M&G" : "with " + esc(m.hostName)) + " · " + esc(when(m.startsAt)) + "</p>"
       + (m.address && m.status !== "canceled" ? "<div class='dt-rules'>📍 <b>" + esc(m.venueName) + "</b><br>" + esc(m.address) + ", " + esc(m.city) + (m.venuePhone ? "<br>📞 <a href='tel:" + esc(String(m.venuePhone).replace(/[^0-9+]/g, "")) + "' style='color:#00e3ae'>" + esc(m.venuePhone) + "</a>" : "") + "<br><a href='" + maps + "' target='_blank' rel='noopener' style='color:#00e3ae'>Open in Maps</a></div>" : "")
       + (m.status === "live" && m.code ? "<div style='text-align:center;margin-top:10px'><div class='dt-code'>" + esc(m.code) + "</div><div style='font-size:12px;color:#9a8fb5'>" + ((m.qty || 1) > 1 ? "<b style='color:#fff'>Good for " + m.qty + " people.</b> " : "") + "Show this code to " + esc(hostLabel(m)) + " when you get there.</div></div>" : "")
       + (m.status === "live" && m.idCheck ? "<div class='dt-rules' style='margin-top:8px'>🪪 <b>21+:</b> bring a valid photo ID" + ((m.qty || 1) > 1 ? " (everyone in your group)" : "") + ". It's checked at the door.</div>" : "")
+      + (m.movedFrom && m.status === "live" && m.code ? "<div class='dt-warn' style='margin-top:8px'>📅 <b>New date: " + esc(when(m.startsAt)) + "</b> (was " + esc(when(m.movedFrom)) + "). Your spot and code are the same."
+        + (m.canDeclineMove ? " Can't make it? You have until " + esc(when(m.changeUntil)) + " to get your money back as credit.<div class='dt-actions' style='margin-top:8px'><button class='dt-btn ghost' onclick=\"Dates.declineMove('" + m.id + "',this)\">I can't make the new date</button></div>" : "") + "</div>" : "")
       + (m.canRate ? starRow("mg", m.id, m.myStars || 0) : "")
       + "<div class='dt-actions' style='margin-top:10px'>"
-      + (m.status === "live" ? "<button class='dt-btn ghost' onclick=\"Dates.shareMeetup('" + m.id + "')\">↗ Bring a friend</button>" : "")
+      + (m.status === "live" && m.code ? "<button class='dt-btn ghost' onclick=\"Dates.shareMeetup('" + m.id + "')\">↗ Bring a friend</button>" : "")
       + (m.canReport && !m.reported ? "<button class='dt-btn ghost' onclick=\"Dates.reportMeetup('" + m.id + "')\">Report a problem</button>" : "")
       + (m.reported ? "<span class='dt-pill warn'>Reported. We're looking into it.</span>" : "")
       + "</div></div>";
@@ -538,6 +557,7 @@
       + ((m.status === "paying" || m.status === "completed") && !m.official && !(window.me || {}).stripeAccountId && window.connectStripe ? "<button class='dt-btn gold' onclick='connectStripe()'>💸 Set up payouts</button>" : "")
       + (m.status === "live" ? "<button class='dt-btn' onclick=\"Dates.shareMeetup('" + m.id + "')\">↗ Share</button>" : "")
       + (open && !m.official ? "<button class='dt-btn ghost' onclick=\"Dates.hostMeetup('" + m.id + "')\">✏️ " + (m.status === "changes" ? "Fix it" : "Edit") + "</button>" : "")
+      + (m.canMove ? "<button class='dt-btn ghost' onclick=\"Dates.moveMeetup('" + m.id + "')\">📅 Move date</button>" : "")
       + (open && !m.official ? "<button class='dt-btn ghost' onclick=\"Dates.cancelMeetup('" + m.id + "',this)\">Cancel</button>" : "")
       + "</div></div>";
   }
@@ -957,6 +977,7 @@
         + "<div class='dt-rules'>📍 You get the exact address and the place's phone number <b>right after you pay</b>, with your entry code.</div>"
         + (have ? "<div class='dt-rules' style='text-align:center'>You're going! Your code: <span class='dt-code' style='font-size:18px'>" + esc(have.code) + "</span></div>"
           : mine ? "<div class='dt-rules'>This is your M&G. Share it so people can find it.</div>"
+          : l <= 0 ? waitHTML(m)
           : (needYear ? birthYearField("dtMgYear") : "")
             + (S.anon || l < 2 ? "" : "<div class='dt-row' style='flex-wrap:nowrap'><div><div class='lbl' style='margin:0'>How many spots?</div><small style='color:#9a8fb5'>You + friends, one code for the group</small></div>"
               + "<div class='dt-qty'><button class='dt-btn ghost' id='dtQm' aria-label='One less'>−</button><b id='dtQn'>1</b><button class='dt-btn ghost' id='dtQp' aria-label='One more'>+</button></div></div>")
@@ -967,6 +988,7 @@
             + "<p class='dt-fine'>Spots aren't refundable, except: if the host cancels or doesn't show up, you get all your money back automatically. By buying you agree to the <a href='/terms.html' target='_blank' rel='noopener'>M&G terms</a>.</p>")
         + "<div class='dt-actions'><button class='dt-btn ghost' style='flex:1' onclick=\"Dates.shareMeetup('" + m.id + "')\">↗ Share</button>"
         + (S.anon ? "" : "<button class='dt-btn ghost' style='flex:1' onclick=\"Dates.inviteMember('" + m.id + "')\">👋 Invite a member</button>") + "</div>");
+      waitWire(m);
       var b = $i("dtMgBuy"), qty = 1, maxQ = Math.min(MAX_QTY, l);
       var setQ = function (n) { qty = Math.max(1, Math.min(maxQ, n)); $i("dtQn").textContent = qty; b.textContent = qty > 1 ? "Get " + qty + " spots · " + money(m.price * qty) : "Get my spot · " + money(m.price); };
       if ($i("dtQp")) { $i("dtQp").onclick = function () { setQ(qty + 1); }; $i("dtQm").onclick = function () { setQ(qty - 1); }; }
@@ -1190,6 +1212,27 @@
       };
       $i("mgCi").onclick = go;
       $i("mgCode").onkeydown = function (e) { if (e.key === "Enter") go(); };
+    },
+    /* 📅 Host: move a live M&G to a new day or time (once). Buyers are told and can take credit back. */
+    moveMeetup: function (id) {
+      var m = S.mine.filter(function (x) { return x.id === id && x.host; })[0]; if (!m) return;
+      var min = new Date(Date.now() + 25 * 3600000); min = new Date(min.getTime() - min.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+      openModal("<h3>📅 Move “" + esc(m.title) + "”</h3>"
+        + "<ul class='dt-rules' style='padding-left:28px'><li>You can move it <b>once</b>, to a time at least 24 hours from now.</li>"
+        + "<li>" + (m.sold ? "All " + m.sold + " buyer" + (m.sold === 1 ? "" : "s") + " get a notice and an email with the new date. Their spots and codes stay the same." : "Nobody has bought yet, so nothing else changes.") + "</li>"
+        + (m.sold ? "<li>Anyone who can't make the new date can take their money back for 3 days. Those spots go back on sale.</li>" : "") + "</ul>"
+        + "<div><div class='lbl'>Now</div><div style='font-size:14px'>" + esc(when(m.startsAt)) + "</div></div>"
+        + "<div><div class='lbl'>New day and time</div><input class='dt-in' id='mvWhen' type='datetime-local' min='" + min + "'></div>"
+        + "<div id='mvErr' class='dt-err'></div>"
+        + "<div class='dt-actions'><button class='dt-btn ghost' style='flex:1' onclick='closeProfileModal()'>Keep it</button><button class='dt-btn' style='flex:1' id='mvGo'>Move it</button></div>");
+      $i("mvGo").onclick = function () {
+        var v = $i("mvWhen").value; if (!v) { $i("mvErr").textContent = "Pick the new day and time."; return; }
+        busy(this, fn("rescheduleMeetup", { meetupId: id, startsAt: new Date(v).getTime() })).then(function (r) { closeModal(); toast(r.message); loadMine(); }, function (e) { $i("mvErr").textContent = e.message; });
+      };
+    },
+    declineMove: function (id, btn) {
+      if (!confirm("Give up your spot and get your money back as Whisper+Me credit? You can send the credit to your card after.")) return;
+      busy(btn, fn("declineMove", { meetupId: id })).then(function (r) { toast(r.message); loadMine(); }, function (e) { toast(e.message, "error"); });
     },
     cancelMeetup: function (id, btn) {
       busy(btn, fn("cancelMeetup", { meetupId: id, preview: true })).then(function (r) {

@@ -223,6 +223,10 @@
         "function": "siteInfo"
       },
       {
+        "source": "/email-prefs",
+        "function": "emailPrefs"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

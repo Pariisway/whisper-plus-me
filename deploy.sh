@@ -29,8 +29,8 @@ if [ "$GHONLY" = 0 ]; then
   firebase deploy --only database,firestore,storage,hosting,functions:nights
 
   if [ "$MONEY" = 1 ]; then
-    echo "▶ Updating the main app's money functions (calls, member rooms, coin purchases)…"
-    firebase deploy --only functions:default:startCall,functions:default:completeCallPayout,functions:default:stripeWebhook,functions:default:joinMemberRoom,functions:default:processMemberRoomEarnings
+    echo "▶ Updating the main app's money functions (calls, member rooms, coin purchases, account deletion)…"
+    firebase deploy --only functions:default:startCall,functions:default:completeCallPayout,functions:default:stripeWebhook,functions:default:joinMemberRoom,functions:default:processMemberRoomEarnings,functions:default:deleteAccount,functions:default:createCoinCheckout
   fi
 
   if [ "$AGORA" = 1 ]; then

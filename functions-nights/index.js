@@ -128,7 +128,7 @@ function calendarLinks({ title, start, hours = 2, place, details }) {
   return { google, ics };
 }
 /** One simple branded layout for every email. rows: [[label, value]]; code: big code box; button: [label, url]. */
-function emailHTML({ heading, intro, rows = [], code = "", button = null, after = "", cal = null }) {
+function emailHTML({ heading, intro, rows = [], code = "", button = null, after = "", cal = null, unsub = "" }) {
   const r = rows.filter(x => x && x[1] !== "" && x[1] != null).map(([k, v]) => `<tr><td style="padding:6px 0;color:#6b6585;font-size:14px;width:120px;vertical-align:top">${escHtml(k)}</td><td style="padding:6px 0;color:#1d1a2b;font-size:15px;font-weight:600">${escHtml(v)}</td></tr>`).join("");
   return `<!doctype html><html><body style="margin:0;background:#f3f1fa;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f1fa;padding:24px 12px"><tr><td align="center">
@@ -143,7 +143,7 @@ ${button ? `<a href="${escHtml(button[1])}" style="display:inline-block;backgrou
 ${cal ? `<p style="margin:14px 0 0;font-size:13px"><a href="${escHtml(cal.google)}" style="color:#7b2ff7">Add to Google Calendar</a> · the attached invite works with Apple and Outlook calendars</p>` : ""}
 ${after ? `<p style="margin:16px 0 0;font-size:13.5px;line-height:1.5;color:#6b6585">${escHtml(after)}</p>` : ""}
 </td></tr>
-<tr><td style="padding:16px 24px;background:#faf9fd;color:#8f89a8;font-size:12px;line-height:1.5">You're getting this because of something you did on <a href="${APP_URL}" style="color:#7b2ff7">whisperplusme.com</a>. Questions? Just reply to this email.</td></tr>
+<tr><td style="padding:16px 24px;background:#faf9fd;color:#8f89a8;font-size:12px;line-height:1.5">You're getting this because of something you did on <a href="${APP_URL}" style="color:#7b2ff7">whisperplusme.com</a>. Questions? Just reply to this email.${unsub ? ` <a href="${escHtml(unsub)}" style="color:#8f89a8">Stop reminder and update emails</a> (you'll still get receipts and tickets).` : ""}</td></tr>
 </table></td></tr></table></body></html>`;
 }
 function emailText({ heading, intro, rows = [], code = "", button = null, after = "" }) {
@@ -160,10 +160,35 @@ async function contactEmail() {
   _contact = { at: Date.now(), email: EMAIL_RE.test(e) ? e : MAIL_FROM };
   return _contact.email;
 }
-async function sendEmail(to, subject, parts, { ics = "" } = {}) {
+/* ── Email housekeeping ──
+   optional: true marks reminders and "FYI" emails (not receipts, tickets, refunds or payouts).
+   - Members can turn optional emails off (Profile, or the one-tap link at the bottom of those emails).
+   - Gmail only sends about 500 emails a day. Past MAIL_SOFT, optional emails are skipped so receipts
+     and tickets still go out, and the admin gets one alert that day. */
+const MAIL_SOFT = 400;
+const mailKeyOf = async () => {
+  const ref = rtdb.ref("config/mailKey"); let k = (await ref.once("value")).val();
+  if (!k) { k = require("crypto").randomBytes(24).toString("hex"); await ref.set(k); }
+  return k;
+};
+async function unsubToken(uid) { return require("crypto").createHmac("sha256", await mailKeyOf()).update(String(uid)).digest("hex").slice(0, 32); }
+async function mailCount() {
+  const day = dayKey(new Date());
+  const r = await rtdb.ref(`limits/mail/${day}/n`).transaction(v => (Number(v) || 0) + 1);
+  return Number(r.snapshot && r.snapshot.val()) || 0;
+}
+async function sendEmail(to, subject, parts, { ics = "", optional = false } = {}) {
   try {
-    const addr = EMAIL_RE.test(String(to)) ? String(to) : await emailOf(to);
+    const isUid = !EMAIL_RE.test(String(to));
+    const addr = isUid ? await emailOf(to) : String(to);
     if (!addr) return false;
+    if (optional && isUid) {
+      if ((await rtdb.ref(`userPrivate/${to}/emailOff`).once("value")).val() === true) return false;
+      parts = { ...parts, unsub: `${APP_URL}/email-prefs?u=${encodeURIComponent(to)}&t=${await unsubToken(to)}` };
+    }
+    const n = await mailCount();
+    if (n === MAIL_SOFT) for (const a of ADMIN_UIDS) await push(a, "Email limit is close", `${n} emails sent today. Gmail stops at about 500, so reminder emails are paused until tomorrow. Receipts and tickets still go out.`, `${APP_URL}/admin.html`);
+    if (optional && n > MAIL_SOFT) return false;
     const msg = { from: `"Whisper+Me" <${MAIL_FROM}>`, to: addr, replyTo: await contactEmail(), subject, html: emailHTML(parts), text: emailText(parts) };
     if (ics) msg.icalEvent = { method: "PUBLISH", filename: "whisperplusme.ics", content: ics };
     if (process.env.DATES_TEST) { sentMail.push({ to: addr, subject, parts }); return true; }
@@ -1181,6 +1206,7 @@ exports.nightsAdminAction = onCall(withStripe, async req => {
       await push(x.hostUid, "Your M&G wasn't approved", str(reason, 140) || "Contact support for details.");
       await log(req, action, id, reason); return { message: "Rejected. The host's deposit stays on their account." };
     }
+    case "moveMeetup": { const r = await moveMeetup(id, data?.startsAt, true, req.auth.uid); await log(req, action, id, String(data?.startsAt)); return r; }
     case "payMeetupHost": {
       const x = (await mtRef(id).get()).data();
       if (!x || !["review", "live", "paying"].includes(x.status)) fail("failed-precondition", "Nothing to pay.");
@@ -1586,6 +1612,20 @@ async function memberFor(uid, birthYear) {
   await db.doc(`members/${uid}`).set(doc, { merge: true });
   return { id: uid, ...doc };
 }
+/* ⏸ Admin → Landing → "Pause purchases": stops new purchases and new postings site-wide (landing/pause).
+   Everything already bought keeps working. */
+let _pause = { at: 0, v: null };
+async function notPaused() {
+  if (Date.now() - _pause.at > 20000 || process.env.DATES_TEST) { let v = null; try { v = (await rtdb.ref("landing/pause").once("value")).val(); } catch (e) { /* open */ } _pause = { at: Date.now(), v }; }
+  if (_pause.v && _pause.v.on) fail("unavailable", str(_pause.v.msg, 200) || "We're doing a quick update, so buying and posting are paused for a few minutes. Nothing you already have is affected. Try again shortly.");
+}
+/* Hosts and partners handle other people's money: their email has to be a real one they can open.
+   (Google and Facebook sign-ins are already verified.) */
+function needVerifiedEmail(req, what) {
+  const t = req.auth && req.auth.token || {};
+  if (t.email_verified === false && (!t.firebase || t.firebase.sign_in_provider === "password"))
+    fail("failed-precondition", `Verify your email first, so we can reach you about ${what}. Open 👤 Profile and tap “Verify my email”.`);
+}
 function notSuspended(m) {
   if (m.suspendedUntil && ms(m.suspendedUntil) > Date.now()) fail("failed-precondition", `You're on a break from M&G until ${fmtWhen(m.suspendedUntil)}.`);
 }
@@ -1593,6 +1633,7 @@ function notSuspended(m) {
 /** Host submits a new M&G. Returns a checkout link for the host deposit. */
 exports.createMeetup = onCall(withStripe, async req => {
   const uid = requireUser(req);
+  await notPaused(); needVerifiedEmail(req, "your M&G and your payouts");
   const s = await getSettings();
   notSuspended(await memberFor(uid, req.data?.birthYear));
   const c = cleanMeetup(req.data || {});
@@ -1705,6 +1746,7 @@ function cleanSrc(v) {
 /** One checkout for you (and up to 5 friends). One code covers the whole group. */
 exports.buyMeetupSpot = onCall(withStripe, async req => {
   const uid = requireUser(req);
+  await notPaused();
   notSuspended(await memberFor(uid, req.data?.birthYear));
   const id = str(req.data?.meetupId, 64);
   const qty = Math.min(MAX_SPOTS_PER_ORDER, Math.max(1, Math.round(Number(req.data?.qty) || 1)));
@@ -1760,7 +1802,7 @@ async function afterMeetupSale(id, x, uid, qty) {
     intro: `${spot.name || "A member"} is coming to ${x.title}.`,
     rows: [["Sold", `${(x.sold || 0) + qty} of ${x.spots}`], ["When", fmtWhen(x.startsAt)]],
     button: ["Share it to sell more", `${APP_URL}/m/${id}`],
-    after: "On the day, check guests in by their codes (My tickets → your M&G → Check in). You're paid a few days after the M&G." });
+    after: "On the day, check guests in by their codes (My tickets → your M&G → Check in). You're paid a few days after the M&G." }, { optional: true });
 }
 /** The ticket email: right after buying ("receipt") and the day before ("reminder"). */
 async function emailMeetupTicket(id, x, p, spot, kind) {
@@ -1779,7 +1821,7 @@ async function emailMeetupTicket(id, x, p, spot, kind) {
       ...(remind ? [] : [["Paid", fmtMoney(paid) + (card < paid ? ` (${fmtMoney(paid - card)} from your credit)` : "")]])],
     button: ["Open My tickets", `${APP_URL}/?dates=1`],
     cal,
-    after: remind ? "Can't make it? Spots aren't refunded, but you can give yours to a friend: they just show your code." : "Spots aren't refunded, but if the M&G is canceled you get the full amount back as Whisper+Me credit right away." }, { ics: cal.ics });
+    after: remind ? "Can't make it? Spots aren't refunded, but you can give yours to a friend: they just show your code." : "Spots aren't refunded, but if the M&G is canceled you get the full amount back as Whisper+Me credit right away." }, { ics: cal.ics, optional: remind });
 }
 
 /** Send leftover Whisper+Me credit back to the card(s) it came from. */
@@ -2003,6 +2045,115 @@ exports.fetchPicture = onCall({ memory: "512MiB", timeoutSeconds: 30 }, async re
   return { type, name, data: buf.toString("base64") };
 });
 
+/* ───────── 🔔 Waitlist + 📅 moving an M&G to a new date ─────────
+   Waitlist: when an M&G is sold out, members can ask to be told if a spot opens (someone's
+   checkout runs out, a buyer takes credit back after a date change, the host adds spots).
+   Everyone waiting is told at the same time; first to buy gets it.
+   Moving: a host (or the admin) can move a live M&G to a new day or time ONCE. Every buyer is
+   told, and for a few days anyone who can't make the new date gets their money back as credit. */
+const WAIT_MAX = 200;
+exports.joinWaitlist = onCall(async req => {
+  const uid = requireUser(req);
+  const id = str(req.data?.meetupId, 64), ref = mtRef(id), w = ref.collection("waitlist").doc(uid);
+  if (req.data?.check) return { on: (await w.get()).exists };
+  if (req.data?.off) {
+    if ((await w.get()).exists) { await w.delete(); await ref.update({ waiting: FieldValue.increment(-1) }); }
+    return { on: false, message: "You're off the waitlist." };
+  }
+  const x = (await ref.get()).data();
+  if (!x || x.status !== "live" || x.hidden) fail("failed-precondition", "This one isn't open anymore.");
+  if (ms(x.startsAt) < Date.now() + 2 * 3600000) fail("failed-precondition", "This one starts too soon for a waitlist.");
+  if (x.spots - (x.sold || 0) - (x.held || 0) > 0) fail("failed-precondition", "Good news: there's a spot open right now. Grab it!");
+  if ((x.buyerUids || []).includes(uid)) fail("already-exists", "You already have a spot.");
+  if ((x.waiting || 0) >= WAIT_MAX) fail("resource-exhausted", "The waitlist is full.");
+  if (!(await w.get()).exists) { await w.set({ uid, at: nowTs() }); await ref.update({ waiting: FieldValue.increment(1) }); }
+  return { on: true, message: "You're on the waitlist. We'll tell you the moment a spot opens." };
+});
+/** Run by the every-10-minutes job: if a sold-out M&G has a spot again, everyone waiting hears about it (once per opening). */
+async function tellWaitlist(id, now) {
+  const ref = mtRef(id), x = (await ref.get()).data();
+  if (!x || x.status !== "live" || !(x.waiting > 0)) return 0;
+  const left = x.spots - (x.sold || 0) - (x.held || 0);
+  if (left <= 0) { if (x.waitTold) await ref.update({ waitTold: FieldValue.delete() }); return 0; }   // sold out again: ready for the next opening
+  if (x.waitTold || ms(x.startsAt) < now + 2 * 3600000) return 0;
+  await ref.update({ waitTold: now });
+  const list = await ref.collection("waitlist").limit(WAIT_MAX).get();
+  const link = x.idea ? `${APP_URL}/?dates=cm&meetup=${id}` : `${APP_URL}/?dates=1&meetup=${id}`;
+  let n = 0;
+  for (const d of list.docs) {
+    const uid = d.id;
+    if ((x.buyerUids || []).includes(uid)) { await d.ref.delete(); await ref.update({ waiting: FieldValue.increment(-1) }); continue; }
+    await push(uid, `A spot opened: ${x.title} 🔔`, `${left} spot${left === 1 ? "" : "s"} just opened for ${fmtWhen(x.startsAt)}. First come, first served.`, link);
+    await sendEmail(uid, `A spot opened: ${x.title}`, { heading: "A spot just opened 🔔", intro: `You asked us to tell you. ${left} spot${left === 1 ? " is" : "s are"} open right now for ${x.title}.`,
+      rows: [["When", fmtWhen(x.startsAt) + " (Central)"], ["Where", [x.venueName, x.city].filter(Boolean).join(", ")], ["Price", x.idea ? "Free to join, pay at the place" : fmtMoney(x.price) + " a spot"]],
+      button: [x.idea ? "I'm going" : "Get my spot", link], after: "Everyone on the waitlist got this at the same time, so it's first come, first served." }, { optional: true });
+    n++;
+  }
+  return n;
+}
+
+const MOVE_MIN_AHEAD_H = 24, MOVE_CHANGE_H = 72;
+/** Shared by the host's button and the admin's: moves the date once and tells every buyer. */
+async function moveMeetup(id, startsAt, byAdmin, byUid) {
+  const ref = mtRef(id);
+  startsAt = Math.round(Number(startsAt));
+  let x, oldStart;
+  await db.runTransaction(async tx => {
+    x = (await tx.get(ref)).data();
+    if (!x || x.status !== "live") fail("failed-precondition", "Only a live M&G can be moved.");
+    if (!byAdmin && (x.hostUid !== byUid || x.official)) fail("permission-denied", "Only the host can move it.");
+    if (x.idea) fail("failed-precondition", "Date ideas can't be moved. Cancel it and post a new one.");
+    if (x.movedFrom) fail("failed-precondition", "This M&G was already moved once. If it has to change again, cancel it (everyone is refunded) and post a new one.");
+    oldStart = ms(x.startsAt);
+    if (oldStart < Date.now() + 3600000) fail("failed-precondition", "It's too close to the start to move it.");
+    if (!(startsAt > Date.now() + MOVE_MIN_AHEAD_H * 3600000)) fail("invalid-argument", `The new date has to be at least ${MOVE_MIN_AHEAD_H} hours from now, so people can plan.`);
+    if (startsAt > Date.now() + 120 * 86400000) fail("invalid-argument", "Pick a date within the next 4 months.");
+    if (Math.abs(startsAt - oldStart) < 15 * 60000) fail("invalid-argument", "That's the same time it already is.");
+    const changeUntil = Math.min(startsAt - 2 * 3600000, Date.now() + MOVE_CHANGE_H * 3600000);
+    tx.update(ref, { startsAt: fromMs(startsAt), movedFrom: fromMs(oldStart), movedAt: nowTs(), changeUntil: fromMs(changeUntil), remindedAt: FieldValue.delete() });
+    x = { ...x, changeUntil };
+  });
+  const p = (await mtPrivate(id).get()).data() || {};
+  const spots = await ref.collection("spots").where("status", "==", "paid").limit(500).get();
+  for (const sp of spots.docs) {
+    const z = sp.data();
+    const place = [p.venue?.name || x.venueName, p.venue?.address, p.venue?.city || x.city].filter(Boolean).join(", ");
+    const cal = calendarLinks({ title: `M&G: ${x.title}`, start: startsAt, place, details: `Your code: ${z.code}. ${APP_URL}` });
+    await push(z.uid, `New date: ${x.title} 📅`, `Moved to ${fmtWhen(startsAt)}. Your spot and code are the same. Can't make it? Get your money back as credit until ${fmtWhen(x.changeUntil)}.`, `${APP_URL}/?dates=1`);
+    await sendEmail(z.uid, `New date: ${x.title}`, { heading: "The date changed 📅", intro: `${x.title} was moved. Your spot and your code stay the same.`, code: z.code,
+      rows: [["New date", fmtWhen(startsAt) + " (Central)"], ["Was", fmtWhen(oldStart)], ["Where", place]],
+      button: ["Open My tickets", `${APP_URL}/?dates=1`], cal,
+      after: `Can't make the new date? Open My tickets and tap “I can't make the new date” by ${fmtWhen(x.changeUntil)} to get the full amount back as Whisper+Me credit (you can send it to your card).` }, { ics: cal.ics });
+  }
+  if (!x.official && byAdmin) await push(x.hostUid, `Your M&G was moved`, `${x.title} is now ${fmtWhen(startsAt)}. Every buyer was told.`, `${APP_URL}/?dates=1`);
+  await db.collection("ledger").add({ kind: "meetupMoved", meetupId: id, from: oldStart, to: startsAt, by: byUid, buyers: spots.size, at: nowTs() });
+  return { message: `Moved to ${fmtWhen(startsAt)}. ${spots.size ? `${spots.size} buyer${spots.size === 1 ? " was" : "s were"} told, and can take their money back until ${fmtWhen(x.changeUntil)} if they can't make it.` : "Nobody had bought yet."}` };
+}
+exports.rescheduleMeetup = onCall(async req => {
+  const uid = requireUser(req);
+  return moveMeetup(str(req.data?.meetupId, 64), req.data?.startsAt, false, uid);
+});
+/** A buyer who can't make the new date takes their money back as credit (only for a few days after a move). */
+exports.declineMove = onCall(async req => {
+  const uid = requireUser(req);
+  const id = str(req.data?.meetupId, 64), ref = mtRef(id), spotRef = ref.collection("spots").doc(uid);
+  let x, sp;
+  await db.runTransaction(async tx => {
+    x = (await tx.get(ref)).data(); sp = (await tx.get(spotRef)).data();
+    if (!x || x.status !== "live" || !x.changeUntil) fail("failed-precondition", "This M&G hasn't been moved.");
+    if (Date.now() > ms(x.changeUntil)) fail("failed-precondition", "The time to take your money back for the date change has passed.");
+    if (!sp || sp.status !== "paid") fail("failed-precondition", "You don't have a spot on this one.");
+    if (sp.checkedInAt) fail("failed-precondition", "You're already checked in.");
+    tx.update(spotRef, { status: "refunding" });
+    tx.update(ref, { sold: FieldValue.increment(-(sp.qty || 1)), buyerUids: FieldValue.arrayRemove(uid) });
+  });
+  const back = await addCredit(uid, [{ pi: sp.paymentIntent, amount: sp.cardPaid ?? sp.paid ?? x.price }, ...(sp.creditFrom || [])], `Date changed: ${x.title}`);
+  await spotRef.update({ status: "refunded", refundedAs: "credit", refundAmount: back, refundWhy: "date changed" });
+  if (sp.code) await db.doc(`meetupCodes/${sp.code}`).delete().catch(() => {});
+  if (!x.official) await push(x.hostUid, "A buyer can't make the new date", `${x.title}: ${sp.qty || 1} spot${(sp.qty || 1) === 1 ? "" : "s"} went back on sale.`, `${APP_URL}/?dates=1`);
+  return { message: `${fmtMoney(back)} is back in your Whisper+Me credit. Use it on anything, or send it to your card from My tickets.` };
+});
+
 /* ───────── 💡 Date ideas ─────────
    Free, admin-made "let's go do this" dates (dinner for 2, bowling for 4…).
    Members tap "I'm going" (free), see who else is going, chat, and each pays the
@@ -2115,7 +2266,7 @@ async function emailIdea(id, x, p, spot, kind) {
       ["Cost", (x.est ? `About ${fmtMoney(x.est)} each, ` : "") + (x.pays === "split" ? "split the bill at the place" : "each pays their own at the place")],
       ["ID", x.idCheck ? "21+: bring a valid photo ID" : ""]],
     button: ["Open it (chat + who's going)", `${APP_URL}/?dates=cm`], cal,
-    after: "Can't make it? Tap “Can't go” any time. It's free and never counts against you, and it opens the spot for someone else. Meet at the place, and never send money to someone you're meeting." }, { ics: cal.ics });
+    after: "Can't make it? Tap “Can't go” any time. It's free and never counts against you, and it opens the spot for someone else. Meet at the place, and never send money to someone you're meeting." }, { ics: cal.ics, optional: remind });
 }
 
 exports.inviteToMeetup = onCall(async req => {
@@ -2222,6 +2373,9 @@ exports.myMeetups = onCall(async req => {
         imageURL: x.imageURL || "", hue: x.hue, changesNote: asHost ? (x.changesNote || "") : "",
         code: !asHost && paid ? spot.code : "", qty: spot.qty || 1, spotStatus: spot.status || "", guestCheckedIn: !!spot.checkedInAt, reported: !!spot.reported,
         canReport: !asHost && paid && ["live", "paying", "review"].includes(x.status) && Date.now() > ms(x.startsAt) - 2 * 3600000,
+        movedFrom: x.movedFrom ? ms(x.movedFrom) : 0, changeUntil: x.changeUntil ? ms(x.changeUntil) : 0,
+        canDeclineMove: !asHost && paid && x.status === "live" && !!x.changeUntil && Date.now() < ms(x.changeUntil) && !spot.checkedInAt,
+        canMove: asHost && x.status === "live" && !x.movedFrom && !x.idea && ms(x.startsAt) > Date.now() + 3600000,
         address: (asHost || paid) ? (p.venue?.address || "") : "", venuePhone: (asHost || paid) ? (p.venue?.phone || "") : "",
         venue: asHost ? (p.venue || null) : null, contact: asHost ? (p.contact || null) : null,
         hostDeposit: asHost ? (x.hostDeposit || null) : null, guests: asHost ? guests : null,
@@ -2258,13 +2412,22 @@ async function meetupHousekeeping(s) {
       }
     }
     if (ms(x.startsAt) < now - SETTLE_AFTER_HOURS * 3600000) await settleMeetup(d.id, s);
-    else await meetupReminders(d, x, now);
+    else { await meetupReminders(d, x, now); await tellWaitlist(d.id, now); }
   }
   // Hosts are paid a few days after their M&G, if nobody reported a problem.
   const paying = await db.collection("meetups").where("status", "==", "paying").limit(300).get();
   for (const d of paying.docs) {
     const x = d.data();
     if (ms(x.payoutAt) <= now && !x.reported) await payHost(d.id, x, s);
+  }
+  // A payout that started but never finished (a crash mid-way) is never retried by itself, because part of
+  // it may already be paid. The admin gets one alert to check it.
+  const stuck = await db.collection("meetups").where("status", "==", "settling").limit(50).get();
+  for (const d of stuck.docs) {
+    const x = d.data();
+    if (x.settleAlerted || ms(x.settlingAt) > now - 30 * 60000) continue;
+    await d.ref.update({ settleAlerted: true });
+    for (const a of ADMIN_UIDS) await push(a, "A host payout needs a look", `${x.title}: the payout started but didn't finish. Check the host's earnings before paying again.`, `${APP_URL}/admin.html`);
   }
   // Drafts whose deposit was never paid disappear after a day.
   const drafts = await db.collection("meetups").where("status", "==", "draft").limit(200).get();
@@ -2303,7 +2466,7 @@ async function meetupReminders(d, x, now) {
       rows: [["When", fmtWhen(start) + " (Central)"], ["Where", [p.venue?.name, p.venue?.address].filter(Boolean).join(", ")], ["Guests", `${x.sold} of ${x.spots} spots sold`],
         ["1", "Call the venue today to confirm your table or booking"], ["2", "Get there 10 minutes early"], ["3", "Check each guest in by their code: My tickets → your M&G → Check in"]],
       button: ["Open my M&G", `${APP_URL}/?dates=1`],
-      after: "You're paid a few days after, once guests are checked in. If something comes up, cancel as early as you can: a late cancel or no-show keeps part of your deposit." });
+      after: "You're paid a few days after, once guests are checked in. If something comes up, cancel as early as you can: a late cancel or no-show keeps part of your deposit." }, { optional: true });
   }
   return n;
 }
@@ -2442,6 +2605,7 @@ async function postConnect(req, id, data, owner) {
 /** Buy a package. Credit is used first; if it covers everything there's no checkout (no card fee). */
 exports.buyConnect = onCall(withStripe, async req => {
   const uid = requireUser(req);
+  await notPaused();
   notSuspended(await memberFor(uid, req.data?.birthYear));
   const dealId = str(req.data?.dealId, 64);
   const me = await whisperProfile(uid);
@@ -2909,6 +3073,7 @@ const round3 = x => (Number.isFinite(x) ? Math.round(x * 1000) / 1000 : null);
 /** Make a plan. Pays the listing fee with credit if there's enough, otherwise returns a checkout link. */
 exports.createPlan = onCall(async req => {
   const uid = requireUser(req);
+  await notPaused();
   const s = await getSettings();
   notSuspended(await memberFor(uid, req.data?.birthYear));
   const c = cleanPlan(req.data || {});
@@ -3812,6 +3977,17 @@ exports.siteInfo = onRequest({ cors: false, memory: "256MiB" }, async (req, res)
   res.set("Cache-Control", "public, max-age=300, s-maxage=300");
   res.status(200).send(JSON.stringify({ email: await contactEmail() }));
 });
+/* /email-prefs?u=UID&t=TOKEN[&on=1]: the one-tap link at the bottom of reminder emails. */
+exports.emailPrefs = onRequest({ cors: false, memory: "256MiB" }, async (req, res) => {
+  const uid = str(req.query.u, 128), on = req.query.on === "1";
+  res.set("Cache-Control", "no-store").set("Content-Type", "text/html; charset=utf-8");
+  const page = (h, p, link) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Email settings · Whisper+Me</title></head><body style="margin:0;background:#0b0a14;color:#ece8ff;font-family:system-ui,-apple-system,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:20px"><div style="max-width:420px;background:#161325;border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:24px;text-align:center"><h1 style="font-size:21px;margin:0 0 10px">${h}</h1><p style="color:#b3abcf;line-height:1.5;margin:0 0 16px">${p}</p>${link}<p style="margin:16px 0 0"><a href="${APP_URL}" style="color:#7b2ff7">Back to Whisper+Me</a></p></div></body></html>`;
+  if (!uid || str(req.query.t, 64) !== await unsubToken(uid)) return res.status(400).send(page("That link didn't work", "Open Whisper+Me → 👤 Profile to change your email settings.", ""));
+  await rtdb.ref(`userPrivate/${uid}/emailOff`).set(on ? null : true);
+  const flip = `${APP_URL}/email-prefs?u=${encodeURIComponent(uid)}&t=${await unsubToken(uid)}${on ? "" : "&on=1"}`;
+  res.status(200).send(on ? page("Reminder emails are back on ✅", "You'll get reminders and updates again.", `<a href="${flip}" style="color:#b3abcf">Turn them off</a>`)
+    : page("Done. No more reminder emails ✅", "You'll still get the important ones: receipts, tickets, refunds and payouts.", `<a href="${flip}" style="color:#b3abcf">Changed your mind? Turn them back on</a>`));
+});
 exports.dealPage = onRequest({ cors: false }, async (req, res) => {
   const parts = req.path.split("/").filter(Boolean);
   const id = parts[0] === "c" ? (parts[1] || "") : ""; // /c/{id} = one package, /connect = all of them
@@ -3895,7 +4071,7 @@ exports.chatPrune = onSchedule({ schedule: "every 30 minutes", memory: "512MiB" 
 /* 🤝 PARTNER PROGRAM (partners.js): links, sign-ups, commissions, the partner board. */
 const partners = require("./partners")({ db, rtdb, admin, FieldValue, nowTs, ms, fromMs, push, sendEmail, logger, fail, str, APP_URL, getSettings, whisperProfile, ADMIN_UIDS, share });
 exports.partnerGo = onRequest({ cors: false }, (req, res) => partners.go(req, res));
-exports.partnerApply = onCall(async req => { const uid = requireUser(req); return partners.apply(uid, req.data || {}, req.auth.token.email || ""); });
+exports.partnerApply = onCall(async req => { const uid = requireUser(req); needVerifiedEmail(req, "your partner earnings"); return partners.apply(uid, req.data || {}, req.auth.token.email || ""); });
 exports.partnerMe = onCall(async req => { const uid = requireUser(req); return partners.me(uid); });
 /* 💞 PARTNERS' OWN DATE PACKAGES + MATCHMAKING
    An active partner can post Connect Me packages (reviewed by the admin first) and

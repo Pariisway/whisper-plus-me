@@ -541,6 +541,12 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
       <div><video id="hiw-pv" controls playsinline preload="metadata" style="width:100%;max-height:520px;border-radius:14px;background:#000"></video></div>
     </div>
   </section>
+  <section class="card" id="sec-pause">
+    <h2>⏸ Pause purchases</h2>
+    <p class="help">An emergency switch. When it's on, nobody can buy coins, M&amp;G spots, Connect Me or Plan a Date, and nobody can post a new M&amp;G. Everything else keeps working: chat, rooms, calls, check-ins, refunds and payouts. A banner with your message shows at the top of the site. Use it if Stripe has a problem, something looks wrong with money, or you need a break.</p>
+    <label class="field"><span>Message people see</span><input class="in" id="pz-msg" maxlength="160" placeholder="Purchases are paused for a short time. Please check back soon."></label>
+    <div class="row"><button class="btn red" id="pz-btn" onclick="pzToggle()">⏸ Pause purchases</button><span class="help" id="pz-status" style="margin:0"></span></div>
+  </section>
   <section class="card" id="sec-contact">
     <h2>📮 Contact email</h2>
     <p class="help">The email people see on every page: the About page, the footers, Help, Privacy, Terms, the partner page and the venue pages. Replies to emails the site sends go here too. Changes show up everywhere within about 5 minutes. (Emails are still <b>sent</b> from whisper.me.support@gmail.com, because that's the account with the app password.)</p>
@@ -918,7 +924,7 @@ function start() {
 /* ───────── navigation ───────── */
 const LOADERS = {
   money: () => { loadSales(); loadDisputes(); loadMoney(); loadCoinPurchases(); loadCallLedger(); loadRoomLedger(); loadStripeAccounts(); loadAutoPay(); },
-  landing: () => { ldLoad(false); hiwLoad(); ctLoad(); },
+  landing: () => { ldLoad(false); hiwLoad(); ctLoad(); pzLoad(); },
   announce: () => loadBanners(),
   rooms: () => loadPresets(),
   safety: () => { loadReports(); loadSafety(); loadMicLog(); loadOrg(); },
@@ -1328,6 +1334,22 @@ async function loadStripeAccounts() {
 /* ───────── landing page manager ───────── */
 const LD_DEFAULT = { mode: "color", playlist: {}, image: "", color: "#0b0b16", color2: "#3a1170", gradient: true, shuffle: false, imageSeconds: 8, overlay: 0.45, showSound: true, headline: "Talk. Go live. Meet up.", subline: "Voice rooms, live mics, 1-on-1 calls and real date nights. Your people are already here." };
 const ld = { cfg: Object.assign({}, LD_DEFAULT, { playlist: {} }), dirty: false, loadedOnce: false, pv: "phone", pvIdx: 0 };
+/* ───────── ⏸ pause purchases (landing/pause), checked by the server before every purchase ───────── */
+let PZ_ON = false;
+async function pzLoad() {
+  const v = (await db.ref("landing/pause").once("value")).val() || {};
+  PZ_ON = v.on === true;
+  if (v.msg) $("pz-msg").value = v.msg;
+  $("pz-btn").textContent = PZ_ON ? "▶ Turn purchases back on" : "⏸ Pause purchases";
+  $("pz-btn").className = PZ_ON ? "btn teal" : "btn red";
+  $("pz-status").innerHTML = PZ_ON ? "<b style='color:#ff7a8a'>PAUSED</b> since " + when(v.updatedAt) : "Purchases are on.";
+}
+async function pzToggle() {
+  const on = !PZ_ON, msg = $("pz-msg").value.trim().slice(0, 160);
+  if (on && !await dialog({ title: "Pause all purchases?", body: "Nobody will be able to buy or post until you turn it back on. Refunds, payouts and check-ins keep working.", ok: "Pause", danger: true })) return;
+  await safely(() => db.ref("landing/pause").set({ on, msg, updatedAt: Date.now() }), on ? "Purchases are paused." : "Purchases are back on.");
+  logAct(on ? "Paused purchases" : "Resumed purchases"); pzLoad();
+}
 /* ───────── 📮 contact email (landing/contact), shown on every page by /contact.js ───────── */
 const CT_DEFAULT = "whisper.me.support@gmail.com";
 async function ctLoad() {
@@ -1379,7 +1401,7 @@ async function ldLoad(force) {
   if (force && ld.dirty && !await dialog({ title: "Undo your changes?", body: "Goes back to what's live right now.", ok: "Undo" })) return;
   try {
     const v = (await db.ref("landing").once("value")).val() || {};
-    delete v.stats; delete v.updatedAt; delete v.howItWorks; delete v.contact; // saved by their own cards
+    delete v.stats; delete v.updatedAt; delete v.howItWorks; delete v.contact; delete v.pause; // saved by their own cards
     ld.cfg = Object.assign({}, LD_DEFAULT, v); ld.cfg.playlist = JSON.parse(JSON.stringify(v.playlist || {}));
     ld.cfg.site = Object.assign({ mode: "default", overlay: 0.5, color: "#0e0e1c", color2: "#3a1170", gradient: true }, JSON.parse(JSON.stringify(v.site || {})));
     ld.loadedOnce = true; ldDirty(false); ldRender(); renderGlance();
@@ -1561,7 +1583,7 @@ async function ldUpload(files, target) {
   box.hidden = true;
 }
 async function ldPublish() {
-  const c = Object.assign({}, ld.cfg); delete c.howItWorks; delete c.contact;
+  const c = Object.assign({}, ld.cfg); delete c.howItWorks; delete c.contact; delete c.pause;
   if (c.mode === "videos" && !Object.keys(c.playlist || {}).length) { toast("Add at least one video or picture first", true); return; }
   if (c.mode === "image" && !c.image) { toast("Add a picture first", true); return; }
   c.headline = String(c.headline || "").slice(0, 70); c.subline = String(c.subline || "").slice(0, 200);
@@ -2187,6 +2209,7 @@ function dtRenderMeetups() {
       acts.push(`<button class="btn sm main" onclick="adLink('m',${j(m.id)},${j(m.title)})">📣 Ad link</button>`);
       acts.push(m.hidden ? `<button class="btn sm teal" onclick="mgAct('showMeetup',${j(m.id)})">▶ Resume</button>` : `<button class="btn sm gold" onclick="mgAct('hideMeetup',${j(m.id)})">⏸ Pause</button>`);
       acts.push(m.official ? `<button class="btn sm" onclick="dtEditMeetup(${j(m.id)})">✏️ Edit</button>` : `<button class="btn sm gold" onclick="mgAct('requestMeetupChanges',${j(m.id)})">✏️ Ask for changes</button>`);
+      if (!m.idea && !m.movedFrom) acts.push(`<button class="btn sm" onclick="mgAct('moveMeetup',${j(m.id)})">📅 Move date</button>`);
       acts.push(`<button class="btn sm" onclick="dtCopyMeetLink(${j(m.id)})">🔗 Link</button>`, `<button class="btn sm red" onclick="mgAct('cancelMeetup',${j(m.id)})">${m.idea ? "Cancel it" : "Cancel &amp; refund"}</button>`);
     }
     if (m.status === "review") acts.push(`<button class="btn sm teal" onclick="mgAct('payMeetupHost',${j(m.id)})">It happened: pay host</button>`, `<button class="btn sm red" onclick="mgAct('noShow',${j(m.id)})">Refund buyers</button>`);
@@ -2237,6 +2260,13 @@ async function mgAct(action, id) {
     if (note === null || note === undefined) return;
     if (action === "requestMeetupChanges" && !String(note).trim()) { toast("Write what needs to change", true); return; }
     extra.reason = String(note).trim();
+  }
+  else if (action === "moveMeetup") {
+    const d = new Date(Date.now() + 25 * 3600000), min = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    const v = await dialog({ title: "Move “" + (m.title || "") + "” to a new date?", body: "It can be moved once, to a time at least 24 hours from now. Every buyer (" + (m.sold || 0) + ") is told and emailed. Anyone who can't make it can take their money back as credit for 3 days.", input: { type: "datetime-local", value: min }, ok: "Move it" });
+    if (!v) return;
+    const t = new Date(v).getTime(); if (!t) { toast("Pick a day and time", true); return; }
+    extra.data = { startsAt: t };
   }
   else if (action === "cancelMeetup" && m.idea) { if (!await dialog({ title: "Cancel “" + (m.title || "") + "”?", body: "The " + (m.sold || 0) + " people going get a notification. Nothing was paid, so there's nothing to refund.", ok: "Cancel it", danger: true })) return; extra.reason = "Whisper+Me called it off."; }
   else if (action === "cancelMeetup") { if (!await dialog({ title: "Cancel “" + (m.title || "") + "”?", body: "Every buyer (" + (m.sold || 0) + ") gets their money back as Whisper+Me credit (no card fees)" + (m.official ? "." : ". The host's deposit stays on their account."), ok: "Cancel & give credit", danger: true })) return; extra.reason = "Canceled by Whisper+Me."; }
