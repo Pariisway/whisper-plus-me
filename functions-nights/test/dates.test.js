@@ -507,8 +507,9 @@ async function test(name, fn) {
     assert.deepStrictEqual([b.done, S.sessions.length - n1, doc("credits/f5").balance, doc("meetups/" + other.id).sold], [true, 0, 2500, 1]);
     // the rest goes back to the card on request
     const r0 = S.refunds.length;
-    const back = await call("creditToCard", "f5");
-    assert.deepStrictEqual([back.sent, S.refunds.length - r0, doc("credits/f5").balance], [2500, 1, 0]);
+    const both = await Promise.allSettled([call("creditToCard", "f5"), call("creditToCard", "f5")]);   // a double tap
+    const back = both.find(x => x.status === "fulfilled").value;
+    assert.deepStrictEqual([back.sent, S.refunds.length - r0, doc("credits/f5").balance, both.filter(x => x.status === "fulfilled").length], [2500, 1, 0, 1], "refunded once, never twice");
     assert.ok(!doc("members/celeb").strikes);
   });
 
@@ -540,8 +541,9 @@ async function test(name, fn) {
     const g = await admin({ action: "meetupGuests", id });
     assert.deepStrictEqual([g.guests.length, g.guests[0].here, g.reports[0].reason], [1, true, "Host left after 5 minutes"]);
     const e0 = Number(rtdb.users.solo.earnings || 0);
-    await admin({ action: "payMeetupHost", id });
-    assert.strictEqual(Math.round((Number(rtdb.users.solo.earnings) - e0) * 100), 22500, "$250 × 90%");
+    await Promise.allSettled([admin({ action: "payMeetupHost", id }), admin({ action: "payMeetupHost", id }), T.housekeeping()]);   // two taps + the scheduled job at once
+    assert.strictEqual(Math.round((Number(rtdb.users.solo.earnings) - e0) * 100), 22500, "$250 × 90%, paid once");
+    assert.strictEqual(doc("meetups/" + id).status, "completed");
     await assert.rejects(call("reportMeetup", "f6", { meetupId: id }), /Only people with a spot/);
     assert.ok(two.id);
   });
@@ -1195,14 +1197,36 @@ async function test(name, fn) {
     let red = null; const res = { set() {}, redirect: (c, u) => { red = u; } };
     await P.go({ path: "/go/stl-dates/meet" }, res);
     await P.go({ path: "/go/stl-dates" }, res);
-    assert.strictEqual(red, "https://whisperplusme.com/?via=stl-dates");
+    assert.strictEqual(red, "https://whisperplusme.com/?via=stl-dates&vc=1");
     await P.go({ path: "/go/nobody" }, res);
     assert.strictEqual(doc("partners/ptA").clicks, 2);
+    // any page works: /go/CODE/m/ID opens that M&G with the code (and junk paths go home)
+    await P.go({ path: "/go/stl-dates/m/abc123" }, res);
+    assert.strictEqual(red, "https://whisperplusme.com/m/abc123?via=stl-dates&vc=1");
+    await P.go({ path: "/go/stl-dates/u/Kiana_Rae" }, res);
+    assert.strictEqual(red, "https://whisperplusme.com/u/Kiana_Rae?via=stl-dates&vc=1");
+    await P.go({ path: "/go/stl-dates/https:/evil.com" }, res);
+    assert.ok(red.startsWith("https://whisperplusme.com/"), red);
+    await P.go({ path: "/go/stl-dates/m/../../x" }, res);
+    assert.ok(red.startsWith("https://whisperplusme.com/?via"), red);
+    assert.strictEqual(doc("partners/ptA").clicks, 6);
+    // a share link with ?via=CODE counts its visit with a ping (robots don't count)
+    let code204 = 0; const pres = { set() { return pres; }, status(c) { code204 = c; return pres; }, send() {} };
+    await P.go({ path: "/go/stl-dates/ping" }, pres);
+    await P.go({ path: "/go/stl-dates/ping", get: () => "WhatsApp/2.0" }, pres);
+    assert.deepStrictEqual([code204, doc("partners/ptA").clicks], [204, 7]);
+    // robots following a link to one page are sent to that page, for its own preview
+    let bred = ""; const b2 = { set() { return b2; }, redirect: (c, u) => { bred = u; } };
+    await P.go({ path: "/go/stl-dates/m/abc123", get: () => "facebookexternalhit/1.1" }, b2);
+    assert.strictEqual(bred, "https://whisperplusme.com/m/abc123?via=stl-dates&vc=1");
+    assert.strictEqual(doc("partners/ptA").clicks, 7);
+    // approved partners get their code on their profile, so the app adds it to everything they share
+    assert.strictEqual(rtdb.users.ptA.partnerCode, "stl-dates");
     // link previews (robots) get the partner's own share preview and are not counted as clicks
     let html = ""; const bres = { set() { return bres; }, status() { return bres; }, send: h => { html = h; }, redirect: () => assert.fail("robots get the preview page") };
     await P.go({ path: "/go/stl-dates", get: () => "facebookexternalhit/1.1" }, bres);
     assert.ok(/invited you to Whisper\+Me/.test(html) && html.includes("/s/pt/stl-dates/card.png") && html.includes("?via=stl-dates"), html.slice(0, 300));
-    assert.strictEqual(doc("partners/ptA").clicks, 2);
+    assert.strictEqual(doc("partners/ptA").clicks, 7);
     // sign-ups: brand-new accounts only, never yourself, never an old account
     fresh("nm1"); fresh("nm2"); fresh("ptA");
     auth.old1 = { creationTime: new Date(Date.now() - 10 * 864e5).toUTCString() };
@@ -1222,7 +1246,7 @@ async function test(name, fn) {
     assert.deepStrictEqual([doc("partners/ptA").pending, doc("partners/ptA").buyers], [590, 1], "hosting isn't buying; the M&G spot is");
     // the partner's board
     const me = await call("partnerMe", "ptA");
-    assert.ok(me.status === "active" && me.code === "stl-dates" && me.clicks === 2 && me.signups === 1 && me.pending === 590 && me.recent.length === 2 && me.terms.pct === 20);
+    assert.ok(me.status === "active" && me.code === "stl-dates" && me.clicks === 7 && me.signups === 1 && me.pending === 590 && me.recent.length === 2 && me.terms.pct === 20);
     // hold: nothing moves before 14 days, then it lands in earnings (paid with payouts)
     rtdb.users.ptA.earnings = 10;
     assert.strictEqual(await P.release(), 0);
@@ -1237,7 +1261,9 @@ async function test(name, fn) {
     // paused partners earn nothing new; a custom rate; after 12 months nothing more
     await call("nightsAdminAction", ADM, { action: "pausePartner", id: "ptA", reason: "Spam" });
     assert.strictEqual(await P.commission({ memberUid: "nm1", kind: "mg", base: 1000, key: "pd_s4" }), 0);
+    assert.ok(rtdb.users.ptA.partnerCode == null, "paused: code comes off their shares");
     await call("nightsAdminAction", ADM, { action: "resumePartner", id: "ptA" });
+    assert.strictEqual(rtdb.users.ptA.partnerCode, "stl-dates");
     await call("nightsAdminAction", ADM, { action: "setPartnerPct", id: "ptA", data: { pct: 30 } });
     assert.strictEqual(await P.commission({ memberUid: "nm1", kind: "mg", base: 1000, key: "pd_s5" }), 300);
     await call("nightsAdminAction", ADM, { action: "partnerSettings", data: { partnerPct: 20, partnerCmPct: 10, partnerMonths: 12, partnerHoldDays: 21 } });
@@ -1248,7 +1274,12 @@ async function test(name, fn) {
     // Connect Me matchmaking: a package bought through a partner's link pays that partner, even from an older account
     seedPeople("cmOld"); auth.cmOld = { creationTime: new Date(Date.now() - 400 * 864e5).toUTCString() };
     assert.strictEqual(await P.commission({ memberUid: "cmOld", kind: "cm", base: 8000, key: "cm_o1", note: "Dinner for 2", viaCode: "stl-dates" }), 1200, "15% of an $80 package");
-    assert.strictEqual(await P.commission({ memberUid: "cmOld", kind: "mg", base: 2400, key: "mg_o1", viaCode: "stl-dates" }), 0, "matchmaking is Connect Me only; an M&G from an un-referred member pays nothing");
+    // M&G spots bought through a partner's link pay that partner too, even from an older account…
+    assert.strictEqual(await P.commission({ memberUid: "cmOld", kind: "mg", base: 500, key: "mg_via1", note: "Brunch", viaCode: "stl-dates" }), 150, "30% of a $5 site fee");
+    // …but never your own purchase through your own link, and a hosted M&G never counts the link
+    assert.strictEqual(await P.commission({ memberUid: "ptA", kind: "mg", base: 500, key: "mg_via2", viaCode: "stl-dates" }), 0);
+    assert.strictEqual(await P.commission({ memberUid: "cmOld", kind: "host", base: 500, key: "host_via3", viaCode: "stl-dates" }), 0);
+    assert.strictEqual(await P.commission({ memberUid: "cmOld", kind: "mg", base: 2400, key: "mg_o1", viaCode: "stl-dates" }), 720, "an M&G spot bought through the link pays the partner, even from an older account");
     assert.strictEqual(await P.commission({ memberUid: "ptA", kind: "cm", base: 8000, key: "cm_self", viaCode: "stl-dates" }), 0, "not through your own link");
     advanceHours(366 * 24);
     assert.strictEqual(await P.commission({ memberUid: "nm1", kind: "mg", base: 1000, key: "pd_s6" }), 0, "12 months are up");
@@ -1312,6 +1343,22 @@ async function test(name, fn) {
     assert.strictEqual(doc("partnerEarnings/cm_" + b.orderId).partnerUid, "az");
   });
 
+  await test("🤝 Partner link on an M&G: an older member who buys through it earns the partner their share", async () => {
+    const ADM = "v6aIXY12MDY9ci1wWJmCiLOAKoG2", auth = require("firebase-admin").__auth;
+    seedPeople("pv", "vb"); auth.vb = { creationTime: new Date(Date.now() - 300 * 864e5).toUTCString() };
+    await call("partnerApply", "pv", { channels: ["TikTok"], how: "I post my events every day", code: "tiara", agree: true });
+    await call("nightsAdminAction", ADM, { action: "approvePartner", id: "pv" });
+    const venue = { name: "Ember & Oak", address: "200 E Main St", city: "Belleville, IL", phone: "618-555-0100", source: "other" };
+    const r = await admin({ action: "postMeetup", data: { title: "Meet Tiara", category: "Dinner", venue, startsAt: Date.now() + 48 * H, price: 50, spots: 10 } });
+    await call("buyMeetupSpot", "vb", { meetupId: r.id, birthYear: 1990, src: { s: "partner", v: "tiara" } }); await completeLastCheckout("vb");
+    assert.deepStrictEqual([doc(`meetups/${r.id}/spots/vb`).status, doc(`meetups/${r.id}/spots/vb`).via], ["paid", "tiara"]);
+    const code = (await call("myMeetups", "vb")).meetups.find(m => m.id === r.id).code;
+    advanceHours(49); await call("checkInGuest", ADM, { code });
+    for (let i = 0; i < 8 && doc("meetups/" + r.id).status !== "completed"; i++) { advanceHours(24); await T.housekeeping(); }
+    assert.strictEqual(doc("meetups/" + r.id).status, "completed");
+    const e = doc(`partnerEarnings/mg_${r.id}_vb`);
+    assert.ok(e && e.partnerUid === "pv" && e.amount > 0 && e.status === "pending", JSON.stringify(e));
+  });
   await test("💡 Date ideas: admin-only, free to join, pay at the place, leave any time with no strike", async () => {
     const pic = u => { seedPeople(u); rtdb.users[u].photo = "https://x/p.jpg"; };
     ["di1", "di2", "di3", "di4"].forEach(pic); seedPeople("dinopic");

@@ -105,7 +105,15 @@ const firestore = {
   collection: p => new ColRef(p),
   batch() { const ops = []; return { update: (r, d) => ops.push(() => writeUpdate(r.path, d)), set: (r, d, o) => ops.push(() => writeSet(r.path, d, o)), commit: async () => ops.forEach(f => f()) }; },
   async runTransaction(fn) {
-    // Serialize transactions; apply writes only if fn succeeds.
+    // One at a time (like Firestore, which makes overlapping transactions retry); writes apply only if fn succeeds.
+    const prev = txLock; let release; txLock = new Promise(r => { release = r; });
+    await prev;
+    try { return await runTx(fn); } finally { release(); }
+  }
+};
+let txLock = Promise.resolve();
+async function runTx(fn) {
+  {
     const writes = [];
     const tx = {
       get: r => r.get(),
@@ -116,18 +124,37 @@ const firestore = {
     writes.forEach(w => w());
     return res;
   }
-};
+}
 
 let rtPushN = 0;
+// A snapshot with the parts the real SDK has (val, exists, forEach over children, key).
+function rtSnap(v, key) {
+  return { key, val: () => clone(v === undefined ? null : v), exists: () => v !== undefined && v !== null,
+    forEach: f => { if (v && typeof v === "object") for (const k of Object.keys(v)) { if (f(rtSnap(v[k], k)) === true) return true; } return false; } };
+}
 function rtGet(path) { return path.split("/").filter(Boolean).reduce((o, k) => (o == null ? undefined : o[k]), rtdbStore); }
 function rtSet(path, v) { const parts = path.split("/").filter(Boolean); let o = rtdbStore; parts.slice(0, -1).forEach(k => { o[k] = o[k] || {}; o = o[k]; }); o[parts.at(-1)] = v; }
 const database = {
   ref: path => ({
-    orderByChild: k => ({ equalTo: want => ({ once: async () => { const all = rtGet(path) || {}; const out = {}; Object.keys(all).forEach(id => { if (all[id] && all[id][k] === want) out[id] = clone(all[id]); }); return { val: () => out, exists: () => Object.keys(out).length > 0 }; } }), startAt: min => ({ once: async () => { const all = rtGet(path) || {}; const out = {}; Object.keys(all).forEach(id => { if (all[id] && Number(all[id][k]) >= min) out[id] = clone(all[id]); }); return { val: () => out, exists: () => Object.keys(out).length > 0 }; } }) }),
-    once: async () => ({ val: () => clone(rtGet(path)), exists: () => rtGet(path) !== undefined }),
+    orderByChild: k => ({ equalTo: want => ({ once: async () => { const all = rtGet(path) || {}; const out = {}; Object.keys(all).forEach(id => { if (all[id] && all[id][k] === want) out[id] = clone(all[id]); }); return Object.assign(rtSnap(out), { exists: () => Object.keys(out).length > 0 }); } }), startAt: min => ({ once: async () => { const all = rtGet(path) || {}; const out = {}; Object.keys(all).forEach(id => { if (all[id] && Number(all[id][k]) >= min) out[id] = clone(all[id]); }); return Object.assign(rtSnap(out), { exists: () => Object.keys(out).length > 0 }); } }) }),
+    once: async () => Object.assign(rtSnap(rtGet(path), path.split("/").pop()), { exists: () => rtGet(path) !== undefined && rtGet(path) !== null }),
+    remove: async () => { const parts = path.split("/").filter(Boolean); const parent = rtGet(parts.slice(0, -1).join("/")); if (parent) delete parent[parts.at(-1)]; },
     set: async v => rtSet(path, v),
-    push: async v => { const k = "-k" + String(++rtPushN).padStart(6, "0"); rtSet(path + "/" + k, clone(v)); return { key: k }; },
-    transaction: async fn => { const nv = fn(clone(rtGet(path))); if (nv !== undefined) rtSet(path, nv); return { committed: nv !== undefined }; },
+    // push(v) writes and resolves; push() with nothing just makes a new child ref (like the real SDK).
+    push: v => { const k = "-k" + String(++rtPushN).padStart(6, "0"); if (v === undefined) return database.ref(path + "/" + k); rtSet(path + "/" + k, clone(v)); return Promise.resolve({ key: k }); },
+    get key() { return path.split("/").filter(Boolean).pop(); },
+    // Like the real SDK: the first try sees null (nothing cached yet). Giving up on that null aborts the
+    // whole thing; any other answer is checked against the real value and the handler runs again with it.
+    transaction: async fn => {
+      const real = rtGet(path);
+      if (real !== undefined && real !== null) {
+        const guess = fn(null);
+        if (guess === undefined) return { committed: false, snapshot: { val: () => clone(real) } };
+      }
+      const nv = fn(clone(real === undefined ? null : real));
+      if (nv !== undefined) { if (nv === null) { const parts = path.split("/").filter(Boolean); const parent = rtGet(parts.slice(0, -1).join("/")); if (parent) delete parent[parts.at(-1)]; } else rtSet(path, nv); }
+      return { committed: nv !== undefined, snapshot: { val: () => clone(rtGet(path)) } };
+    },
     update: async obj => Object.entries(obj).forEach(([k, v]) => {
       const full = [path || "", k].filter(Boolean).join("/");
       if (v === null) { const parts = full.split("/").filter(Boolean); const parent = rtGet(parts.slice(0, -1).join("/")); if (parent) delete parent[parts.at(-1)]; }

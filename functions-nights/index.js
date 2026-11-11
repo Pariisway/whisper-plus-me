@@ -1503,6 +1503,7 @@ async function addToDeposit(uid, amount, pi) {
    the card they paid with instead.
    credits/{uid} = { balance (cents), sources: [{ pi, amount, left, at, note }] } */
 const creditRef = uid => db.doc(`credits/${uid}`);
+const STRIPE_MIN = 50;   // Stripe won't charge a card less than 50¢
 async function addCredit(uid, sources, note) {
   sources = (sources || []).filter(x => x && x.amount > 0);
   const total = sources.reduce((a, x) => a + x.amount, 0);
@@ -1707,7 +1708,7 @@ exports.buyMeetupSpot = onCall(withStripe, async req => {
   notSuspended(await memberFor(uid, req.data?.birthYear));
   const id = str(req.data?.meetupId, 64);
   const qty = Math.min(MAX_SPOTS_PER_ORDER, Math.max(1, Math.round(Number(req.data?.qty) || 1)));
-  const src = cleanSrc(req.data?.src);
+  const src = cleanSrc(req.data?.src), via = partners.cleanCode(req.data?.src?.v);   // 🤝 the partner link they came through, if any
   const ref = mtRef(id), spotRef = ref.collection("spots").doc(uid);
   let x, total = 0, credit = 0, code = null;
   await db.runTransaction(async tx => {
@@ -1725,18 +1726,19 @@ exports.buyMeetupSpot = onCall(withStripe, async req => {
     const left = x.spots - x.sold - x.held + holding;
     if (left < qty) fail("resource-exhausted", left > 0 ? `Only ${left} spot${left === 1 ? "" : "s"} left.` : "Sold out.");
     total = x.price * qty; credit = Math.min(total, c?.balance || 0);
+    if (credit < total && total - credit < STRIPE_MIN) credit = Math.max(0, total - STRIPE_MIN);   // a card charge can't be under 50¢
     if (credit >= total) {
       // Their Whisper+Me credit covers it: no checkout, no card fee.
       const t = takeCredit(c, total);
       code = newCode();
       tx.set(creditRef(uid), t.next);
       tx.update(ref, { held: FieldValue.increment(-holding), sold: FieldValue.increment(qty), buyerUids: FieldValue.arrayUnion(uid) });
-      tx.set(spotRef, { uid, role: "buyer", status: "paid", qty, code, paid: total, src, ...(x.idCheck ? { idOkAt: Date.now() } : {}), cardPaid: 0, creditFrom: t.from, paymentIntent: null, paidAt: nowTs(), createdAt: nowTs() });
+      tx.set(spotRef, { uid, role: "buyer", status: "paid", qty, code, paid: total, src, via, ...(x.idCheck ? { idOkAt: Date.now() } : {}), cardPaid: 0, creditFrom: t.from, paymentIntent: null, paidAt: nowTs(), createdAt: nowTs() });
       tx.set(db.doc(`meetupCodes/${code}`), { meetupId: id, uid, role: "buyer" });
       return;
     }
     tx.update(ref, { held: FieldValue.increment(qty - holding) });
-    tx.set(spotRef, { uid, role: "buyer", status: "pending", qty, creditToUse: credit, src, createdAt: nowTs(), ...(x.idCheck ? { idOkAt: Date.now() } : {}) });
+    tx.set(spotRef, { uid, role: "buyer", status: "pending", qty, creditToUse: credit, src, via, createdAt: nowTs(), ...(x.idCheck ? { idOkAt: Date.now() } : {}) });
   });
   const me = await whisperProfile(uid);
   await spotRef.set({ name: me.name, photo: me.photo }, { merge: true });
@@ -1783,19 +1785,34 @@ async function emailMeetupTicket(id, x, p, spot, kind) {
 /** Send leftover Whisper+Me credit back to the card(s) it came from. */
 exports.creditToCard = onCall(withStripe, async req => {
   const uid = requireUser(req);
-  let sent = 0, kept = 0;
-  const c = (await creditRef(uid).get()).data() || { balance: 0, sources: [] };
-  const keep = [];
-  for (const x of c.sources || []) {
-    if (!(x.left > 0)) continue;
-    if (!x.pi || Date.now() - (x.at || 0) > 170 * 86400000) { keep.push(x); kept += x.left; continue; }
-    try { await stripe().refunds.create({ payment_intent: x.pi, amount: x.left }); sent += x.left; }
-    catch (e) { logger.error("credit refund", uid, e.message); keep.push(x); kept += x.left; }
+  // Claim what can go back to a card in one step first, so a double tap (or credit being spent at the
+  // same moment) can never refund the same money twice.
+  let send = [], kept = 0;
+  await db.runTransaction(async tx => {
+    const c = (await tx.get(creditRef(uid))).data() || { balance: 0, sources: [] };
+    const keep = []; send = []; kept = 0;
+    for (const x of c.sources || []) {
+      if (!(x.left > 0)) continue;
+      if (!x.pi || Date.now() - (x.at || 0) > 170 * 86400000) { keep.push(x); kept += x.left; } else send.push(x);
+    }
+    if (send.length) tx.set(creditRef(uid), { balance: kept, sources: keep });
+  });
+  if (!send.length) fail("failed-precondition", kept ? "This credit can't go back to a card (it's too old or wasn't paid by card). You can still use it on any M&G." : "You don't have any credit.");
+  let sent = 0;
+  const failed = [];
+  for (const x of send) {
+    try { await stripe().refunds.create({ payment_intent: x.pi, amount: x.left }, { idempotencyKey: `credit-${uid}-${x.pi}-${x.at}-${x.left}` }); sent += x.left; }
+    catch (e) { logger.error("credit refund", uid, e.message); failed.push(x); }
   }
-  await creditRef(uid).set({ balance: kept, sources: keep });
+  // Anything Stripe wouldn't refund goes straight back into their credit.
+  if (failed.length) await db.runTransaction(async tx => {
+    const c = (await tx.get(creditRef(uid))).data() || { balance: 0, sources: [] };
+    tx.set(creditRef(uid), { balance: (c.balance || 0) + failed.reduce((a, x) => a + x.left, 0), sources: [...(c.sources || []), ...failed] });
+  });
   if (sent) await db.collection("ledger").add({ kind: "creditRefunded", uid, amount: sent, at: nowTs() });
-  if (!sent) fail("failed-precondition", kept ? "This credit can't go back to a card (it's too old or wasn't paid by card). You can still use it on any M&G." : "You don't have any credit.");
-  return { sent, kept, message: `${fmtMoney(sent)} is on its way back to your card (5–10 days).${kept ? ` ${fmtMoney(kept)} stays as credit.` : ""}` };
+  if (!sent) fail("failed-precondition", "We couldn't send it to your card right now, so it's still in your credit. Try again later.");
+  const left = kept + failed.reduce((a, x) => a + x.left, 0);
+  return { sent, kept: left, message: `${fmtMoney(sent)} is on its way back to your card (5–10 days).${left ? ` ${fmtMoney(left)} stays as credit.` : ""}` };
 });
 
 /** What Stripe actually charged us for a payment (falls back to the standard 2.9% + 30¢). */
@@ -2292,6 +2309,15 @@ async function meetupReminders(d, x, now) {
 }
 
 async function payHost(id, x, s) {
+  // Claim it first, so the scheduled job and the admin's "Pay host" button can never both pay the same M&G.
+  let claimed = false;
+  await db.runTransaction(async tx => {
+    const cur = (await tx.get(mtRef(id))).data();
+    if (!cur || !["live", "paying", "review"].includes(cur.status)) return;
+    claimed = true; x = cur;
+    tx.update(mtRef(id), { status: "settling", settlingAt: nowTs() });
+  });
+  if (!claimed) return 0;
   const pct = x.official ? 100 : (x.hostFeePct ?? s.hostFee);
   const gross = x.price * x.sold;
   const hostTotal = Math.round(gross * (100 - pct) / 100), siteTotal = gross - hostTotal;
@@ -2303,7 +2329,7 @@ async function payHost(id, x, s) {
   if (siteTotal) {
     try {
       const spots = await mtRef(id).collection("spots").where("status", "==", "paid").limit(500).get();
-      for (const sp of spots.docs) { const z = sp.data(); const base = Math.round((z.paid || x.price * (z.qty || 1)) * pct / 100); await partners.commission({ memberUid: z.uid, kind: "mg", base, key: `mg_${id}_${sp.id}`, note: x.title }); }
+      for (const sp of spots.docs) { const z = sp.data(); const base = Math.round((z.paid || x.price * (z.qty || 1)) * pct / 100); await partners.commission({ memberUid: z.uid, kind: "mg", base, key: `mg_${id}_${sp.id}`, note: x.title, viaCode: z.via || "" }); }
       if (!x.official) await partners.commission({ memberUid: x.hostUid, kind: "host", base: siteTotal, key: `host_${id}`, note: x.title });
     } catch (e) { logger.warn("partner mg", e.message); }
   }
@@ -2432,6 +2458,7 @@ exports.buyConnect = onCall(withStripe, async req => {
     if (ms(x.startsAt) < Date.now() + 2 * 3600000) fail("failed-precondition", "Sales for this one have closed.");
     if (x.quantity - x.sold - x.held < 1) fail("resource-exhausted", "Sold out.");
     credit = Math.min(x.price, c?.balance || 0);
+    if (credit < x.price && x.price - credit < STRIPE_MIN) credit = Math.max(0, x.price - STRIPE_MIN);   // a card charge can't be under 50¢
     const base = { src: cleanSrc(req.data?.src), via: partners.cleanCode(req.data?.src?.v), askedBy, dealId, buyerUid: uid, buyerName: me.name, title: x.title, venueName: x.venueName, city: x.city, startsAt: x.startsAt, size: x.size, amount: x.price, memberUids: [uid], idCheck: !!x.idCheck, createdAt: nowTs() };
     if (credit >= x.price) {
       const t = takeCredit(c, x.price);
@@ -2899,9 +2926,10 @@ exports.createPlan = onCall(async req => {
   const rating = (await rtdb.ref(`users/${uid}/dateRating`).once("value")).val() || null;
   // Take the coin(s) first; if anything after this fails, they go straight back.
   if (coins > 0) {
-    let had = 0;
-    const r = await rtdb.ref(`users/${uid}/coins`).transaction(v => { had = Number(v) || 0; if (had < coins) return; return had - coins; });
-    if (!r.committed) fail("failed-precondition", `You need ${coinWord(coins)} to post a date. You have ${coinWord(had)}. Buy coins in 👤 Profile → Wallet.`);
+    // (A transaction's first try often sees null before the real value loads: answer null with null so it runs again.)
+    let had = 0, took = false;
+    const r = await rtdb.ref(`users/${uid}/coins`).transaction(v => { took = false; if (v === null) { had = 0; return null; } had = Number(v) || 0; if (had < coins) return; took = true; return had - coins; });
+    if (!r.committed || !took) fail("failed-precondition", `You need ${coinWord(coins)} to post a date. You have ${coinWord(had)}. Buy coins in 👤 Profile → Wallet.`);
   }
   const ref = db.collection("plans").doc();
   try {
@@ -3560,7 +3588,9 @@ exports.declineCall = onRequest({ cors: true }, async (req, res) => {
   if (!key || key !== k) { res.status(403).json({ ok: false }); return; }
   let declined = false;
   await rtdb.ref(`calls/${callId}`).transaction(v => {
-    if (!v || v.status !== "ringing") { declined = false; return; }
+    declined = false;
+    if (v === null) return null;   // not loaded yet: the server sends the real call and this runs again
+    if (v.status !== "ringing") return;
     declined = true;
     return { ...v, status: "ended", endedAt: Date.now(), endedBy: v.to, endReason: "declined" };
   });

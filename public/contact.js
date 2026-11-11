@@ -30,3 +30,7 @@
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();
+
+/* 🤝 Opened from a partner's link (?via=CODE)? Count the visit once and keep the code on every
+   link to the rest of the site, so the partner gets credit wherever the visitor goes next. */
+(function(){try{var q=new URLSearchParams(location.search),v=(q.get("via")||"").toLowerCase().replace(/[^a-z0-9-]/g,"").slice(0,20);if(!v)return;if(!q.get("vc")){var k="wpmViaPing_"+v,d=false;try{d=!!sessionStorage.getItem(k);sessionStorage.setItem(k,"1")}catch(e){}if(!d)fetch("/go/"+v+"/ping",{keepalive:true}).catch(function(){})}var fix=function(){[].forEach.call(document.querySelectorAll("a[href]"),function(a){try{var u=new URL(a.getAttribute("href"),location.href);if(u.origin!==location.origin||/^\/go\//.test(u.pathname)||u.searchParams.has("via")||/\.(png|jpe?g|webp|xml|txt|mp4|pdf)$/i.test(u.pathname))return;u.searchParams.set("via",v);u.searchParams.set("vc","1");a.href=u.href}catch(e){}})};fix();document.addEventListener("DOMContentLoaded",fix)}catch(e){}})();

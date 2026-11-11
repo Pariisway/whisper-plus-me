@@ -3,15 +3,16 @@
 # Whisper+Me: test, deploy and save to GitHub in one step.
 #   ./deploy.sh "what changed"              the usual deploy (+ GitHub)
 #   ./deploy.sh "what changed" --agora      also update the call voice-pass function
+#   ./deploy.sh "what changed" --money      also update the main app's money functions (calls, rooms, coin purchases)
 #   ./deploy.sh "what changed" --main       also copy this version to GitHub's main branch (master)
 #   ./deploy.sh "what changed" --github-only   just save to GitHub, don't deploy
 # ─────────────────────────────────────────────────────────────
 set -e
 cd "$(dirname "$0")"
 MSG="${1:-Update}"
-AGORA=0; MAIN=0; GHONLY=0
+AGORA=0; MAIN=0; GHONLY=0; MONEY=0
 for a in "$@"; do
-  case "$a" in --agora) AGORA=1 ;; --main) MAIN=1 ;; --github-only) GHONLY=1 ;; esac
+  case "$a" in --agora) AGORA=1 ;; --money) MONEY=1 ;; --main) MAIN=1 ;; --github-only) GHONLY=1 ;; esac
 done
 
 if [ "$GHONLY" = 0 ]; then
@@ -19,12 +20,18 @@ if [ "$GHONLY" = 0 ]; then
 
   echo "▶ Installing and testing the server code…"
   (cd functions-nights && npm install --no-audit --no-fund --loglevel=error && npm test)
+  (cd functions && npm install --no-audit --no-fund --loglevel=error && npm test)
 
   echo "▶ Fingerprinting the site's scripts (so browsers can cache them safely)…"
   node tools/stamp-assets.js
 
   echo "▶ Deploying the site, rules, indexes and server…"
   firebase deploy --only database,firestore,storage,hosting,functions:nights
+
+  if [ "$MONEY" = 1 ]; then
+    echo "▶ Updating the main app's money functions (calls, member rooms, coin purchases)…"
+    firebase deploy --only functions:default:startCall,functions:default:completeCallPayout,functions:default:stripeWebhook,functions:default:joinMemberRoom,functions:default:processMemberRoomEarnings
+  fi
 
   if [ "$AGORA" = 1 ]; then
     echo "▶ Updating generateAgoraToken (main functions)…"

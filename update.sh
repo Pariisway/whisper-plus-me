@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────
 # Apply the newest whisperplusme-social.zip (from Claude), then run deploy.sh.
-#   ~/whisperplusme/update.sh "what changed" [--agora]
+#   ~/whisperplusme/update.sh "what changed" [--main] [--money] [--agora]
 # Looks for the zip in your Linux home folder and in Downloads.
 # Files removed in the new version are removed here too, so old
 # leftovers don't pile up. The zip is deleted when it's applied.

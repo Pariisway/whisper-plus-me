@@ -828,8 +828,22 @@ var SS_CSS = ".ss{padding:18px 16px 16px;color:#f3f0fb;text-align:left;position:
   + ".ss-copy input{flex:1;min-width:0;background:none;border:0;color:#b3abcf;font-size:13px;outline:0;padding:0;margin:0}"
   + ".ss-copy button{flex:none;border:0;border-radius:999px;background:#fff;color:#111;font-weight:800;padding:9px 16px;cursor:pointer;min-height:0;margin:0;width:auto}"
   + ".ss-emb{display:block;margin:12px auto 0;background:none;border:0;color:#9d97b8;font-size:13px;text-decoration:underline;cursor:pointer;width:auto;min-height:0}";
+/* 🤝 If you're a partner, every Whisper+Me link you share carries your code (?via=CODE),
+   so you get credit for whoever buys or joins through it. Links to other sites are left alone. */
+window.wpmShareTag = function(url){
+  var code = window.__myPartnerCode;
+  if(!code || !url) return url;
+  try{
+    var u = new URL(url, location.origin);
+    if(!/(^|\.)whisperplusme\.com$/.test(u.hostname) && u.origin !== location.origin) return url;
+    if(/^\/go\//.test(u.pathname) || u.searchParams.has("via") || u.searchParams.has("connect")) return url;  // already a partner link, or a personal invite
+    u.searchParams.set("via", code);
+    return u.href;
+  }catch(e){ return url; }
+};
 function openShareSheet(title, text, url, embedId, embedType, imgBase, imgQuery){
   embedType = embedType || "room";
+  url = window.wpmShareTag(url);
   var modal = document.getElementById("profileModal");
   var body  = document.getElementById("profileModalBody");
   var full  = text + "\n" + url;
@@ -3483,6 +3497,11 @@ window.signInWithGoogle = function(){
 
 firebase.auth().onAuthStateChanged(async function(user){
   currentUser = user;
+  /* 🤝 Partners: their code is added to every link they share (see wpmShareTag). */
+  window.__myPartnerCode = "";
+  if(user && !user.isAnonymous){
+    firebase.database().ref("users/" + user.uid + "/partnerCode").once("value").then(function(s){ window.__myPartnerCode = String(s.val() || ""); }).catch(function(){});
+  }
   /* New account: remember which ad / site brought them (once, only for accounts made in the last day). */
   try{
     if(user && !user.isAnonymous && window.wpmSource && window.wpmSource()){
@@ -4062,6 +4081,8 @@ window.addEventListener("pagehide", function(){
   try{ curVia = JSON.parse(localStorage.getItem(VKEY) || "null"); }catch(e){}
   if(curVia && Date.now() - (curVia.at || 0) > DAYS * 864e5) curVia = null;
   if(via && !curVia){ try{ localStorage.setItem(VKEY, JSON.stringify({ v: via, at: Date.now() })); }catch(e){} }
+  /* count the visit for that partner, once per visit (pages with ?via= on any link) */
+  if(via && !p.get("vc")){ var pk = "wpmViaPing_" + via, pinged = false; try{ pinged = !!sessionStorage.getItem(pk); sessionStorage.setItem(pk, "1"); }catch(e){} if(!pinged){ try{ fetch("/go/" + via + "/ping", { keepalive: true }).catch(function(){}); }catch(e){} } }
   window.wpmSource = function(){
     var x = null, v = null;
     try{ x = JSON.parse(localStorage.getItem(KEY) || "null"); }catch(e){}

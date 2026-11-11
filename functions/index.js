@@ -36,6 +36,35 @@ const AGORA_APP_ID  = "605c4549677d4f91b07bfb36df7cd30c";
 const APP_URL = "https://whisperplusme.com";
 const CREATOR_PAYOUT_USD = 2.00; /* creator gets exactly $2 per coin */
 const PLATFORM_USD    = 1.00; /* site keeps exactly $1 per coin */
+const ADMIN_UID = "v6aIXY12MDY9ci1wWJmCiLOAKoG2";
+
+/* ── Safe money moves on the Realtime Database ──
+   A transaction's first try often sees null (nothing cached yet), even when the
+   real value exists. Giving up on null made coin charges and credits silently
+   fail. These helpers never give up on null: they answer null with null, the
+   server says "that's not the real value" and the handler runs again with it. */
+const round2 = n => Math.round(n * 100) / 100;
+/** Take `n` coins if the member has them. Returns true only if they were taken. */
+async function takeCoins(uid, n) {
+  if (!(n > 0)) return true;
+  let took = false;
+  const r = await db.ref("users/" + uid + "/coins").transaction(c => {
+    took = false;
+    if (c === null) return null;            // not loaded yet (or truly none): the server decides
+    const cur = Number(c) || 0;
+    if (cur < n) return;                     // not enough: stop, nothing changes
+    took = true;
+    return cur - n;
+  });
+  return r.committed && took;
+}
+/** Add to a number (coins, calls, dollars of earnings, site revenue). Never loses a concurrent change. */
+function addTo(path, amount, money) {
+  return db.ref(path).transaction(v => {
+    const cur = typeof v === "number" ? v : (v && typeof v === "object" && typeof v.total === "number" ? v.total : Number(v) || 0);
+    return money ? round2(cur + amount) : cur + amount;
+  });
+}
 
 /* ── CORS helper ── */
 function setCors(res) {
@@ -172,6 +201,9 @@ exports.startCall = onRequest({ cors: true }, async (req, res) => {
 
     const callRef = db.ref("calls").push();
     const callId  = callRef.key;
+    /* The price and who's who are kept where only the server can write, so nobody
+       can change them on the call record before it's billed. */
+    await db.ref("callBilling/" + callId).set({ from: callerUid, to: targetUid, price, createdAt: Date.now() });
     await callRef.set({
       from:        callerUid,
       to:          targetUid,
@@ -227,75 +259,43 @@ exports.completeCallPayout = onRequest({ cors: true }, async (req, res) => {
   if (req.method === "OPTIONS") { res.status(204).send(""); return; }
 
   try {
-    await verifyToken(req);
-    const { callId } = req.body;
-    if (!callId) return res.status(400).json({ error: "callId required" });
+    const me = await verifyToken(req);
+    const { callId } = req.body || {};
+    if (!callId || typeof callId !== "string" || callId.length > 64) return res.status(400).json({ error: "callId required" });
 
-    /* idempotency */
-    const ledgerSnap = await db.ref("callLedger/" + callId).once("value");
-    if (ledgerSnap.exists()) return res.json({ ok: true, skipped: true });
-
-    const callSnap = await db.ref("calls/" + callId).once("value");
-    const call     = callSnap.val();
+    const call = (await db.ref("calls/" + callId).once("value")).val();
     if (!call) return res.status(404).json({ error: "Call not found" });
+    /* Who's who and the price come from the server's own copy (callBilling). Older calls
+       from before it existed fall back to the call record, with the price kept in 1–10. */
+    const bill = (await db.ref("callBilling/" + callId).once("value")).val();
+    const from = bill ? bill.from : call.from, to = bill ? bill.to : call.to;
+    const price = bill ? Number(bill.price) : Math.min(10, Math.max(1, Math.round(Number(call.price) || 1)));
+    if (me.uid !== from && me.uid !== to && me.uid !== ADMIN_UID) return res.status(403).json({ error: "Not your call" });
 
-    if (!call.answeredAt) {
-      await db.ref("callLedger/" + callId).set({
-        charged: false, reason: "never_answered", ts: Date.now()
-      });
+    /* Exactly once, even when both phones hang up at the same moment: claim the ledger entry first. */
+    const claim = await db.ref("callLedger/" + callId).transaction(v => (v === null ? { processing: true, ts: Date.now() } : undefined));
+    if (!claim.committed) return res.json({ ok: true, skipped: true });
+    const done = rec => db.ref("callLedger/" + callId).set(Object.assign({ from, to, price, ts: Date.now() }, rec));
+
+    if (!call.answeredAt) { await done({ charged: false, reason: "never_answered" }); return res.json({ ok: true, charged: false }); }
+
+    /* admin calls for free */
+    const isAdminCaller = from === ADMIN_UID;
+    if (!isAdminCaller && !(await takeCoins(from, price))) {
+      await done({ charged: false, reason: "insufficient_coins" });
       return res.json({ ok: true, charged: false });
     }
+    await addTo("users/" + from + "/calls", 1);
 
-    const price = Number(call.price || 1);
+    /* the person called gets $2 per coin; the site keeps $1 per coin */
+    const earnedUsd   = isAdminCaller ? 0 : round2(price * CREATOR_PAYOUT_USD);
+    const platformUsd = isAdminCaller ? 0 : round2(price * PLATFORM_USD);
+    if (earnedUsd) await addTo("users/" + to + "/earnings", earnedUsd, true);
+    await addTo("users/" + to + "/calls", 1);
+    if (platformUsd) await addTo("siteRevenue", platformUsd, true);
 
-    /* atomic coin deduction — admin caller is free */
-    const isAdminCaller = call.from === "v6aIXY12MDY9ci1wWJmCiLOAKoG2";
-    let deductResult = { committed: true };
-    if (!isAdminCaller) {
-      deductResult = await db.ref("users/" + call.from).transaction(data => {
-        if (!data) return; /* abort — do NOT return null, that WRITES null and deletes the node */
-        const current = Number(data.coins || 0);
-        if (current < price) return; /* abort */
-        data.coins = current - price;
-        data.calls = (data.calls || 0) + 1;
-        return data;
-      });
-    } else {
-      /* still increment call count for admin */
-      await db.ref("users/" + call.from + "/calls").transaction(n => (n||0) + 1);
-    }
-
-    if (!deductResult.committed) {
-      await db.ref("callLedger/" + callId).set({
-        charged: false, reason: "insufficient_coins", ts: Date.now()
-      });
-      return res.json({ ok: true, charged: false });
-    }
-
-    /* credit receiver — exactly $2 per coin, site keeps $1 per coin */
-    const earnedUsd   = Number((price * CREATOR_PAYOUT_USD).toFixed(2));
-    const platformUsd = Number((price * PLATFORM_USD).toFixed(2));
-
-    await db.ref("users/" + call.to).transaction(data => {
-      if (!data) return; /* abort — do NOT return null, that WRITES null and deletes the node */
-      data.earnings = Number(((data.earnings || 0) + earnedUsd).toFixed(2));
-      data.calls    = (data.calls || 0) + 1;
-      return data;
-    });
-
-    await db.ref("siteRevenue").transaction(data => {
-      if (!data) return { total: platformUsd };
-      data.total = Number(((data.total || 0) + platformUsd).toFixed(2));
-      return data;
-    });
-
-    await db.ref("callLedger/" + callId).set({
-      from: call.from, to: call.to,
-      price, earnedUsd, platformUsd,
-      charged: true, ts: Date.now()
-    });
-
-    res.json({ ok: true, charged: true, earnedUsd });
+    await done({ earnedUsd, platformUsd, charged: !isAdminCaller });
+    res.json({ ok: true, charged: !isAdminCaller, earnedUsd });
   } catch (e) {
     console.error("completeCallPayout error", e);
     res.status(500).json({ error: e.message });
@@ -375,15 +375,22 @@ exports.stripeWebhook = onRequest(
       const uid     = session.metadata && session.metadata.uid;
       const qty     = parseInt((session.metadata && session.metadata.qty) || "0");
 
-      /* FIX: Only credit if payment actually succeeded — don't credit unpaid sessions */
+      /* Only coin purchases. M&G, Connect Me and deposit checkouts also carry a uid and a qty,
+         and they're handled by the Dates webhook; counting them here would hand out free coins. */
+      if (!session.metadata || session.metadata.product !== "coins") {
+        return res.json({ received: true, ignored: "not a coin purchase" });
+      }
+
+      /* Only credit if payment actually succeeded — don't credit unpaid sessions */
       if (session.payment_status !== "paid") {
         console.log("Session not paid, skipping credit:", session.id, session.payment_status);
         return res.json({ received: true });
       }
 
-      /* FIX: Idempotency — don't double-credit if webhook fires twice */
-      const alreadyCredited = await db.ref("coinPurchases/sessions/" + session.id).once("value");
-      if (alreadyCredited.exists()) {
+      /* Exactly once, even if Stripe sends the same event twice at the same moment:
+         claim the session first. */
+      const claim = await db.ref("coinPurchases/sessions/" + session.id).transaction(v => (v === null ? { uid: uid || "", qty, processing: true, ts: Date.now() } : undefined));
+      if (!claim.committed) {
         console.log("Already credited session:", session.id);
         return res.json({ received: true, duplicate: true });
       }
@@ -398,12 +405,11 @@ exports.stripeWebhook = onRequest(
              so transaction-level atomicity isn't needed; a plain
              read-then-write is simpler and doesn't have the same failure
              mode. */
-          const userSnapForCredit = await db.ref("users/" + uid).once("value");
+          const userSnapForCredit = await db.ref("users/" + uid + "/name").once("value");
           if (!userSnapForCredit.exists()) {
             console.error("Stripe payment succeeded but user no longer exists:", uid, "session:", session.id);
           } else {
-            const currentCoins = Number(userSnapForCredit.val().coins || 0);
-            await db.ref("users/" + uid).update({ coins: currentCoins + qty });
+            await addTo("users/" + uid + "/coins", qty);   // never loses a coin spent at the same moment
           }
           /* Use session ID as key for idempotency */
           await db.ref("coinPurchases/sessions/" + session.id).set({
@@ -437,6 +443,7 @@ exports.stripeWebhook = onRequest(
           } catch(emailErr){ console.warn("Purchase email failed:", emailErr.message); }
         } catch (e) {
           console.error("Coin credit failed", e);
+          await db.ref("coinPurchases/sessions/" + session.id).remove().catch(() => {});   // let Stripe's retry try again
           return res.status(500).send("Coin credit failed");
         }
       }
@@ -716,17 +723,7 @@ exports.joinMemberRoom = onRequest({ cors: true }, async (req, res) => {
     /* ── 5. Atomic coin deduction — admin and free rooms skip charge ── */
     const isRoomAdmin = memberUid === "v6aIXY12MDY9ci1wWJmCiLOAKoG2";
     const isFreeRoom  = cost === 0;
-    let deductResult = { committed: true };
-    if (!isRoomAdmin && !isFreeRoom) {
-      deductResult = await db.ref("users/" + memberUid).transaction(data => {
-        if (!data) return; /* abort — do NOT return null, that WRITES null and deletes the node */
-        const current = Number(data.coins || 0);
-        if (current < cost) return; /* abort */
-        data.coins = current - cost;
-        return data;
-      });
-    }
-    if (!deductResult.committed)
+    if (!isRoomAdmin && !isFreeRoom && !(await takeCoins(memberUid, cost)))
       return res.status(402).json({ error: "Not enough coins" });
 
     const now   = Date.now();
@@ -736,8 +733,9 @@ exports.joinMemberRoom = onRequest({ cors: true }, async (req, res) => {
     const memberSnap = await db.ref("users/" + memberUid).once("value");
     const memberData = memberSnap.val() || {};
 
-    const earnedUsd   = Number((cost * CREATOR_PAYOUT_USD).toFixed(2));
-    const platformUsd = Number((cost * PLATFORM_USD).toFixed(2));
+    const paid        = !isRoomAdmin && !isFreeRoom;
+    const earnedUsd   = paid ? round2(cost * CREATOR_PAYOUT_USD) : 0;
+    const platformUsd = paid ? round2(cost * PLATFORM_USD) : 0;
 
     await Promise.all([
       /* session record */
@@ -750,17 +748,9 @@ exports.joinMemberRoom = onRequest({ cors: true }, async (req, res) => {
       }),
       /* occupant count */
       db.ref("memberRooms/" + roomId + "/occupants").transaction(c => (Number(c || 0)) + 1),
-      /* credit owner atomically */
-      db.ref("users/" + room.ownerId).transaction(data => {
-        if (!data) return; /* abort — do NOT return null, that WRITES null and deletes the node */
-        /* coins NOT credited — earnings only */
-        data.earnings = Number(((data.earnings || 0) + earnedUsd).toFixed(2));
-        return data;
-      }),
-      /* FIX: this path never credited siteRevenue — the admin dashboard's
-         revenue figure only ever reflected 1-on-1 call earnings, completely
-         missing every paid room session. */
-      db.ref("siteRevenue").transaction(data => (Number(data) || 0) + platformUsd),
+      /* credit the owner (earnings only, not coins) and the site */
+      earnedUsd ? addTo("users/" + room.ownerId + "/earnings", earnedUsd, true) : null,
+      platformUsd ? addTo("siteRevenue", platformUsd, true) : null,
       /* cooldown record */
       db.ref("memberRoomCooldown/" + memberUid + "/" + roomId).set(now),
       /* audit log */
@@ -819,14 +809,10 @@ exports.processMemberRoomEarnings = onSchedule(
 
     if (!Object.keys(updates).length) return null;
 
-    const creditPromises = Object.entries(creditsPerUser).map(([uid, coins]) =>
-      db.ref("users/" + uid).transaction(data => {
-        if (!data) return; /* abort — do NOT return null, that WRITES null and deletes the node */
-        data.coins    = (data.coins    || 0) + coins;
-        data.earnings = Number(((data.earnings || 0) + (coins * CREATOR_PAYOUT_USD)).toFixed(2));
-        return data;
-      })
-    );
+    const creditPromises = Object.entries(creditsPerUser).flatMap(([uid, coins]) => [
+      addTo("users/" + uid + "/coins", coins),
+      addTo("users/" + uid + "/earnings", round2(coins * CREATOR_PAYOUT_USD), true)
+    ]);
 
     await Promise.all([db.ref().update(updates), ...creditPromises]);
     console.log("Reconciled legacy member room earnings for:", Object.keys(creditsPerUser));
@@ -834,35 +820,6 @@ exports.processMemberRoomEarnings = onSchedule(
   }
 );
 
-
-/* ═══════════════════════════════════════════
-   New user signup email alert to admin
-═══════════════════════════════════════════ */
-const { beforeUserCreated } = require("firebase-functions/v2/identity");
-exports.notifyAdminOnSignup = beforeUserCreated({ secrets: [GMAIL_PASS] }, async (event) => {
-  const user = event.data;
-  const nodemailer = require("nodemailer");
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: "whisper.me.support@gmail.com",
-      pass: GMAIL_PASS.value()
-    }
-  });
-  await transporter.sendMail({
-    from: "whisper.me.support@gmail.com",
-    to:   "whisper.me.support@gmail.com",
-    subject: "New Whisper+Me Signup!",
-    html: `
-      <h2>New member just signed up!</h2>
-      <p><b>Email:</b> ${user.email || "Google/Facebook login"}</p>
-      <p><b>UID:</b> ${user.uid}</p>
-      <p><b>Time:</b> ${new Date().toLocaleString()}</p>
-      <p><a href="https://whisperplusme.com/admin.html">View in Admin Dashboard</a></p>
-    `
-  });
-  console.log("Signup alert sent for", user.email);
-});
 
 /* ═══════════════════════════════════════════
    Email admin on new signup

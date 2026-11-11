@@ -152,7 +152,8 @@
       ".read": "auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
       ".write": false,
       ".indexOn": [
-        "ts"
+        "ts",
+        "from"
       ]
     },
     "coinPurchases": {
@@ -290,14 +291,24 @@
         ".read": "auth != null && (auth.uid === $uid || auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2')",
         ".write": "auth != null && (auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2' || (auth.uid === $uid && auth.token.firebase.sign_in_provider !== 'anonymous'))",
         "hiddenEvents": {
-        "$key": { ".validate": "$key.length <= 80 && newData.isNumber()" }
-      },
-      "callLog": {
-        "clearedAt": { ".validate": "newData.isNumber()" },
-        "hide": { "$callId": { ".validate": "newData.isNumber()" } },
-        "$other": { ".validate": "false" }
-      },
-      "email": {
+          "$key": {
+            ".validate": "$key.length <= 80 && newData.isNumber()"
+          }
+        },
+        "callLog": {
+          "clearedAt": {
+            ".validate": "newData.isNumber()"
+          },
+          "hide": {
+            "$callId": {
+              ".validate": "newData.isNumber()"
+            }
+          },
+          "$other": {
+            ".validate": "false"
+          }
+        },
+        "email": {
           ".validate": "newData.isString() && newData.val().length <= 200"
         },
         "$other": {
@@ -327,7 +338,9 @@
       "$uid": {
         ".write": "auth != null && auth.uid === $uid && !data.exists() && auth.token.firebase.sign_in_provider !== 'anonymous'",
         ".validate": "newData.hasChildren(['at','s']) && newData.child('s').isString() && newData.child('s').val().length <= 60",
-      "v": { ".validate": "newData.isString() && newData.val().length <= 20" }
+        "v": {
+          ".validate": "newData.isString() && newData.val().length <= 20"
+        }
       }
     },
     "planChat": {
@@ -341,6 +354,10 @@
         ".read": "auth != null && (data.child('members').child(auth.uid).exists() || auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2')",
         ".write": false
       }
+    },
+    "callBilling": {
+      ".read": "auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
+      ".write": false
     }
   }
 }

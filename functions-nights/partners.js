@@ -61,7 +61,11 @@ module.exports = function makePartners(d) {
      ownerUid: the partner who made the Connect Me package (they're paid first). */
   async function commission({ memberUid, kind, base, key, note, viaCode, ownerUid }) {
     if (!(base > 0) || !key || !KINDS.includes(kind)) return 0;
-    const p = (kind === "cm" ? (await partnerByUid(ownerUid)) || (viaCode ? await partnerByCode(viaCode) : null) : null) || await partnerOf(memberUid);
+    // Who gets it: the partner who made the package (Connect Me) → the partner link the buyer came through
+    // (any purchase, any member) → the partner who brought this member in (for the set number of months).
+    const owner = kind === "cm" && ownerUid ? await partnerByUid(ownerUid) : null;
+    const viaP = !owner && viaCode && kind !== "host" ? await partnerByCode(viaCode) : null;
+    const p = owner || (viaP && viaP.uid !== memberUid ? viaP : null) || await partnerOf(memberUid);
     if (!p || p.uid === memberUid) return 0;
     const c = await cfg();
     const pct = kind === "cm" ? (p.cmPct == null ? c.partnerCmPct : p.cmPct) : (p.pct == null ? c.partnerPct : p.pct);
@@ -147,12 +151,23 @@ module.exports = function makePartners(d) {
 
   /* ---------- /go/CODE: count the click, then open the site with the code ---------- */
   async function go(req, res) {
-    const parts = req.path.split("/").filter(Boolean); // ["go", code, where?]
+    const parts = req.path.split("/").filter(Boolean); // ["go", code, where?, ...]
     const code = cleanCode(parts[1]);
-    const where = { meet: "/meet/", plan: "/?dates=pd", connect: "/?dates=cm", mg: "/?dates=1" }[parts[2]] || "/";
-    const dest = where + (where.includes("?") ? "&" : "?") + "via=" + encodeURIComponent(code);
+    const SHORT = { meet: "/meet/", plan: "/?dates=pd", connect: "/?dates=cm", mg: "/?dates=1" };
+    // Any page on the site works too: /go/CODE/m/abc123 opens that M&G, /go/CODE/c/xyz that package, /go/CODE/u/name that profile…
+    const rest = parts.slice(2).join("/");
+    const deep = !SHORT[parts[2]] && parts[2] !== "ping" && /^[a-z][a-z0-9-]{0,15}(\/[A-Za-z0-9_.-]{1,100}){0,2}$/.test(rest) && !/\.\./.test(rest) ? "/" + rest : "";
+    const where = SHORT[parts[2]] || deep || "/";
+    const dest = where + (where.includes("?") ? "&" : "?") + "via=" + encodeURIComponent(code) + "&vc=1";   // vc=1: this click is already counted
     // Link previews (iMessage, Facebook, WhatsApp…) are robots: show them the preview, don't count them as clicks.
     const bot = /bot|crawl|spider|facebookexternalhit|whatsapp|telegram|slack|discord|twitter|linkedin|pinterest|preview|embed|skype|snapchat|vkshare|google-inspectiontool|applebot/i.test(String((req.get && req.get("user-agent")) || ""));
+    // /go/CODE/ping: a page opened with ?via=CODE counts the click (sent once per visit by the page itself).
+    if (parts[2] === "ping") {
+      try { if (!bot) { const owner = code && (await codeRef(code).get()).data(); if (owner) await pRef(owner.uid).set({ clicks: FieldValue.increment(1), clicksByMonth: { [month(Date.now())]: FieldValue.increment(1) } }, { merge: true }); } } catch (e) { logger.warn("partner ping", e.message); }
+      return res.set("Cache-Control", "no-store").status(204).send("");
+    }
+    // Robots following a link to one page get sent there, so the preview is that page's own (the M&G, the profile…).
+    if (bot && deep) return res.set("Cache-Control", "no-store").redirect(302, `${APP_URL}${dest}`);
     let invite = null;
     try {
       invite = share ? await share.partnerInvite(code) : null;
@@ -185,9 +200,15 @@ module.exports = function makePartners(d) {
     return { message: "Thanks! We'll look at your application and let you know (usually within a day or two)." };
   }
 
+  /* The partner's code on their public profile (users/{uid}/partnerCode): the app adds it to every
+     link they share. Removed while paused. */
+  async function setShareCode(uid, code) {
+    try { await rtdb.ref(`users/${uid}/partnerCode`).set(code ? cleanCode(code) : null); } catch (e) { logger.warn("partner code", e.message); }
+  }
   /* ---------- the partner's own board ---------- */
   async function me(uid) {
     const p = (await pRef(uid).get()).data();
+    if (p) await setShareCode(uid, p.status === "active" ? p.code : "");   // keeps older partners in sync
     const c = await cfg();
     const terms = { pct: p && p.pct != null ? Number(p.pct) : c.partnerPct, cmPct: p && p.cmPct != null ? Number(p.cmPct) : c.partnerCmPct, months: c.partnerMonths, holdDays: c.partnerHoldDays };
     if (!p) return { status: "none", terms };
@@ -228,8 +249,9 @@ module.exports = function makePartners(d) {
           tx.set(codeRef(code), { uid: id, at: nowTs() });
           tx.update(pRef(id), { status: "active", code, approvedAt: nowTs(), declineReason: FieldValue.delete(), pauseReason: FieldValue.delete() });
         });
+        await setShareCode(id, code);
         await push(id, "You're a Whisper+Me partner! 🤝", `Your link is whisperplusme.com/go/${code}. Open your partner board to start sharing.`, `${APP_URL}/partner/`);
-        await sendEmail(id, "You're a Whisper+Me partner 🤝", { heading: "Welcome to the partner program! 🤝", intro: "Share your link. When people join through it, you earn from what they spend for a whole year.",
+        await sendEmail(id, "You're a Whisper+Me partner 🤝", { heading: "Welcome to the partner program! 🤝", intro: `Share your link, or share anything on Whisper+Me while you're signed in: your code is added to every share link for you. You earn when people buy through your links, and for ${(await cfg()).partnerMonths} months on what the people who join through them spend.`,
           rows: [["Your link", `whisperplusme.com/go/${code}`], ["You earn", `${(await cfg()).partnerPct}% of what Whisper+Me keeps`], ["For", `${(await cfg()).partnerMonths} months per person`]],
           button: ["Open my partner board", `${APP_URL}/partner/`], after: "Set up payouts in 👤 Profile → Wallet so we can send your earnings to your bank." });
         return { message: `Approved: whisperplusme.com/go/${code}` };
@@ -242,6 +264,7 @@ module.exports = function makePartners(d) {
       case "pausePartner": case "resumePartner": {
         const on = action === "resumePartner";
         await pRef(id).update(on ? { status: "active", pauseReason: FieldValue.delete() } : { status: "paused", pauseReason: str(reason, 200) || "Paused by Whisper+Me" });
+        await setShareCode(id, on ? ((await pRef(id).get()).data() || {}).code : "");
         return { message: on ? "Partner is back on" : "Paused: their link still works, but nothing new is earned while paused" };
       }
       case "setPartnerPct": { // each partner's own rates; empty = the default for everyone
