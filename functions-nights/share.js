@@ -593,14 +593,36 @@ ${asker ? "" : `<a class="b s" href="/connect" style="min-height:48px;font-size:
   }
 
   /** /connect: every Connect Me package, as one page. With ?ask=uid: "{Name} wants a night out, pick one and take them". */
+  /* ---------- 🔗 Admin → Share: reworded previews and the admin's own share links ---------- */
+  const okImg = u => /^https:\/\/[^\s"<>]+$/.test(String(u || "")) ? String(u) : "";
+  async function pagePreview(key) {
+    try { const v = (await rtdb.ref("landing/share/pages/" + key).once("value")).val() || {}; return { title: clip(v.title, 90), desc: clip(v.desc, 200), image: okImg(v.image) }; }
+    catch (e) { return {}; }
+  }
+  const linkSlug = s => String(s || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 40);
+  /* Where a share link may send people: a page on this site only. */
+  const linkDest = to => { const t = String(to || "/").trim(); return /^\/(?!\/)[^\s"<>\\]{0,200}$/.test(t) ? t : "/"; };
+  async function customLink(slug) {
+    slug = linkSlug(slug); if (!slug) return null;
+    const v = (await rtdb.ref("landing/share/links/" + slug).once("value")).val();
+    if (!v || !v.title) return null;
+    return { slug, title: clip(v.title, 90), desc: clip(v.desc, 200), image: okImg(v.image) || `${APP_URL}/og-image.jpg?v=6`, to: linkDest(v.to) };
+  }
+  function customLinkPage(v, dest) {
+    const url = `${APP_URL}/l/${v.slug}`;
+    return pageShell({ title: v.title, desc: v.desc || "Real voices. Real moments. Free to join.", url, image: v.image, canonical: `${APP_URL}${v.to.split("?")[0]}`,
+      body: `<h1 class="nm" style="text-align:center">${esc(v.title)}</h1>${v.desc ? `<p style="text-align:center;color:#b3abcf;margin:0 0 18px">${esc(v.desc)}</p>` : ""}<a href="${esc(dest)}" style="display:block;text-align:center;background:linear-gradient(90deg,#7b2ff7,#ff4f8b);color:#fff;font-weight:800;text-decoration:none;border-radius:999px;padding:14px">Open Whisper+Me</a><script>location.replace(${JSON.stringify(dest).replace(/</g, "\\u003c")})</script>` });
+  }
+
   async function connectListPage(src, askUid) {
     const tail = src ? "&" + src : "";
     const asker = await askerData(askUid);
     const deals = await liveConnects(12);
     const askQ = asker ? "&ask=" + encodeURIComponent(asker.uid) : "";
-    const title = asker ? `${asker.name} wants a night out 💞 Take them?` : "Date Night Ideas Near You: Dinner, Bowling & Shows | Connect Me";
+    const mine = asker ? {} : await pagePreview("connect");   // Admin → 🔗 Share can reword this one
+    const title = asker ? `${asker.name} wants a night out 💞 Take them?` : mine.title || "Date Night Ideas Near You: Dinner, Bowling & Shows | Connect Me";
     const desc = asker ? `${asker.name} is asking to be taken out. Pick a night out on Whisper+Me, pay once, and they get the invite.`
-      : "Night-out packages at real places near you: dinner, bowling, shows and more. One price, bring who you want.";
+      : mine.desc || "Night-out packages at real places near you: dinner, bowling, shows and more. One price, bring who you want.";
     const v = ver(deals.map(d => d.id + d.left).join(","), asker ? asker.uid : "", Math.floor(Date.now() / 36e5));
     const card = c => `<a href="/?dates=1&deal=${encodeURIComponent(c.id)}${askQ}${tail}" style="display:flex;gap:12px;align-items:center;text-decoration:none;color:#fff;background:#14121f;border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:10px;margin-top:10px">
 <div style="flex:none;width:84px;height:84px;border-radius:14px;overflow:hidden;background:linear-gradient(135deg,hsl(${c.hue} 60% 32%),hsl(${(c.hue + 40) % 360} 65% 16%) 70%,#0b0b16)">${c.imageUrl ? `<img src="${esc(c.imageUrl)}" alt="" style="width:100%;height:100%;object-fit:cover">` : ""}</div>
@@ -612,8 +634,8 @@ ${asker ? "" : `<a class="b s" href="/connect" style="min-height:48px;font-size:
       + `<div class="btns">${asker ? `<a class="b s" href="/u/${esc(asker.uid)}">👤 See ${esc(asker.first)}'s profile</a>` : ""}<button class="b s" data-share>↗ ${asker ? "Share it with a friend" : "Share date ideas"}</button><a class="b s" href="/?dates=1${tail}" style="min-height:48px;font-size:15px">✨ Open Whisper+Me</a></div>`;
     const schema = asker ? null : { "@context": "https://schema.org", "@type": "ItemList", name: "Connect Me date ideas",
       itemListElement: deals.map((c, i) => ({ "@type": "ListItem", position: i + 1, url: `${APP_URL}/c/${c.id}`, name: c.title })) };
-    return pageShell({ title, desc, url: `${APP_URL}/connect${asker ? "?ask=" + asker.uid : ""}`, canonical: `${APP_URL}/connect`, image: `${APP_URL}/s/l/connect/card.png?v=${v}${asker ? "&ask=" + asker.uid : ""}`, body, index: !asker, schema });
+    return pageShell({ title, desc, url: `${APP_URL}/connect${asker ? "?ask=" + asker.uid : ""}`, canonical: `${APP_URL}/connect`, image: mine.image || `${APP_URL}/s/l/connect/card.png?v=${v}${asker ? "&ask=" + asker.uid : ""}`, body, index: !asker, schema });
   }
 
-  return { partnerInvite, partnerGoPage, partnerProgramCard, partnerInviteCard, partnerTerms, liveConnects, shareImage, profilePage, meetupPage, planPage, connectPage, connectListPage, listCard, askerData, connectCard, connectData, profileCard, meetupCard, profileData, meetupData, plainCard };
+  return { customLink, customLinkPage, partnerInvite, partnerGoPage, partnerProgramCard, partnerInviteCard, partnerTerms, liveConnects, shareImage, profilePage, meetupPage, planPage, connectPage, connectListPage, listCard, askerData, connectCard, connectData, profileCard, meetupCard, profileData, meetupData, plainCard };
 };

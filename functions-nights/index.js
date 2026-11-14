@@ -3996,6 +3996,23 @@ exports.siteInfo = onRequest({ cors: false, memory: "256MiB" }, async (req, res)
   res.set("Cache-Control", "public, max-age=300, s-maxage=300");
   res.status(200).send(JSON.stringify({ email: await contactEmail() }));
 });
+/* /l/SLUG: a share link made in Admin → 🔗 Share. Apps that draw link previews get the title,
+   words and picture the admin chose; people go straight to the page it points at. */
+exports.shareLink = onRequest({ cors: false, memory: "256MiB" }, async (req, res) => {
+  try {
+    const slug = (req.path.split("/").filter(Boolean)[1] || "");
+    const v = await share.customLink(slug);
+    if (!v) return res.redirect(302, `${APP_URL}/`);
+    // keep ad / partner tags that were added to the link
+    const keep = new URLSearchParams();
+    for (const k of ["utm_source", "utm_medium", "utm_campaign", "utm_content", "ref", "via"]) if (req.query[k]) keep.set(k, String(req.query[k]).slice(0, 60));
+    const dest = APP_URL + v.to + (keep.toString() ? (v.to.includes("?") ? "&" : "?") + keep.toString() : "");
+    const bot = /bot|crawl|spider|facebookexternalhit|whatsapp|telegram|slack|discord|twitter|linkedin|pinterest|preview|embed|skype|snapchat|vkshare|google-inspectiontool|applebot/i.test(String(req.get("user-agent") || ""));
+    if (bot) { res.set("Cache-Control", "public, max-age=120, s-maxage=300"); return res.status(200).send(share.customLinkPage(v, dest)); }
+    try { await rtdb.ref("shareClicks/" + v.slug).transaction(n => (Number(n) || 0) + 1); } catch (e) { /* counting is best-effort */ }
+    res.set("Cache-Control", "no-store"); res.redirect(302, dest);
+  } catch (e) { logger.error("shareLink", e.message); res.redirect(302, `${APP_URL}/`); }
+});
 /* /email-prefs?u=UID&t=TOKEN[&on=1]: the one-tap link at the bottom of reminder emails. */
 exports.emailPrefs = onRequest({ cors: false, memory: "256MiB" }, async (req, res) => {
   const uid = str(req.query.u, 128), on = req.query.on === "1";

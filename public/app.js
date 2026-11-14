@@ -838,7 +838,8 @@ var SS_CSS = ".ss{padding:18px 16px 16px;color:#f3f0fb;text-align:left;position:
       document.body.appendChild(el); }
     el.textContent = "⏸ " + (String(v.msg || "").slice(0, 200) || "Buying and posting are paused for a few minutes while we update the site. Everything you already have still works.");
   }
-  function start(){ try{ firebase.database().ref("landing/pause").on("value", function(s){ show(s.val()); }, function(){}); }catch(e){} }
+  function start(){ try{ firebase.database().ref("landing/pause").on("value", function(s){ show(s.val()); }, function(){});
+    firebase.database().ref("landing/share/text").once("value").then(function(s){ window.__shareText = s.val() || {}; }, function(){}); }catch(e){} }
   if(window.firebase && firebase.database) start(); else window.addEventListener("load", start);
 })();
 /* Verify-email helpers (Profile shows the button when it's needed). */
@@ -900,6 +901,14 @@ window.wpmShareTag = function(url){
     u.searchParams.set("via", code);
     return u.href;
   }catch(e){ return url; }
+};
+/* 🔗 The words that go out with a link when someone taps Share. Admin → 🔗 Share can rewrite any of
+   them; {words} in curly braces are filled in (the room name, the date, the price…). */
+window.wpmShareText = function(key, vars, fallback){
+  var t = (window.__shareText || {})[key];
+  if(!t || typeof t !== "string") return fallback;
+  var out = t.replace(/\{(\w+)\}/g, function(m, k){ return vars && vars[k] != null ? String(vars[k]) : ""; }).replace(/[ \t]{2,}/g, " ").trim();
+  return out || fallback;
 };
 function openShareSheet(title, text, url, embedId, embedType, imgBase, imgQuery){
   embedType = embedType || "room";
@@ -991,6 +1000,7 @@ window.shareRoom = function(roomId, label, desc){
     + (count > 0
         ? "\n\ud83d\udd34 " + count + " " + (count === 1 ? "person is" : "people are") + " talking here right now."
         : "\n\ud83c\udf99\ufe0f Anonymous voice chat \u2014 tap in and see who shows up.");
+  text = window.wpmShareText("room", { room: label, about: desc, count: count }, text);
   openShareSheet("Whisper+Me \xb7 " + label, text, shareUrl, roomId, "room");
 };
 
@@ -1002,6 +1012,7 @@ window.shareMemberRoom = function(roomId, roomName, cost){
   var shareUrl = "https://whisperplusme.com/?room=" + encodeURIComponent(roomId);
   var text = "🎙️ " + roomName + " — join my live room on Whisper+Me."
     + " " + cost + " coin" + (cost > 1 ? "s" : "") + " ($" + (cost*3) + ") to enter.";
+  text = window.wpmShareText("memberRoom", { room: roomName, coins: cost, price: "$" + (cost * 3) }, text);
   openShareSheet("Whisper+Me \xb7 " + roomName, text, shareUrl);
 };
 
@@ -3293,6 +3304,7 @@ window.shareProfile = function(uid){
              + "\n" + statLine + " \u00b7 Whisper+Me";
     }
   }).catch(function(){}).then(function(){
+    text = window.wpmShareText("profile", { name: name, bio: bio.slice(0, 60), coins: price, price: "$" + (price * 3), calls: calls }, text);
     openShareSheet("Whisper+Me \xb7 " + name, text, url, uid, "profile", "/s/u/" + encodeURIComponent(uid));
   });
 };

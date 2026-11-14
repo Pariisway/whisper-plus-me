@@ -227,6 +227,10 @@
         "function": "emailPrefs"
       },
       {
+        "source": "/l/**",
+        "function": "shareLink"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

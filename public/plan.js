@@ -403,6 +403,7 @@
       var x = P.list.filter(function (z) { return z.id === id; })[0] || P.mine.filter(function (z) { return z.id === id; })[0] || {};
       var url = "https://whisperplusme.com/p/" + encodeURIComponent(id);
       var text = "📍 " + (x.title || "A date") + (x.venueName ? " at " + x.venueName : "") + (x.startsAt ? ", " + when(x.startsAt, x.tz) : "") + ". Want to go? Tap “I'm interested” on Whisper+Me.";
+      if (window.wpmShareText) text = window.wpmShareText("plan", { title: x.title || "A date", place: x.venueName || "", when: x.startsAt ? when(x.startsAt, x.tz) : "" }, text);
       if (window.openShareSheet) window.openShareSheet((x.title || "Plan a Date") + " · Whisper+Me", text, url);
       else if (navigator.share) navigator.share({ title: x.title, text: text, url: url }).catch(function () {});
     },

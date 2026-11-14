@@ -239,6 +239,7 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
       <button data-tab="people">👥 People</button>
       <button data-tab="money">💰 Money<span class="n" id="nav-n-money" hidden></span></button>
       <button data-tab="landing">🎬 Landing page</button>
+      <button data-tab="share">🔗 Share</button>
       <button data-tab="announce">📢 Announce</button>
       <button data-tab="rooms">💬 Rooms</button>
       <button data-tab="safety">🛡️ Safety</button>
@@ -811,6 +812,39 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
   </section>
 </div>
 
+<div class="page" id="p-share">
+  <h1 class="page-title">🔗 Share &amp; link previews</h1>
+  <p class="page-sub">The title, words and picture people see when a Whisper+Me link is posted on Facebook, in a text, on WhatsApp and so on. Change any of them here, or make brand-new share links.</p>
+
+  <section class="card" id="sec-sh-links">
+    <h2>✨ My share links</h2>
+    <p class="help">Make a link with its own title, words and picture, pointing at any page of the site. Use a different one for each post or ad and see which gets the most taps. These work the moment you save.</p>
+    <div id="sh-links"><div class="empty">Loading…</div></div>
+    <div class="row"><button class="btn main" onclick="shLinkEdit()">＋ New share link</button></div>
+  </section>
+
+  <section class="card" id="sec-sh-pages">
+    <h2>🖼️ Page previews</h2>
+    <p class="help">What shows when someone posts the plain address of one of your pages. Leave a box empty to keep the built-in wording.</p>
+    <div id="sh-pages"><div class="empty">Loading…</div></div>
+  </section>
+
+  <section class="card" id="sec-sh-text">
+    <h2>💬 Words members send</h2>
+    <p class="help">When a member taps Share, this message goes out with the link. Words in {curly braces} are filled in for you. Leave a box empty to keep the built-in message. Changes are live right away.</p>
+    <div id="sh-text"><div class="empty">Loading…</div></div>
+  </section>
+
+  <section class="card">
+    <h2>ℹ️ Good to know</h2>
+    <ul class="help" style="padding-left:18px;margin:0">
+      <li>A room, a profile, an M&amp;G, a date idea, a Connect Me package and a planned date each build their own preview from their own title, picture, time and price. To change one, edit that item.</li>
+      <li>Facebook and others remember a preview for a while. If an old one keeps showing, paste the link into Facebook's “Sharing Debugger” and press “Scrape again”.</li>
+      <li>Best picture size: 1200 × 630 (wide). Keep titles under 60 letters and the words under 150 so nothing gets cut off.</li>
+    </ul>
+  </section>
+</div>
+
 <div class="page" id="p-log">
   <h1 class="page-title">🧾 Activity</h1>
   <p class="page-sub">Everything done from this dashboard, newest first. Kept for 200 actions.</p>
@@ -926,6 +960,7 @@ function start() {
 const LOADERS = {
   money: () => { loadSales(); loadDisputes(); loadMoney(); loadCoinPurchases(); loadCallLedger(); loadRoomLedger(); loadStripeAccounts(); loadAutoPay(); },
   landing: () => { ldLoad(false); hiwLoad(); ctLoad(); pzLoad(); },
+  share: () => shLoad(),
   announce: () => loadBanners(),
   rooms: () => loadPresets(),
   safety: () => { loadReports(); loadSafety(); loadMicLog(); loadOrg(); },
@@ -1355,6 +1390,144 @@ async function loadStripeAccounts() {
 /* ───────── landing page manager ───────── */
 const LD_DEFAULT = { mode: "color", playlist: {}, image: "", color: "#0b0b16", color2: "#3a1170", gradient: true, shuffle: false, imageSeconds: 8, overlay: 0.45, showSound: true, headline: "Talk. Go live. Meet up.", subline: "Voice rooms, live mics, 1-on-1 calls and real date nights. Your people are already here." };
 const ld = { cfg: Object.assign({}, LD_DEFAULT, { playlist: {} }), dirty: false, loadedOnce: false, pv: "phone", pvIdx: 0 };
+/* ───────── 🔗 Share & link previews (landing/share) ─────────
+   pages/{key} {title, desc, image}  – fixed pages are written into the HTML by tools/apply-share.js on the next upload; "connect" is read live by the server
+   text/{key}  "message with {words}" – read by the app when a member taps Share
+   links/{slug} {title, desc, image, to} – whisperplusme.com/l/slug (server: shareLink); taps counted in shareClicks/{slug} */
+const SH = { cfg: {}, clicks: {}, live: {} };
+const SH_PAGES = [
+  ["home", "Home page", "/", false], ["rooms", "Voice chat rooms page", "/rooms/", false], ["meet", "Meet up page", "/meet/", false],
+  ["help", "How to use page", "/help/", false], ["partner", "Partner program page", "/partner/", false], ["bio", "Link-in-bio page", "/linkinbio.html", false],
+  ["connect", "Connect Me list", "/connect", true],
+];
+const SH_TEXT = [
+  ["room", "A free voice room", "{room} — {about}\n🎙️ Anonymous voice chat — tap in and see who shows up.", "{room} {about} {count}"],
+  ["memberRoom", "A paid member room", "🎙️ {room} — join my live room on Whisper+Me. {coins} coins ({price}) to enter.", "{room} {coins} {price}"],
+  ["profile", "A member's profile", "🎤 {name} — “{bio}”\n{coins} coin ({price}) per call · Whisper+Me", "{name} {bio} {coins} {price} {calls}"],
+  ["mg", "An M&G", "{title} with {host} at {place}, {when}. Spots are limited.", "{title} {host} {place} {when}"],
+  ["idea", "A free date idea", "{title} at {place}, {when}. Spots are limited.", "{title} {place} {when}"],
+  ["deal", "A Connect Me package", "💞 {title} at {place}, {when}. {price} for {size}. Want to go?", "{title} {place} {when} {price} {size}"],
+  ["takeMeOut", "“Take me out” (one package)", "Who's taking me out? 💞 {title} at {place}, {when}. It's all planned, just tap and treat me 😉", "{title} {place} {when}"],
+  ["takeMeOutAll", "“Take me out” (all packages)", "Who's taking me out? 💞 Pick a night out for us on Whisper+Me. Dinner, bowling, shows… it's all planned, just tap one 😉", ""],
+  ["connect", "The Connect Me list", "No date ideas? Start here 💞 Night-out packages near St. Louis: dinner, bowling, shows and more. One price, bring who you want.", ""],
+  ["meet", "The Meet up page", "Meet up in real life: meet & greets, date nights for 2 at one price, or plan your own date and pick who goes. Free to join.", ""],
+  ["plan", "A planned date", "📍 {title} at {place}, {when}. Want to go? Tap “I'm interested” on Whisper+Me.", "{title} {place} {when}"],
+];
+const shClean = (s, n) => String(s || "").replace(/\s+/g, " ").trim().slice(0, n);
+const shImgOk = u => /^https:\/\/[^\s"<>]+$/.test(u || "");
+const shSlug = s => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+const shCard = (title, desc, image, host) => `<div style="max-width:340px;border:1px solid var(--line,rgba(255,255,255,.14));border-radius:12px;overflow:hidden;background:#0d0b18">
+  <div style="aspect-ratio:1200/630;background:#1b1829 center/cover no-repeat${image ? `;background-image:url('${h(image)}')` : ""}"></div>
+  <div style="padding:9px 11px"><div style="font-size:11px;color:var(--muted);text-transform:uppercase">${h(host || "whisperplusme.com")}</div><div style="font-weight:800;font-size:14px;line-height:1.25;margin:2px 0">${h(title || "Whisper+Me")}</div><div style="font-size:12.5px;color:var(--muted);line-height:1.35">${h(desc || "")}</div></div></div>`;
+async function shLoad() {
+  SH.cfg = (await db.ref("landing/share").once("value")).val() || {};
+  try { SH.clicks = (await db.ref("shareClicks").once("value")).val() || {}; } catch (e) { SH.clicks = {}; }
+  shDrawLinks(); shDrawPages(); shDrawText();
+  // What each page is showing right now, read from the live page itself.
+  SH_PAGES.forEach(async ([key, , path]) => {
+    try {
+      const doc = new DOMParser().parseFromString(await (await fetch(path, { cache: "no-store" })).text(), "text/html");
+      const tag = k => doc.querySelector(`meta[property="${k}"]`), get = k => { const m = tag(k); return m ? m.getAttribute("content") || "" : ""; }, def = k => { const m = tag(k); return m ? (m.getAttribute("data-d") || m.getAttribute("content") || "") : ""; };
+      SH.live[key] = { title: get("og:title"), desc: get("og:description"), image: get("og:image"), dTitle: def("og:title"), dDesc: def("og:description"), dImage: def("og:image") };
+      shDrawPages();
+    } catch (e) { /* preview of the live page is optional */ }
+  });
+}
+/* --- my share links --- */
+function shDrawLinks() {
+  const L = SH.cfg.links || {}, keys = Object.keys(L).sort((a, b) => (L[b].at || 0) - (L[a].at || 0));
+  $("sh-links").innerHTML = keys.length ? keys.map(k => `<div class="item"><div class="who"><b>${h(L[k].title)}</b><span>whisperplusme.com/l/${h(k)} → ${h(L[k].to || "/")} · 👆 ${Number(SH.clicks[k] || 0)} tap${Number(SH.clicks[k] || 0) === 1 ? "" : "s"}</span></div>
+    <div class="acts"><button class="btn sm teal" onclick="shCopy(${j(k)})">🔗 Copy</button><button class="btn sm" onclick="shLinkEdit(${j(k)})">Edit</button><button class="btn sm red" onclick="shLinkDel(${j(k)})">Delete</button></div></div>`).join("")
+    : `<div class="empty">No share links yet. Make your first one.</div>`;
+}
+function shCopy(slug) { const u = "https://whisperplusme.com/l/" + slug; (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject()).then(() => toast("Copied: " + u), () => prompt("Copy this link:", u)); }
+function shLinkEdit(slug) {
+  const v = (slug && (SH.cfg.links || {})[slug]) || {}, dests = [["/", "Home (sign up / chat)"], ["/rooms/", "Voice chat rooms"], ["/meet/", "Meet up"], ["/connect", "Connect Me packages"], ["/?dates=1", "M&G screen in the app"], ["/partner/", "Partner program"], ["/help/", "How to use"]];
+  const custom = v.to && !dests.some(d => d[0] === v.to);
+  openModal(`<h3>${slug ? "Edit share link" : "＋ New share link"}</h3>
+    <label class="field"><span>Title <em>· the bold line</em></span><input class="in" id="shl-title" maxlength="90" value="${h(v.title || "")}" placeholder="Friday night voice rooms are open 🎙️" oninput="shLinkPv()"></label>
+    <label class="field"><span>Words under it</span><textarea class="in" id="shl-desc" maxlength="200" rows="2" placeholder="Real people talking right now. Free to join." oninput="shLinkPv()">${h(v.desc || "")}</textarea></label>
+    <label class="field"><span>Picture <em>· wide, 1200 × 630 is best. Empty = the Whisper+Me picture</em></span><input class="in" id="shl-image" value="${h(v.image || "")}" placeholder="https://… or upload one" oninput="shLinkPv()"></label>
+    <input type="file" id="shl-file" accept="image/*" style="margin:8px 0 12px" onchange="shUpload(this,'shl-image',shLinkPv)">
+    <label class="field"><span>Where it takes people</span><select class="in" id="shl-to" onchange="$('shl-custom').hidden=this.value!=='*'">${dests.map(d => `<option value="${h(d[0])}"${v.to === d[0] ? " selected" : ""}>${h(d[1])}</option>`).join("")}<option value="*"${custom ? " selected" : ""}>Another page on the site…</option></select></label>
+    <input class="in" id="shl-custom" ${custom ? "" : "hidden"} value="${h(custom ? v.to : "")}" placeholder="/m/abc123  (the part after whisperplusme.com)">
+    <label class="field"><span>Link name <em>· whisperplusme.com/l/…</em></span><input class="in" id="shl-slug" maxlength="40" value="${h(slug || "")}" ${slug ? "disabled" : ""} placeholder="made from the title if you leave it empty"></label>
+    <div class="help" style="margin:10px 0 4px">How it will look:</div><div id="shl-pv"></div>
+    <div class="acts"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn main" onclick="shLinkSave(${j(slug || "")})">Save link</button></div>`);
+  shLinkPv();
+}
+function shLinkPv() { const img = $("shl-image").value.trim(); $("shl-pv").innerHTML = shCard($("shl-title").value, $("shl-desc").value, shImgOk(img) ? img : "/og-image.jpg?v=6"); }
+async function shLinkSave(old) {
+  const title = shClean($("shl-title").value, 90), desc = shClean($("shl-desc").value, 200), image = $("shl-image").value.trim();
+  let to = $("shl-to").value === "*" ? $("shl-custom").value.trim().replace(/^https?:\/\/(www\.)?whisperplusme\.com/i, "") : $("shl-to").value;
+  const slug = old || shSlug($("shl-slug").value || title);
+  if (!title) return toast("Give it a title", true);
+  if (image && !shImgOk(image)) return toast("The picture address must start with https://", true);
+  if (!/^\/(?!\/)[^\s"<>\\]{0,200}$/.test(to)) return toast("The page must be on this site, like /rooms/ or /m/abc123", true);
+  if (!slug) return toast("Give the link a name (letters and numbers)", true);
+  if (!old && (SH.cfg.links || {})[slug]) return toast("You already have a link named “" + slug + "”. Pick another name.", true);
+  const ok = await safely(() => db.ref("landing/share/links/" + slug).set({ title, desc, image, to, at: ((SH.cfg.links || {})[slug] || {}).at || Date.now() }), "Share link saved: /l/" + slug, "Couldn't save");
+  if (ok) { closeModal(); await shLoad(); shCopy(slug); }
+}
+async function shLinkDel(slug) {
+  if (!await dialog({ title: "Delete /l/" + slug + "?", body: "Anywhere this link is already posted, it will just open the home page with the normal preview.", ok: "Delete", danger: true })) return;
+  if (await safely(() => db.ref("landing/share/links/" + slug).remove(), "Deleted share link /l/" + slug)) shLoad();
+}
+async function shUpload(inp, targetId, after) {
+  const f = inp.files && inp.files[0]; if (!f) return;
+  if (!/^image\//.test(f.type)) return toast("Pick a picture", true);
+  if (f.size > 5 * 1024 * 1024) return toast("That picture is over 5 MB. Pick a smaller one.", true);
+  toast("Uploading…");
+  const url = await safely(async () => { const ref = storage.ref("landingMedia/share_" + Date.now() + "_" + f.name.replace(/[^A-Za-z0-9._-]+/g, "-").slice(-40)); await ref.put(f, { contentType: f.type, cacheControl: "public,max-age=2592000" }); return ref.getDownloadURL(); }, null, "Upload failed");
+  inp.value = "";
+  if (url && url !== true) { $(targetId).value = url; toast("Picture added"); if (after) after(); }
+}
+/* --- page previews --- */
+function shDrawPages() {
+  const P = SH.cfg.pages || {}, open = shDrawPages.open || "";
+  $("sh-pages").innerHTML = SH_PAGES.map(([key, label, path, instant]) => {
+    const v = P[key] || {}, lv = SH.live[key], set = !!(v.title || v.desc || v.image);
+    const want = lv && { title: v.title || lv.dTitle, desc: v.desc || lv.dDesc, image: v.image || lv.dImage };
+    const waiting = !instant && lv && (want.title !== lv.title || want.desc !== lv.desc || want.image !== lv.image);
+    const pill = waiting ? `<span class="pill" style="background:#d6b16b;color:#1a1308">⏳ Goes live on your next upload</span>` : set ? `<span class="pill on">Your wording</span>` : `<span class="pill">Built-in</span>`;
+    const body = open !== key ? "" : `<div style="padding:10px 0 4px">
+      <label class="field"><span>Title</span><input class="in" id="shp-title" maxlength="90" value="${h(v.title || "")}" placeholder="${h(lv ? lv.dTitle : "")}" oninput="shPagePv(${j(key)})"></label>
+      <label class="field"><span>Words under it</span><textarea class="in" id="shp-desc" maxlength="200" rows="3" placeholder="${h(lv ? lv.dDesc : "")}" oninput="shPagePv(${j(key)})">${h(v.desc || "")}</textarea></label>
+      <label class="field"><span>Picture <em>· empty = the built-in picture</em></span><input class="in" id="shp-image" value="${h(v.image || "")}" placeholder="https://… or upload one" oninput="shPagePv(${j(key)})"></label>
+      <input type="file" id="shp-file" accept="image/*" style="margin:8px 0 4px" onchange="shUpload(this,'shp-image',()=>shPagePv(${j(key)}))">
+      <div class="help" style="margin:10px 0 4px">How it will look:</div><div id="shp-pv"></div>
+      <p class="help">${instant ? "This one changes within a few minutes of saving." : "This page's preview is written into the page itself, so it changes the next time you upload the site (run your usual update command, or <code>~/whisperplusme/deploy.sh \"new previews\"</code>)."}</p>
+      <div class="row"><button class="btn main" onclick="shPageSave(${j(key)})">Save</button>${set ? `<button class="btn" onclick="shPageSave(${j(key)},true)">Go back to built-in</button>` : ""}</div></div>`;
+    return `<div class="item" style="display:block"><div style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap"><div class="who" style="flex:1 1 220px;min-width:0"><b>${h(label)} ${pill}</b><span>whisperplusme.com${h(path)}${lv ? " · now showing: “" + h(lv.title) + "”" : ""}</span></div><div class="acts"><button class="btn sm" onclick="shPageOpen(${j(key)})">${open === key ? "Close" : "Edit"}</button></div></div>${body}</div>`;
+  }).join("");
+  if (open) shPagePv(open);
+}
+function shPageOpen(key) { shDrawPages.open = shDrawPages.open === key ? "" : key; shDrawPages(); }
+function shPagePv(key) {
+  if (!$("shp-pv")) return; const lv = SH.live[key] || {}, img = $("shp-image").value.trim();
+  $("shp-pv").innerHTML = shCard($("shp-title").value || lv.dTitle, $("shp-desc").value || lv.dDesc, shImgOk(img) ? img : lv.dImage);
+}
+async function shPageSave(key, clear) {
+  const v = clear ? null : { title: shClean($("shp-title").value, 90), desc: shClean($("shp-desc").value, 200), image: $("shp-image").value.trim() };
+  if (v && v.image && !shImgOk(v.image)) return toast("The picture address must start with https://", true);
+  const empty = !v || !(v.title || v.desc || v.image);
+  if (await safely(() => empty ? db.ref("landing/share/pages/" + key).remove() : db.ref("landing/share/pages/" + key).set(v), empty ? "Preview back to built-in: " + key : "Preview saved: " + key, "Couldn't save")) {
+    SH.cfg.pages = SH.cfg.pages || {}; if (empty) delete SH.cfg.pages[key]; else SH.cfg.pages[key] = v; shDrawPages();
+  }
+}
+/* --- words members send --- */
+function shDrawText() {
+  const T = SH.cfg.text || {};
+  $("sh-text").innerHTML = SH_TEXT.map(([key, label, def, words]) => `<div class="item" style="display:block"><div class="who"><b>${h(label)} ${T[key] ? `<span class="pill on">Your wording</span>` : ""}</b>${words ? `<span>Filled in for you: ${h(words)}</span>` : ""}</div>
+    <textarea class="in" id="sht-${key}" rows="2" maxlength="300" placeholder="${h(def)}" style="margin-top:8px">${h(T[key] || "")}</textarea>
+    <div class="row" style="margin-top:6px"><button class="btn sm teal" onclick="shTextSave('${key}')">Save</button><button class="btn sm" onclick="$('sht-${key}').value=${j(def)}">Start from the built-in message</button></div></div>`).join("");
+}
+async function shTextSave(key) {
+  const v = $("sht-" + key).value.replace(/[ \t]+/g, " ").trim().slice(0, 300);
+  if (await safely(() => v ? db.ref("landing/share/text/" + key).set(v) : db.ref("landing/share/text/" + key).remove(), v ? "Share message saved: " + key : "Share message back to built-in: " + key, "Couldn't save")) {
+    SH.cfg.text = SH.cfg.text || {}; if (v) SH.cfg.text[key] = v; else delete SH.cfg.text[key]; shDrawText();
+  }
+}
 /* ───────── ⏸ pause purchases (landing/pause), checked by the server before every purchase ───────── */
 let PZ_ON = false;
 async function pzLoad() {
@@ -1422,7 +1595,7 @@ async function ldLoad(force) {
   if (force && ld.dirty && !await dialog({ title: "Undo your changes?", body: "Goes back to what's live right now.", ok: "Undo" })) return;
   try {
     const v = (await db.ref("landing").once("value")).val() || {};
-    delete v.stats; delete v.updatedAt; delete v.howItWorks; delete v.contact; delete v.pause; // saved by their own cards
+    delete v.stats; delete v.updatedAt; delete v.howItWorks; delete v.contact; delete v.pause; delete v.share; // saved by their own cards
     ld.cfg = Object.assign({}, LD_DEFAULT, v); ld.cfg.playlist = JSON.parse(JSON.stringify(v.playlist || {}));
     ld.cfg.site = Object.assign({ mode: "default", overlay: 0.5, color: "#0e0e1c", color2: "#3a1170", gradient: true }, JSON.parse(JSON.stringify(v.site || {})));
     ld.loadedOnce = true; ldDirty(false); ldRender(); renderGlance();
@@ -1604,7 +1777,7 @@ async function ldUpload(files, target) {
   box.hidden = true;
 }
 async function ldPublish() {
-  const c = Object.assign({}, ld.cfg); delete c.howItWorks; delete c.contact; delete c.pause;
+  const c = Object.assign({}, ld.cfg); delete c.howItWorks; delete c.contact; delete c.pause; delete c.share;
   if (c.mode === "videos" && !Object.keys(c.playlist || {}).length) { toast("Add at least one video or picture first", true); return; }
   if (c.mode === "image" && !c.image) { toast("Add a picture first", true); return; }
   c.headline = String(c.headline || "").slice(0, 70); c.subline = String(c.subline || "").slice(0, 200);

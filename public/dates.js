@@ -335,6 +335,7 @@
     return head + cats + "<div class='dt-list'>" + body + "</div>";
   }
 
+  function shareText(key, vars, fallback) { return window.wpmShareText ? window.wpmShareText(key, vars, fallback) : fallback; }
   /* ---------- 🔔 waitlist (sold out) ---------- */
   function waitHTML(m) {
     return "<div class='dt-rules' style='text-align:center'><b>" + (isIdea(m) ? "This one is full." : "Sold out.") + "</b> Spots do open up. Want to know the moment one does?</div>"
@@ -821,6 +822,7 @@
       var c = S.connects.filter(function (x) { return x.id === id; })[0] || {};
       var url = "https://whisperplusme.com/c/" + encodeURIComponent(id);
       var text = "💞 " + (c.title || "A night out") + (c.venueName ? " at " + c.venueName : "") + (c.startsAt ? ", " + when(c.startsAt) : "") + ". " + money(c.price) + " for " + (c.size || 2) + ". Want to go?";
+      text = shareText("deal", { title: c.title || "A night out", place: c.venueName || "", when: c.startsAt ? when(c.startsAt) : "", price: money(c.price), size: c.size || 2 }, text);
       if (window.openShareSheet) window.openShareSheet((c.title || "Connect Me") + " · Whisper+Me", text, url, null, null, "/s/c/" + encodeURIComponent(id));
       else if (navigator.share) navigator.share({ title: c.title, text: text, url: url }).catch(function () {});
     },
@@ -832,10 +834,12 @@
       if (c) {
         var url = "https://whisperplusme.com/c/" + encodeURIComponent(dealId) + "?" + q;
         var text = "Who's taking me out? 💞 " + (c.title || "A night out") + (c.venueName ? " at " + c.venueName : "") + (c.startsAt ? ", " + when(c.startsAt) : "") + ". It's all planned, just tap and treat me 😉";
+        text = shareText("takeMeOut", { title: c.title || "A night out", place: c.venueName || "", when: c.startsAt ? when(c.startsAt) : "" }, text);
         if (window.openShareSheet) window.openShareSheet("Take me out · Whisper+Me", text, url, null, null, "/s/c/" + encodeURIComponent(dealId), q);
       } else {
         var url2 = "https://whisperplusme.com/connect?" + q;
         var text2 = "Who's taking me out? 💞 Pick a night out for us on Whisper+Me. Dinner, bowling, shows… it's all planned, just tap one 😉";
+        text2 = shareText("takeMeOutAll", {}, text2);
         if (window.openShareSheet) window.openShareSheet("Take me out · Whisper+Me", text2, url2, null, null, "/s/l/connect", q);
       }
     },
@@ -843,6 +847,7 @@
     shareIdeas: function () {
       var url = "https://whisperplusme.com/connect";
       var text = "No date ideas? Start here 💞 Night-out packages near St. Louis: dinner, bowling, shows and more. One price, bring who you want.";
+      text = shareText("connect", {}, text);
       if (window.openShareSheet) window.openShareSheet("Connect Me · Whisper+Me", text, url, null, null, "/s/l/connect");
     },
     shareSeat: function (orderId, i) {
@@ -1031,6 +1036,7 @@
     shareSide: function () {
       var url = "https://whisperplusme.com/meet/" + (S.uid ? "?ref=" + encodeURIComponent(S.uid.slice(0, 12)) : "");
       var text = "Meet up in real life: meet & greets, date nights for 2 at one price, or plan your own date and pick who goes. Free to join.";
+      text = shareText("meet", {}, text);
       if (window.openShareSheet) window.openShareSheet("Meet up in real life · Whisper+Me", text, url, null, null, "/meet");
       else if (navigator.share) navigator.share({ title: "Whisper+Me", text: text, url: url }).catch(function () {});
     },
@@ -1066,6 +1072,7 @@
       var m = findM(id) || {};
       var url = shareLink(id);
       var text = (m.title || "M&G") + (m.hostName && !m.official ? " with " + m.hostName : "") + (m.venueName ? " at " + m.venueName : "") + (m.startsAt ? ", " + when(m.startsAt) : "") + ". Spots are limited.";
+      text = shareText(isIdea(m) ? "idea" : "mg", { title: m.title || "M&G", host: m.official ? "" : (m.hostName || ""), place: m.venueName || "", when: m.startsAt ? when(m.startsAt) : "" }, text);
       if (window.openShareSheet) { window.openShareSheet((m.title || "M&G") + " · Whisper+Me", text, url, null, null, "/s/m/" + encodeURIComponent(id)); return; }
       if (navigator.share) { navigator.share({ title: (m.title || "M&G") + " · Whisper+Me", text: text, url: url }).catch(function () {}); return; }
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text + " " + url).then(function () { toast("Link copied. Paste it anywhere."); }, function () { prompt("Copy this link:", url); });

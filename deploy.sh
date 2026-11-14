@@ -23,6 +23,7 @@ if [ "$GHONLY" = 0 ]; then
   (cd functions && npm install --no-audit --no-fund --loglevel=error && npm test)
 
   echo "▶ Fingerprinting the site's scripts (so browsers can cache them safely)…"
+  node tools/apply-share.js   # link previews you set in Admin → 🔗 Share
   node tools/stamp-assets.js
 
   echo "▶ Deploying the site, rules, indexes and server…"

@@ -365,6 +365,10 @@
     "callBilling": {
       ".read": "auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
       ".write": false
+    },
+    "shareClicks": {
+      ".read": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
+      ".write": false
     }
   }
 }

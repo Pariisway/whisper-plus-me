@@ -1538,6 +1538,27 @@ async function test(name, fn) {
     await assert.rejects(un("nightsAdminAction", "nov1", { action: "unverifiedList" }));
   });
 
+  await test("🔗 Share links made in admin: previews get the chosen words, people are sent on, clicks are counted", async () => {
+    const hit = async (path, ua, query = {}) => { const out = { headers: {} }; const res = { set(k, v) { out.headers[k] = v; return res; }, status(c) { out.code = c; return res; }, send(b) { out.body = b; return res; }, redirect(c, u) { out.code = c; out.to = u; return res; }, on() {}, setHeader() {}, getHeader() {}, end() {} };
+      await F.shareLink({ path, query, get: () => ua, headers: { "user-agent": ua }, method: "GET" }, res); await new Promise(r => setTimeout(r, 30)); return out; };
+    const rt = require("firebase-admin").__rtdb;
+    rt.landing = Object.assign(rt.landing || {}, { share: { links: { "friday": { title: "Friday <Night> Live", desc: "Come \"talk\" with us", image: "https://cdn.x.com/a.png", to: "/rooms/" }, bad: { title: "Bad", to: "https://evil.example/x" } }, pages: { connect: { title: "My own Connect title", desc: "My own words" } } } });
+    const bot = await hit("/l/friday", "facebookexternalhit/1.1");
+    assert.strictEqual(bot.code, 200);
+    assert.ok(bot.body.includes('og:title" content="Friday &lt;Night&gt; Live"') && bot.body.includes("https://cdn.x.com/a.png") && bot.body.includes("Come &quot;talk&quot; with us"), "preview uses the admin's words, safely escaped");
+    assert.ok(!rt.shareClicks, "previews aren't counted as clicks");
+    const man = await hit("/l/Friday", "Mozilla/5.0 (Linux; Android 14)", { via: "tiara", junk: "x" });
+    assert.strictEqual(man.code, 302); assert.ok(/\/rooms\/\?via=tiara$/.test(man.to), man.to);
+    assert.strictEqual(rt.shareClicks.friday, 1);
+    const evil = await hit("/l/bad", "Mozilla/5.0"); assert.ok(/whisperplusme\.com\/$/.test(evil.to) || evil.to.endsWith("/"), "links only ever point inside the site: " + evil.to);
+    assert.ok(!/evil/.test(evil.to));
+    const none = await hit("/l/nope", "Mozilla/5.0"); assert.strictEqual(none.code, 302);
+    // the Connect Me list page takes its preview words from Admin → Share
+    const dp = { headers: {} }; const dres = { set(k, v) { return dres; }, status(c) { return dres; }, send(b) { dp.body = b; return dres; }, redirect() {}, on() {}, setHeader() {}, getHeader() {}, end() {} };
+    await F.dealPage({ path: "/connect", query: {}, get: () => "x", headers: {}, method: "GET" }, dres); await new Promise(r => setTimeout(r, 60)); const page = dp.body;
+    assert.ok(page.includes('og:title" content="My own Connect title"') && page.includes("My own words"));
+  });
+
   Date.now = realNow;
   const failed = results.filter(r => r[0] === "FAIL");
   results.forEach(r => console.log(r[0] === "ok" ? "  ✓" : "  ✗", r[1], r[2] ? "\n      " + r[2] : ""));
