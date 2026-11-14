@@ -335,6 +335,13 @@
     return head + cats + "<div class='dt-list'>" + body + "</div>";
   }
 
+  /* 📅 Put it on my calendar (opens Google Calendar with everything filled in; 2 hours long). */
+  function calBtn(title, startsAt, place, note) {
+    var f = function (t) { return new Date(t).toISOString().replace(/[-:]|\.\d{3}/g, ""); };
+    var u = "https://calendar.google.com/calendar/render?action=TEMPLATE&text=" + encodeURIComponent(title || "Whisper+Me") + "&dates=" + f(startsAt) + "/" + f(startsAt + 2 * 3600000)
+      + "&location=" + encodeURIComponent(place || "") + "&details=" + encodeURIComponent((note ? note + "\n" : "") + "whisperplusme.com");
+    return "<a class='dt-btn ghost' href='" + esc(u) + "' target='_blank' rel='noopener' style='text-decoration:none;display:inline-flex;align-items:center'>📅 Add to calendar</a>";
+  }
   function shareText(key, vars, fallback) { return window.wpmShareText ? window.wpmShareText(key, vars, fallback) : fallback; }
   /* ---------- 🔔 waitlist (sold out) ---------- */
   function waitHTML(m) {
@@ -518,6 +525,7 @@
         + (m.canDeclineMove ? " Can't make it? You have until " + esc(when(m.changeUntil)) + " to get your money back as credit.<div class='dt-actions' style='margin-top:8px'><button class='dt-btn ghost' onclick=\"Dates.declineMove('" + m.id + "',this)\">I can't make the new date</button></div>" : "") + "</div>" : "")
       + (m.canRate ? starRow("mg", m.id, m.myStars || 0) : "")
       + "<div class='dt-actions' style='margin-top:10px'>"
+      + (m.status === "live" && m.code && m.startsAt > Date.now() ? calBtn(m.title, m.startsAt, [m.venueName, m.address, m.city].filter(Boolean).join(", "), "Your code: " + m.code) : "")
       + (m.status === "live" && m.code ? "<button class='dt-btn ghost' onclick=\"Dates.shareMeetup('" + m.id + "')\">↗ Bring a friend</button>" : "")
       + (m.canReport && !m.reported ? "<button class='dt-btn ghost' onclick=\"Dates.reportMeetup('" + m.id + "')\">Report a problem</button>" : "")
       + (m.reported ? "<span class='dt-pill warn'>Reported. We're looking into it.</span>" : "")
@@ -560,6 +568,7 @@
       + (open && !m.official ? "<button class='dt-btn ghost' onclick=\"Dates.hostMeetup('" + m.id + "')\">✏️ " + (m.status === "changes" ? "Fix it" : "Edit") + "</button>" : "")
       + (m.canMove ? "<button class='dt-btn ghost' onclick=\"Dates.moveMeetup('" + m.id + "')\">📅 Move date</button>" : "")
       + (open && !m.official ? "<button class='dt-btn ghost' onclick=\"Dates.cancelMeetup('" + m.id + "',this)\">Cancel</button>" : "")
+      + (!open && !m.official && !m.idea ? "<button class='dt-btn ghost' onclick=\"Dates.hostMeetup(null,'" + m.id + "')\">🔁 Host it again</button>" : "")
       + "</div></div>";
   }
   function hostPitch() {
@@ -1121,28 +1130,31 @@
     },
 
     /* ---------- hosting ---------- */
-    hostMeetup: function (editId) {
+    hostMeetup: function (editId, copyId) {
       if (S.anon) { if (window.promptGuestUpgrade) window.promptGuestUpgrade("Hosting an M&G"); return; }
       if (!me()) return;
       var ed = editId ? S.mine.filter(function (x) { return x.id === editId && x.host; })[0] : null;
-      var v = (ed && ed.venue) || {}, c = (ed && ed.contact) || S.hostContact || {};
+      /* 🔁 Host it again: a new M&G that starts out filled in from one of your old ones. */
+      var src = !ed && copyId ? S.mine.filter(function (x) { return x.id === copyId && x.host; })[0] : null, pre = ed || src;
+      var v = (pre && pre.venue) || {}, c = (pre && pre.contact) || S.hostContact || {};
       var u = firebase.auth().currentUser || {};
       var fee = S.settings.hostFee == null ? 10 : S.settings.hostFee;
       var locked = ed && ed.sold > 0;
       var needYear = !ed && S.member === null;
       var minWhen = new Date(Date.now() + 25 * 3600000); minWhen = new Date(minWhen.getTime() - minWhen.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
       var whenVal = ed ? new Date(ed.startsAt - new Date(ed.startsAt).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : "";
-      HF = { venue: Object.assign({ source: "other" }, v), img: ed ? ed.imageURL : "", results: [] };
-      openModal("<h3>" + (ed ? "✏️ Edit your M&G" : "⭐ Host an M&G") + "</h3>"
-        + (ed ? "" : "<p style='margin:-6px 0 0;color:#b3abcf;font-size:13px'>Takes about 2 minutes. We review it (usually within a day), then it goes on sale.</p>")
+      HF = { venue: Object.assign({ source: "other" }, v), img: pre ? pre.imageURL : "", results: [] };
+      openModal("<h3>" + (ed ? "✏️ Edit your M&G" : src ? "🔁 Host it again" : "⭐ Host an M&G") + "</h3>"
+        + (src ? "<div class='dt-rules'>Everything is copied from last time. <b>Pick the new day and time</b>, change anything you like, and send it in.</div>" : "")
+        + (ed || src ? "" : "<p style='margin:-6px 0 0;color:#b3abcf;font-size:13px'>Takes about 2 minutes. We review it (usually within a day), then it goes on sale.</p>")
         + (ed && ed.status === "changes" && ed.changesNote ? "<div class='dt-warn'><b>What to change:</b> " + esc(ed.changesNote) + "</div>" : "")
         + (locked ? "<div class='dt-rules'>People already bought spots, so the time, price and place are locked. Contact support if they must change.</div>" : "")
         + "<h4>1 · WHAT</h4>"
-        + "<div><div class='lbl'>Name it</div><input class='dt-in' id='mgTitle' maxlength='80' placeholder='Dinner & photos with me' value='" + esc(ed ? ed.title : "") + "'></div>"
-        + "<div><div class='lbl'>What will you do?</div><textarea class='dt-in' id='mgAbout' maxlength='800' rows='3' placeholder='We will eat, talk and take pictures. Bring your questions!'>" + esc(ed ? ed.about : "") + "</textarea></div>"
-        + "<div class='dt-row' style='gap:8px;flex-wrap:nowrap'><div style='flex:1'><div class='lbl'>Category</div><select class='dt-in' id='mgCat'>" + ["Dinner", "Activities", "Concerts", "Movies", "Other"].map(function (k) { return "<option" + (ed && ed.category === k ? " selected" : "") + ">" + k + "</option>"; }).join("") + "</select></div>"
+        + "<div><div class='lbl'>Name it</div><input class='dt-in' id='mgTitle' maxlength='80' placeholder='Dinner & photos with me' value='" + esc(pre ? pre.title : "") + "'></div>"
+        + "<div><div class='lbl'>What will you do?</div><textarea class='dt-in' id='mgAbout' maxlength='800' rows='3' placeholder='We will eat, talk and take pictures. Bring your questions!'>" + esc(pre ? pre.about : "") + "</textarea></div>"
+        + "<div class='dt-row' style='gap:8px;flex-wrap:nowrap'><div style='flex:1'><div class='lbl'>Category</div><select class='dt-in' id='mgCat'>" + ["Dinner", "Activities", "Concerts", "Movies", "Other"].map(function (k) { return "<option" + (pre && pre.category === k ? " selected" : "") + ">" + k + "</option>"; }).join("") + "</select></div>"
         + "<div style='flex:1'><div class='lbl'>Picture <small>(optional)</small></div><input type='file' id='mgImg' accept='image/*' class='dt-in' style='padding:8px'></div></div>"
-        + "<div><div class='lbl'>Included <small>(one per line, optional)</small></div><textarea class='dt-in' id='mgItems' rows='2' placeholder='Dinner\nPhoto + signed print'>" + esc(ed ? (ed.items || []).join("\n") : "") + "</textarea></div>"
+        + "<div><div class='lbl'>Included <small>(one per line, optional)</small></div><textarea class='dt-in' id='mgItems' rows='2' placeholder='Dinner\nPhoto + signed print'>" + esc(pre ? (pre.items || []).join("\n") : "") + "</textarea></div>"
         + "<h4>2 · WHERE</h4>"
         + (locked ? "<div class='dt-rules'><b>" + esc(v.name || ed.venueName) + "</b><br>" + esc(v.address || "") + ", " + esc(v.city || ed.city) + "<br>📞 " + esc(v.phone || "") + "</div>"
           : "<input class='dt-in' id='mgVq' placeholder='Search: restaurant, lounge, bowling alley…' autocomplete='off' value='" + esc(v.name || "") + "'>"
@@ -1156,10 +1168,10 @@
           + "<p style='margin:4px 0 0;font-size:11px;color:#6f6a88'>Search by © OpenStreetMap contributors</p>")
         + "<h4>3 · WHEN & PRICE</h4>"
         + (locked ? "" : "<div><div class='lbl'>Day and time</div><input class='dt-in' id='mgWhen' type='datetime-local' min='" + minWhen + "' value='" + whenVal + "'></div>")
-        + "<div class='dt-row' style='gap:10px;flex-wrap:nowrap'>" + (locked ? "" : "<div style='flex:1'><div class='lbl'>Price per person ($)</div><input class='dt-in' id='mgPrice' type='number' min='5' step='1' inputmode='numeric' value='" + (ed ? ed.price / 100 : "") + "' placeholder='45'></div>")
-        + "<div style='width:110px'><div class='lbl'>Spots</div><input class='dt-in' id='mgSpots' type='number' min='1' max='500' inputmode='numeric' value='" + (ed ? ed.spots : 10) + "'></div></div>"
+        + "<div class='dt-row' style='gap:10px;flex-wrap:nowrap'>" + (locked ? "" : "<div style='flex:1'><div class='lbl'>Price per person ($)</div><input class='dt-in' id='mgPrice' type='number' min='5' step='1' inputmode='numeric' value='" + (pre ? pre.price / 100 : "") + "' placeholder='45'></div>")
+        + "<div style='width:110px'><div class='lbl'>Spots</div><input class='dt-in' id='mgSpots' type='number' min='1' max='500' inputmode='numeric' value='" + (pre ? pre.spots : 10) + "'></div></div>"
         + "<div class='dt-rules' id='mgMath'></div>"
-        + "<label class='dt-check'><input type='checkbox' id='mgIdCheck'" + (ed && ed.idCheck ? " checked" : "") + (locked ? " disabled" : "") + "> <span>🪪 <b>21+ with ID at the door</b> (a bar, lounge, or drinks are the main thing). Buyers confirm they'll bring a photo ID, and you check it when they arrive.</span></label>"
+        + "<label class='dt-check'><input type='checkbox' id='mgIdCheck'" + (pre && pre.idCheck ? " checked" : "") + (locked ? " disabled" : "") + "> <span>🪪 <b>21+ with ID at the door</b> (a bar, lounge, or drinks are the main thing). Buyers confirm they'll bring a photo ID, and you check it when they arrive.</span></label>"
         + "<h4>4 · HOW WE REACH YOU</h4>"
         + "<div class='dt-row' style='gap:6px;flex-wrap:nowrap'><input class='dt-in' id='mgEmail' type='email' placeholder='Email' value='" + esc(c.email || u.email || "") + "'><input class='dt-in' id='mgPhone' type='tel' placeholder='Your phone' value='" + esc(c.phone || "") + "'></div>"
         + "<p style='margin:-8px 0 0;font-size:12px;color:#9a8fb5'>Only Whisper+Me sees these, to confirm details or ask for changes.</p>"

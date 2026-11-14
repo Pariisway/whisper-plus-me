@@ -83,6 +83,18 @@ section.card>h2{font-size:18px;margin:0 0 2px;display:flex;align-items:center;ga
 section.card>h2 .right{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
 .help{color:var(--muted);font-size:14px;margin:0 0 14px}
 body.simple [data-adv]{display:none!important}
+/* Fold a card by tapping its title; the dashboard remembers which ones you keep closed. */
+section.card.fold>h2{cursor:pointer;user-select:none}
+section.card.fold>h2::before{content:"▾";color:var(--muted);font-size:14px;width:14px;flex:none;transition:transform .15s}
+section.card.fold.folded>h2::before{transform:rotate(-90deg)}
+section.card.fold.folded{padding-bottom:16px}
+section.card.fold.folded>:not(h2){display:none!important}
+section.card.fold.folded>h2 .right{display:none}
+section.card.fold.folded>h2{margin:0}
+.lm.lm-folded{display:block}.lm.lm-folded>section.card+section.card{display:none}
+/* Long explanations start as two lines; tap to read the rest. */
+section.card>p.help.clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer;position:relative}
+section.card>p.help.clamp::after{content:"more ▾";position:absolute;right:0;bottom:0;padding-left:26px;background:linear-gradient(90deg,transparent,var(--panel) 30%);color:var(--teal);font-weight:700}
 .grid{display:grid;gap:12px}
 .g2{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
 .g3{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
@@ -292,7 +304,7 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
     </div>
   </section>
 
-  <section class="card">
+  <section class="card" id="sec-fits">
     <h2>How the site fits together</h2>
     <p class="help">Follow a new person from the first second to a payout.</p>
     <div class="flow">
@@ -643,7 +655,7 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
   <p class="page-sub">Everything on the M&amp;G screen is an M&amp;G: one price per person, buyers get the address and a code. Members' M&amp;Gs wait for your review; the ones you post here go live right away.</p>
 
   <section class="card" id="sec-mgreview">
-    <h2>⭐ M&amp;Gs <span class="right"><div class="seg" id="mg-f"><button data-f="todo" class="on" onclick="mgFilter('todo')">Needs you</button><button data-f="live" onclick="mgFilter('live')">On sale</button><button data-f="paying" onclick="mgFilter('paying')">Paying soon</button><button data-f="all" onclick="mgFilter('all')">All</button></div></span></h2>
+    <h2>⭐ M&amp;Gs <span class="right"><div class="seg" id="mg-f"><button data-f="todo" class="on" onclick="mgFilter('todo')">Needs you</button><button data-f="live" onclick="mgFilter('live')">On sale</button><button data-f="paying" onclick="mgFilter('paying')">Paying soon</button><button data-f="past" onclick="mgFilter('past')">🔁 Past</button><button data-f="all" onclick="mgFilter('all')">All</button></div><button class="btn sm main" onclick="dtResetForm();go('dates','sec-newticket')">➕ New</button></span></h2>
     <p class="help"><b>Needs you:</b> new M&amp;Gs to approve, and ones where nobody was checked in or a buyer reported a problem. Open <b>Details</b> to see the address, phone numbers, guest list and reports. <b>Paying soon:</b> hosts are paid <span id="mg-days">3</span> days after their M&amp;G unless you <b>Hold</b> it or a buyer reports a problem.</p>
     <div id="dt-meetups" class="list"><div class="empty">Loading…</div></div>
   </section>
@@ -733,7 +745,7 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
   </section>
 
   <section class="card">
-    <h2>🎟️ Packages <span class="right"><div class="seg" id="cm-f"><button data-f="live" class="on" onclick="cmFilter('live')">On sale</button><button data-f="all" onclick="cmFilter('all')">All</button></div></span></h2>
+    <h2>🎟️ Packages <span class="right"><div class="seg" id="cm-f"><button data-f="live" class="on" onclick="cmFilter('live')">On sale</button><button data-f="past" onclick="cmFilter('past')">🔁 Past</button><button data-f="all" onclick="cmFilter('all')">All</button></div><button class="btn sm main" onclick="cmReset();go('connect','sec-cmpost')">➕ New</button></span></h2>
     <div id="cm-list" class="list"><div class="empty">Loading…</div></div>
   </section>
 
@@ -799,7 +811,7 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
     <div id="pt-list" class="list"><div class="empty">Loading…</div></div>
   </section>
 
-  <section class="card">
+  <section class="card" id="sec-ptrules">
     <h2>⚙️ How partners earn</h2>
     <div class="row">
       <label class="field"><span>Default partner share</span><input class="in" id="pt-pct" type="number" min="0" max="50" style="width:90px"> % of what we keep</label>
@@ -835,7 +847,7 @@ td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
     <div id="sh-text"><div class="empty">Loading…</div></div>
   </section>
 
-  <section class="card">
+  <section class="card" id="sec-sh-tips">
     <h2>ℹ️ Good to know</h2>
     <ul class="help" style="padding-left:18px;margin:0">
       <li>A room, a profile, an M&amp;G, a date idea, a Connect Me package and a planned date each build their own preview from their own title, picture, time and price. To change one, edit that item.</li>
@@ -948,7 +960,35 @@ auth.onAuthStateChanged(user => {
   }
 });
 
+/* Less-used buttons on a row sit behind “⋯ More”, so the main ones are easy to find. */
+const moreBtns = list => { list = list.filter(Boolean); return list.length ? `<button class="btn sm" onclick="const m=this.nextElementSibling;m.hidden=!m.hidden;this.textContent=m.hidden?'⋯ More':'⋯ Less'">⋯ More</button><span hidden style="display:contents">${list.join("")}</span>` : ""; };
+/* ───────── tidy cards: fold / unfold, and short explanations ───────── */
+const FOLD_CLOSED = ["sec-fits", "sec-sitebg", "sec-hiw", "sec-contact", "sec-reviews", "sec-dtrules", "sec-cmvenues", "sec-cmcheckin", "sec-newticket", "sec-cmpost", "sec-ptrules", "sec-org", "sec-sh-text", "sec-sh-tips", "sec-msgs"];
+function foldState() { try { return JSON.parse(localStorage.getItem("wpmAdminFold") || "{}"); } catch (e) { return {}; } }
+function foldSet(card, closed, save) {
+  card.classList.toggle("folded", closed);
+  if (card.parentNode.classList.contains("lm")) card.parentNode.classList.toggle("lm-folded", closed);
+  if (save) { const st = foldState(); st[card.id] = closed ? 1 : 0; try { localStorage.setItem("wpmAdminFold", JSON.stringify(st)); } catch (e) {} }
+}
+function unfold(el) { const card = el && el.closest && el.closest("section.card.fold"); if (card && card.classList.contains("folded")) foldSet(card, false, false); }
+function foldInit() {
+  const st = foldState();
+  document.querySelectorAll(".page").forEach(pg => pg.querySelectorAll("section.card").forEach((card, i) => { if (!card.id && pg.id !== "p-start") card.id = pg.id + "-card" + i; }));
+  document.querySelectorAll(".page section.card[id]").forEach(card => {
+    const h2 = card.querySelector(":scope > h2"); if (!h2) return;
+    if (card.parentNode.classList.contains("lm") && !["sec-newticket", "sec-cmpost"].includes(card.id)) return;
+    card.classList.add("fold");
+    foldSet(card, card.id in st ? !!st[card.id] : FOLD_CLOSED.includes(card.id), false);
+    h2.addEventListener("click", e => { if (e.target.closest("button,a,input,select,label,.seg")) return; foldSet(card, !card.classList.contains("folded"), true); });
+  });
+  document.querySelectorAll(".page section.card > h2 + p.help").forEach(p => {
+    if ((p.textContent || "").length < 170 || p.querySelector("input,button,select")) return;
+    p.classList.add("clamp"); p.title = "Tap to read it all";
+    p.addEventListener("click", e => { if (e.target.closest("a")) return; p.classList.toggle("clamp"); });
+  });
+}
 function start() {
+  foldInit();
   try { setLayout(localStorage.getItem("wpmAdminLayout") || "simple"); } catch (e) { setLayout("simple"); }
   document.querySelectorAll("nav button").forEach(b => b.onclick = () => go(b.dataset.tab));
   go((location.hash || "#start").slice(1) || "start");
@@ -977,7 +1017,7 @@ function go(tab, focusId) {
   if (location.hash !== "#" + tab) history.replaceState(null, "", "#" + tab);
   if (LOADERS[tab] && !loaded[tab]) { loaded[tab] = true; LOADERS[tab](); }
   const nb = document.querySelector(`nav button[data-tab="${tab}"]`); if (nb && nb.scrollIntoView) nb.scrollIntoView({ inline: "center", block: "nearest" });
-  if (focusId) setTimeout(() => { const el = $(focusId); if (el) { el.scrollIntoView({ behavior: "smooth", block: "start" }); if (el.focus && /INPUT|TEXTAREA|SELECT/.test(el.tagName)) el.focus(); } }, 60);
+  if (focusId) setTimeout(() => { const el = $(focusId); if (el) { unfold(el); el.scrollIntoView({ behavior: "smooth", block: "start" }); if (el.focus && /INPUT|TEXTAREA|SELECT/.test(el.tagName)) el.focus(); } }, 60);
   else window.scrollTo(0, 0);
 }
 function setLayout(m) {
@@ -1832,8 +1872,14 @@ async function loadBanners() {
   try {
     const items = []; (await db.ref("siteNotifications").orderByChild("ts").limitToLast(10).once("value")).forEach(s => { items.push(Object.assign({ id: s.key }, s.val())); });
     items.reverse();
-    $("banners").innerHTML = items.length ? items.map(n => `<div class="item"><div class="who"><b>${n.active === false ? "⚪ " : "🟢 "}${h(n.title)}</b><span>${h(n.body)}${n.linkUrl ? " 🔗" : ""} · ${ago(n.ts)}</span></div><div class="acts">${n.active === false ? `<button class="btn sm red" onclick="banner(${j(n.id)},'delete')">Delete</button>` : `<button class="btn sm" onclick="banner(${j(n.id)},'down')">Take down</button>`}</div></div>`).join("") : "";
+    $("banners").innerHTML = items.length ? items.map(n => `<div class="item"><div class="who"><b>${n.active === false ? "⚪ " : "🟢 "}${h(n.title)}</b><span>${h(n.body)}${n.linkUrl ? " 🔗" : ""} · ${ago(n.ts)}</span></div><div class="acts"><button class="btn sm" onclick="bannerAgain(${j(n.id)})">🔁 Use again</button>${n.active === false ? `<button class="btn sm red" onclick="banner(${j(n.id)},'delete')">Delete</button>` : `<button class="btn sm" onclick="banner(${j(n.id)},'down')">Take down</button>`}</div></div>`).join("") : "";
   } catch (e) {}
+}
+/* 🔁 Fill the banner form from an old banner, ready to change and post again. */
+async function bannerAgain(id) {
+  const n = (await db.ref("siteNotifications/" + id).once("value")).val(); if (!n) return;
+  $("ban-title").value = n.title || ""; $("ban-body").value = n.body || ""; $("ban-url").value = n.linkUrl || ""; $("ban-text").value = n.linkText || "";
+  $("ban-title").scrollIntoView({ behavior: "smooth", block: "center" }); $("ban-title").focus(); toast("Copied into the form. Change anything, then post.");
 }
 async function banner(id, act) {
   if (act === "delete") { if (!await dialog({ title: "Delete this banner for good?", ok: "Delete", danger: true })) return; await safely(() => db.ref("siteNotifications/" + id).remove(), "Banner deleted"); }
@@ -2313,7 +2359,7 @@ function dtResetForm() {
   DT.editing = null; DT.keepImage = ""; DT.venue = { source: "other" };
   ["dt-title", "dt-note", "dt-price", "dt-vq", "dt-vname", "dt-vaddr", "dt-vcity", "dt-vphone"].forEach(k => { $(k).value = ""; });
   $("dt-qty").value = DT.type === "idea" ? 2 : 20; $("dt-id").checked = false; $("dt-vres").innerHTML = ""; DT.items = []; dtPicClear(); dtItems();
-  $("dt-cancel-edit").hidden = true; $("dt-form-title").textContent = "➕ Post a Whisper+Me M&G"; $("dt-post").textContent = "🚀 Post it. Everyone sees it right away";
+  $("dt-cancel-edit").hidden = true; $("dt-cancel-edit").textContent = "Cancel editing"; $("dt-form-title").textContent = "➕ Post a Whisper+Me M&G"; $("dt-post").textContent = "🚀 Post it. Everyone sees it right away";
   document.querySelectorAll("#dt-type button").forEach(b => { b.disabled = false; }); dtPays("each"); dtType(DT.type);
 }
 function dtCancelEdit() { dtResetForm(); $("dt-status").textContent = ""; }
@@ -2335,20 +2381,26 @@ async function dtPost() {
     dtResetForm();
   }
 }
-function dtEditMeetup(id) {
+/* 🔁 Post again: the same weekday and time as the old one, on the next date that is still ahead. */
+function nextSameSlot(ms) {
+  const d = new Date(ms || Date.now()), min = Date.now() + 48 * 3600000;
+  while (d.getTime() < min) d.setDate(d.getDate() + 7);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+function dtEditMeetup(id, copy) {
   const m = DT.meetups.find(x => x.id === id); if (!m) return;
   firebase.firestore().doc(`meetups/${id}/private/info`).get().then(p => {
     const v = (p.exists && p.data().venue) || {};
-    DT.type = m.idea ? "idea" : "mg"; dtResetForm(); DT.editing = id; DT.venue = Object.assign({ source: "other" }, v);
-    document.querySelectorAll("#dt-type button").forEach(b => { b.disabled = true; });
+    DT.type = m.idea ? "idea" : "mg"; dtResetForm(); DT.editing = copy ? null : id; DT.venue = Object.assign({ source: "other" }, v);
+    document.querySelectorAll("#dt-type button").forEach(b => { b.disabled = !copy; });
     $("dt-title").value = m.title || ""; $("dt-note").value = m.about || ""; dtCat(m.category || "Other");
     $("dt-vq").value = v.name || m.venueName || ""; $("dt-vname").value = v.name || m.venueName || ""; $("dt-vaddr").value = v.address || ""; $("dt-vcity").value = v.city || m.city || ""; $("dt-vphone").value = v.phone || "";
     $("dt-price").value = (Number((m.idea ? m.est : m.price) || 0) / 100).toFixed(2).replace(/\.00$/, "").replace(/^0$/, ""); $("dt-qty").value = m.spots || 1; $("dt-id").checked = !!m.idCheck;
     if (m.idea) { dtPays(m.pays || "each"); dtPpl(m.spots); }
-    const d = new Date(dtMs(m.startsAt)); $("dt-when").value = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    const d = new Date(dtMs(m.startsAt)); $("dt-when").value = copy ? nextSameSlot(dtMs(m.startsAt)) : new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
     DT.items = (m.items || []).slice(); DT.picUrl = m.imageURL || ""; DT.keepImage = m.imageURL || ""; $("dt-pic-x").hidden = !DT.picUrl; dtItems();
-    $("dt-form-title").textContent = m.idea ? "✏️ Edit 💡 date idea" : "✏️ Edit M&G"; $("dt-post").textContent = "💾 Save changes"; $("dt-cancel-edit").hidden = false;
-    $("dt-status").textContent = m.sold ? (m.idea ? `✏️ ${m.sold} going, so the time and place are locked.` : `✏️ ${m.sold} already sold, so the time, price and place are locked.`) : "✏️ Change anything, then Save changes.";
+    $("dt-form-title").textContent = copy ? (m.idea ? "🔁 Post this 💡 date idea again" : "🔁 Post this M&G again") : m.idea ? "✏️ Edit 💡 date idea" : "✏️ Edit M&G"; $("dt-post").textContent = copy ? "🚀 Post it again" : "💾 Save changes"; $("dt-cancel-edit").hidden = false; $("dt-cancel-edit").textContent = copy ? "Never mind" : "Cancel editing";
+    $("dt-status").textContent = copy ? "🔁 Everything is copied from the old one, as a brand-new post. Check the date (set to the same day and time, next time it comes around), change anything, then post." : m.sold ? (m.idea ? `✏️ ${m.sold} going, so the time and place are locked.` : `✏️ ${m.sold} already sold, so the time, price and place are locked.`) : "✏️ Change anything, then Save changes.";
     go("dates", "sec-newticket");
   }, e => toast(e.message, true));
 }
@@ -2391,7 +2443,8 @@ function dtRenderMeetups() {
   if (mgF === "todo") list = list.filter(mgTodo);
   if (mgF === "live") list = list.filter(m => m.status === "live");
   if (mgF === "paying") list = list.filter(m => m.status === "paying");
-  list.sort((a, b) => mgF === "all" ? dtMs(b.startsAt) - dtMs(a.startsAt) : dtMs(a.startsAt) - dtMs(b.startsAt));
+  if (mgF === "past") list = list.filter(m => ["completed", "canceled", "expired", "rejected"].includes(m.status));
+  list.sort((a, b) => mgF === "all" || mgF === "past" ? dtMs(b.startsAt) - dtMs(a.startsAt) : dtMs(a.startsAt) - dtMs(b.startsAt));
   const nTodo = (DT.meetups || []).filter(mgTodo).length;
   const tb = document.querySelector('#mg-f button[data-f="todo"]'); if (tb) tb.textContent = "Needs you" + (nTodo ? " (" + nTodo + ")" : "");
   $("dt-meetups").innerHTML = list.length ? list.map(m => {
@@ -2401,11 +2454,15 @@ function dtRenderMeetups() {
     if (["pending", "changes"].includes(m.status)) acts.push(`<button class="btn sm teal" onclick="mgAct('approveMeetup',${j(m.id)})">✅ Approve</button>`, `<button class="btn sm gold" onclick="mgAct('requestMeetupChanges',${j(m.id)})">✏️ Ask for changes</button>`, `<button class="btn sm red" onclick="mgAct('rejectMeetup',${j(m.id)})">Reject</button>`);
     if (m.status === "live") {
       acts.push(`<button class="btn sm main" onclick="adLink('m',${j(m.id)},${j(m.title)})">📣 Ad link</button>`);
-      acts.push(m.hidden ? `<button class="btn sm teal" onclick="mgAct('showMeetup',${j(m.id)})">▶ Resume</button>` : `<button class="btn sm gold" onclick="mgAct('hideMeetup',${j(m.id)})">⏸ Pause</button>`);
+      if (m.hidden) acts.push(`<button class="btn sm teal" onclick="mgAct('showMeetup',${j(m.id)})">▶ Resume</button>`);
       acts.push(m.official ? `<button class="btn sm" onclick="dtEditMeetup(${j(m.id)})">✏️ Edit</button>` : `<button class="btn sm gold" onclick="mgAct('requestMeetupChanges',${j(m.id)})">✏️ Ask for changes</button>`);
-      if (!m.idea && !m.movedFrom) acts.push(`<button class="btn sm" onclick="mgAct('moveMeetup',${j(m.id)})">📅 Move date</button>`);
-      acts.push(`<button class="btn sm" onclick="dtCopyMeetLink(${j(m.id)})">🔗 Link</button>`, `<button class="btn sm red" onclick="mgAct('cancelMeetup',${j(m.id)})">${m.idea ? "Cancel it" : "Cancel &amp; refund"}</button>`);
+      acts.push(`<button class="btn sm" onclick="dtCopyMeetLink(${j(m.id)})">🔗 Link</button>`);
+      acts.push(moreBtns([m.hidden ? "" : `<button class="btn sm gold" onclick="mgAct('hideMeetup',${j(m.id)})">⏸ Pause</button>`,
+        !m.idea && !m.movedFrom ? `<button class="btn sm" onclick="mgAct('moveMeetup',${j(m.id)})">📅 Move date</button>` : "",
+        m.official ? `<button class="btn sm" onclick="dtEditMeetup(${j(m.id)},true)">📋 Copy to a new date</button>` : "",
+        `<button class="btn sm red" onclick="mgAct('cancelMeetup',${j(m.id)})">${m.idea ? "Cancel it" : "Cancel &amp; refund"}</button>`]));
     }
+    if (m.official && m.status !== "live") acts.push(`<button class="btn sm teal" onclick="dtEditMeetup(${j(m.id)},true)">🔁 Post again</button>`);
     if (m.status === "review") acts.push(`<button class="btn sm teal" onclick="mgAct('payMeetupHost',${j(m.id)})">It happened: pay host</button>`, `<button class="btn sm red" onclick="mgAct('noShow',${j(m.id)})">Refund buyers</button>`);
     if (m.status === "paying") acts.push(`<button class="btn sm teal" onclick="mgAct('payMeetupHost',${j(m.id)})">Pay now</button>`, `<button class="btn sm gold" onclick="mgAct('holdMeetupPayout',${j(m.id)})">✋ Hold</button>`);
     const why = m.status === "review" ? (m.lastReport ? `Buyer report: ${h(m.lastReport)}` : "Nobody was checked in.") : m.status === "paying" ? `Host gets paid ${h(dtWhenText(dtMs(m.payoutAt)))}` : "";
@@ -2533,7 +2590,7 @@ function cmPickVenue(i) {
 function cmReset() {
   CM.editing = null; CM.items = []; CM.venue = { source: "other" }; cmPicClear();
   ["cm-title", "cm-about", "cm-price", "cm-vq", "cm-vname", "cm-vaddr", "cm-vcity", "cm-vphone"].forEach(k => { $(k).value = ""; }); $("cm-qty").value = 5; $("cm-id").checked = false; cmSize(2); cmItems();
-  $("cm-form-title").textContent = "➕ Post a package"; $("cm-post").textContent = "🚀 Post it"; $("cm-cancel-edit").hidden = true; $("cm-status").textContent = "";
+  $("cm-form-title").textContent = "➕ Post a package"; $("cm-post").textContent = "🚀 Post it"; $("cm-cancel-edit").hidden = true; $("cm-cancel-edit").textContent = "Cancel editing"; $("cm-status").textContent = "";
 }
 async function cmPost() {
   const d = { title: $("cm-title").value.trim(), about: $("cm-about").value.trim(), category: CM.cat, items: CM.items.slice(), size: CM.size, price: Number($("cm-price").value), quantity: Number($("cm-qty").value), idCheck: $("cm-id").checked,
@@ -2545,34 +2602,37 @@ async function cmPost() {
   btn.disabled = false; btn.textContent = label;
   if (r && r.id) { toast(r.message); logAct((CM.editing ? "Edited" : "Posted") + ` Connect Me "${d.title}"`); cmReset(); $("cm-status").textContent = "✅ " + r.message; }
 }
-function cmEdit(id) {
+function cmEdit(id, copy) {
   const c = CM.list.find(x => x.id === id); if (!c) return;
   firebase.firestore().doc(`connects/${id}/private/info`).get().then(p => {
     const v = (p.exists && p.data().venue) || {};
-    cmReset(); CM.editing = id; CM.venue = Object.assign({ source: "other" }, v);
+    cmReset(); CM.editing = copy ? null : id; CM.venue = Object.assign({ source: "other" }, v);
     $("cm-title").value = c.title || ""; $("cm-about").value = c.about || ""; cmCat(c.category || "Other"); cmSize(c.size || 2);
     $("cm-vq").value = $("cm-vname").value = v.name || c.venueName || ""; $("cm-vaddr").value = v.address || ""; $("cm-vcity").value = v.city || c.city || ""; $("cm-vphone").value = v.phone || "";
     $("cm-price").value = c.price / 100; $("cm-qty").value = c.quantity; $("cm-id").checked = !!c.idCheck;
-    const dd = new Date(dtMs(c.startsAt)); $("cm-when").value = new Date(dd.getTime() - dd.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    const dd = new Date(dtMs(c.startsAt)); $("cm-when").value = copy ? nextSameSlot(dtMs(c.startsAt)) : new Date(dd.getTime() - dd.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
     CM.items = (c.items || []).slice(); CM.picUrl = c.imageURL || ""; CM.keepImage = c.imageURL || ""; $("cm-pic-x").hidden = !CM.picUrl; cmItems();
-    $("cm-form-title").textContent = "✏️ Edit package"; $("cm-post").textContent = "💾 Save changes"; $("cm-cancel-edit").hidden = false;
-    $("cm-status").textContent = c.sold ? `✏️ ${c.sold} sold, so the price, size, time and place are locked.` : "";
+    $("cm-form-title").textContent = copy ? "🔁 Post this package again" : "✏️ Edit package"; $("cm-post").textContent = copy ? "🚀 Post it again" : "💾 Save changes"; $("cm-cancel-edit").hidden = false; $("cm-cancel-edit").textContent = copy ? "Never mind" : "Cancel editing";
+    $("cm-status").textContent = copy ? "🔁 Everything is copied from the old one, as a brand-new package. Check the date (set to the same day and time, next time it comes around), change anything, then post." : c.sold ? `✏️ ${c.sold} sold, so the price, size, time and place are locked.` : "";
     go("connect", "sec-cmpost");
   });
 }
 function cmFilter(f) { CM.f = f; document.querySelectorAll("#cm-f button").forEach(b => b.classList.toggle("on", b.dataset.f === f)); cmRender(); }
 function cmRender() {
   let list = CM.list.slice();
+  if (CM.f === "past") list = list.filter(c => ["ended", "completed", "canceled"].includes(c.status)).sort((a, b) => dtMs(b.startsAt) - dtMs(a.startsAt));
   if (CM.f === "live") list = list.filter(c => ["live", "review", "changes"].includes(c.status)).sort((a, b) => (a.status === "review" ? -1 : 0) - (b.status === "review" ? -1 : 0) || dtMs(a.startsAt) - dtMs(b.startsAt));
   $("cm-list").innerHTML = list.length ? list.map(c => {
     const st = c.status === "live" ? (c.hidden ? `<span class="pill warn">Paused</span>` : `<span class="pill on">On sale</span>`) : c.status === "review" ? `<span class="pill warn">🤝 Partner package · review it</span>` : c.status === "changes" ? `<span class="pill">Sent back to partner</span>` : `<span class="pill">${h({ ended: "Not selling", completed: "Done", canceled: "Canceled" }[c.status] || c.status)}</span>`;
     const acts = c.status === "review" ? [`<button class="btn sm main" onclick="cmAct('approveConnect',${j(c.id)})">✅ Put it on sale</button>`, `<button class="btn sm" onclick="cmSendBack(${j(c.id)})">Send back</button>`, `<button class="btn sm" onclick="cmEdit(${j(c.id)})">✏️ Edit</button>`, `<span class="help" style="margin:0" id="cmvc-${h(c.id)}"></span>`] : c.status === "live" ? [
-      c.hidden ? `<button class="btn sm teal" onclick="cmAct('showConnect',${j(c.id)})">▶ Resume</button>` : `<button class="btn sm gold" onclick="cmAct('hideConnect',${j(c.id)})">⏸ Pause</button>`,
-      `<button class="btn sm" onclick="cmEdit(${j(c.id)})">✏️ Edit</button>`, `<button class="btn sm red" onclick="cmAct('endConnect',${j(c.id)})">Stop selling</button>`, `<button class="btn sm red" onclick="cmAct('cancelConnect',${j(c.id)})">Cancel</button>`] : [];
+      c.hidden ? `<button class="btn sm teal" onclick="cmAct('showConnect',${j(c.id)})">▶ Resume</button>` : "",
+      `<button class="btn sm" onclick="cmEdit(${j(c.id)})">✏️ Edit</button>`,
+      moreBtns([c.hidden ? "" : `<button class="btn sm gold" onclick="cmAct('hideConnect',${j(c.id)})">⏸ Pause</button>`, !c.partnerUid && !c.partnerName ? `<button class="btn sm" onclick="cmEdit(${j(c.id)},true)">📋 Copy to a new date</button>` : "", `<button class="btn sm red" onclick="cmAct('endConnect',${j(c.id)})">Stop selling</button>`, `<button class="btn sm red" onclick="cmAct('cancelConnect',${j(c.id)})">Cancel</button>`])] : [];
+    if (!c.partnerUid && !c.partnerName && ["ended", "completed", "canceled"].includes(c.status)) acts.push(`<button class="btn sm teal" onclick="cmEdit(${j(c.id)},true)">🔁 Post again</button>`);
     if (c.status === "review") setTimeout(() => cmVenueCost(c.id), 0);
     return `<div class="item" style="flex-wrap:wrap"><div class="who"><b>${h(c.title)} ${st}</b><span>${c.partnerName ? "🤝 by " + h(c.partnerName) + " · " : ""}${h(c.venueName)}, ${h(c.city || "")} · ${h(dtWhenText(dtMs(c.startsAt)))} · ${usd(c.price)} for ${c.size} · ${Number(c.sold || 0)} of ${c.quantity} sold${c.siteNet != null ? " · you kept " + usd(c.siteNet) + " after card fees" : ""}</span></div>
       <div class="acts">${c.status === "live" ? `<button class="btn sm main" onclick="adLink('c',${j(c.id)},${j(c.title)})">📣 Ad link</button>` : ""}<button class="btn sm" onclick="cmOrders(${j(c.id)})">Who's going</button>${acts.join("")}</div></div>`;
-  }).join("") : `<div class="empty">${CM.f === "live" ? "Nothing on sale. Post a package below." : "No packages yet."}</div>`;
+  }).join("") : `<div class="empty">${CM.f === "live" ? "Nothing on sale. Post a package below, or open 🔁 Past to post an old one again." : CM.f === "past" ? "No finished packages yet. Once one ends, it shows here with a 🔁 Post again button." : "No packages yet."}</div>`;
 }
 /* A partner's package: what the place costs (kept private), and sending it back with a note. */
 async function cmVenueCost(id) {

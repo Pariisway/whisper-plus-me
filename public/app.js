@@ -864,6 +864,8 @@ window.wpmMarkVerified = function(){
 };
 /* Members who never confirmed: one small reminder card, at most once a week, three times in all. */
 window.wpmVerifyNudge = function(){
+  var pm = document.getElementById("profileModal");
+  if(pm && pm.style.display === "flex"){ setTimeout(window.wpmVerifyNudge, 60000); return; }   // never on top of a form they're filling in
   if(!window.wpmNeedsVerify() || document.getElementById("wpmVfy") || document.getElementById("wpmCk")) return;
   var st = {}; try{ st = JSON.parse(localStorage.getItem("wpmVfyNudge") || "{}"); }catch(e){}
   if((st.n || 0) >= 3 || Date.now() - (st.t || 0) < 7 * 86400000) return;

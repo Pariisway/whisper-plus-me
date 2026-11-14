@@ -182,6 +182,7 @@
       if (x.status === "expired") next = x.feeReturned ? "Nobody was matched, so your " + paidLabel(x) + (x.coins ? (x.coins === 1 ? " is" : " are") + " back." : " is back as credit.") + " Try another day or place!" : "Nobody was matched.";
       if (x.status === "live") acts.push("<button class='dt-btn ghost' onclick=\"Plan.share('" + x.id + "')\">↗ Share</button>");
       if (["draft", "live", "matched", "confirmed"].indexOf(x.status) > -1) acts.push("<button class='dt-btn red' onclick=\"Plan.cancel('" + x.id + "',this)\">Call it off</button>");
+      if (["completed", "expired", "canceled"].indexOf(x.status) > -1) acts.push("<button class='dt-btn ghost' onclick=\"Plan.create('" + x.id + "')\">🔁 Post it again</button>");
     } else {
       if (x.status === "asked") { next = "Waiting for " + esc(x.creatorName) + " to pick."; acts.push("<button class='dt-btn ghost' onclick=\"Plan.withdraw('" + x.id + "',this)\">Take it back</button>"); }
       if (x.status === "matched") { next = "<b>" + esc(x.creatorName) + " picked you!</b> Confirm by " + esc(when(x.confirmBy, x.tz)) + ", or it goes to someone else."; acts.push("<button class='dt-btn teal' onclick=\"Plan.confirm('" + x.id + "',true,this)\">✅ Confirm</button><button class='dt-btn ghost' onclick=\"Plan.confirm('" + x.id + "',false,this)\">Can't make it</button>"); }
@@ -322,14 +323,16 @@
         busy(b, fn("requestPlan", data)).then(function (r) { closeModal(); toast(r.message); load(); }, function (e) { if (!yearRetry(e, function () { Plan.open(x.id); })) $i("pdErr").textContent = e.message; });
       };
     },
-    create: function () {
+    create: function (copyId) {
       if (!me()) { if (window.promptGuestUpgrade) window.promptGuestUpgrade("Planning a date"); return; }
       V = { venue: {}, results: [] };
-      var ny = needYear(), pays = "split", minT = localInput(Date.now() + 25 * 3600000), maxT = localInput(Date.now() + 30 * 864e5);
+      /* 🔁 Post it again: start from one of your old plans. */
+      var src = typeof copyId === "string" ? P.mine.filter(function (z) { return z.id === copyId && z.mine; })[0] : null;
+      var ny = needYear(), pays = (src && PAYS[src.pays]) ? src.pays : "split", minT = localInput(Date.now() + 25 * 3600000), maxT = localInput(Date.now() + 30 * 864e5);
       var have = myCoins(), short = P.coins > have;
-      openModal("<h3>📍 Plan a date</h3><p style='margin:-6px 0 0;color:#b3abcf;font-size:13px'>Anywhere, at a real public place. People ask, you pick who goes.</p>"
-        + "<div><div class='lbl'>What's the plan?</div><input class='dt-in' id='pdTitle' maxlength='70' placeholder='Tacos and mini golf'></div>"
-        + "<div><div class='lbl'>A little more <small>(optional)</small></div><textarea class='dt-in' id='pdAbout' maxlength='400' rows='2' placeholder='Low-key first date. Loser buys dessert.'></textarea></div>"
+      openModal("<h3>" + (src ? "🔁 Post it again" : "📍 Plan a date") + "</h3><p style='margin:-6px 0 0;color:#b3abcf;font-size:13px'>" + (src ? "Copied from last time. Pick the place again and a new day, then post." : "Anywhere, at a real public place. People ask, you pick who goes.") + "</p>"
+        + "<div><div class='lbl'>What's the plan?</div><input class='dt-in' id='pdTitle' maxlength='70' placeholder='Tacos and mini golf' value='" + esc(src ? src.title : "") + "'></div>"
+        + "<div><div class='lbl'>A little more <small>(optional)</small></div><textarea class='dt-in' id='pdAbout' maxlength='400' rows='2' placeholder='Low-key first date. Loser buys dessert.'>" + esc(src ? src.about || "" : "") + "</textarea></div>"
         + "<div><div class='lbl'>Where</div><input class='dt-in' id='pdVq' placeholder='Search: restaurant, café, bowling…' autocomplete='off'><div id='pdVres' class='dt-vres'></div>"
         + "<div id='pdVform' style='display:none;margin-top:8px'><input class='dt-in' id='pdVname' placeholder='Place name' style='margin-bottom:6px'><input class='dt-in' id='pdVaddr' placeholder='Street address' style='margin-bottom:6px'>"
         + "<div class='dt-row' style='gap:6px;flex-wrap:nowrap'><input class='dt-in' id='pdVcity' placeholder='City, state'><input class='dt-in' id='pdVphone' type='tel' placeholder='Place phone'></div></div>"
@@ -344,6 +347,7 @@
         + "<button class='dt-btn big teal' id='pdGo'>" + (!P.coins ? "Post it · free" : "Post it · " + cw(P.coins)) + "</button>"
         + "<p class='dt-fine'>" + (P.coins ? "Nobody picked by the time it starts? Your " + (P.coins === 1 ? "coin comes" : "coins come") + " back. " : "") + "Asking is free for everyone.</p>");
       document.querySelectorAll("#pdPays button").forEach(function (b) { b.onclick = function () { pays = b.getAttribute("data-k"); document.querySelectorAll("#pdPays button").forEach(function (c) { c.setAttribute("aria-pressed", c === b); }); }; });
+      if (src && src.venueName) { $i("pdVq").value = src.venueName; venueSearch(src.venueName); }
       var timer = null;
       $i("pdVq").oninput = function () { clearTimeout(timer); var q = this.value.trim(); timer = setTimeout(function () { venueSearch(q); }, 350); };
       $i("pdOther").onclick = function () { V.venue = { source: "other" }; ["pdVaddr", "pdVcity", "pdVphone"].forEach(function (k) { $i(k).value = ""; }); $i("pdVname").value = $i("pdVq").value; $i("pdVform").style.display = "block"; $i("pdVres").innerHTML = ""; $i("pdVaddr").focus(); };

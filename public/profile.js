@@ -197,14 +197,7 @@
       + "</details>"
       + "<button class='pf-primary' id='pf-save' onclick='Profile.save()'>Save changes</button>"
       + "<div class='pf-row'><button class='pf-btn' onclick=\"shareProfile(" + jsAttr(myUid()) + ")\">🔗 Share profile</button>"
-      + "<button class='pf-btn' onclick=\"showProfileModal(" + jsAttr(myUid()) + ")\">👁 Preview</button></div>"
-      /* 💞 Matchmakers (Whisper+Me partners) can suggest you to someone who bought a date night. You always decide. */
-      + "<div class='pf-card pf-toggle' style='margin-top:14px'><div><b>💞 Open to matchmaker intros</b><div class='pf-muted'>Whisper+Me matchmakers can suggest you to someone who bought a date night at a public place. They invite you; you say yes or no. 21+. Nobody pays you or asks you for money.</div></div>"
-      + "<button class='pf-switch" + (m.introOk ? " on" : "") + "' role='switch' aria-checked='" + !!m.introOk + "' aria-label='Open to matchmaker intros' onclick='Profile.toggleIntro(this)'></button></div>"
-      /* ✉️ Reminder and update emails can be turned off. Receipts, tickets, refunds and payouts always arrive. */
-      + "<div class='pf-card pf-toggle' style='margin-top:10px'><div><b>✉️ Reminder emails</b><div class='pf-muted'>Day-before reminders and updates. Receipts, tickets, refunds and payouts are always sent.</div></div>"
-      + "<button class='pf-switch on' id='pfMailSw' role='switch' aria-checked='true' aria-label='Reminder emails' onclick='Profile.toggleMail(this)'></button></div>"
-      + "<img alt='' width='0' height='0' style='display:none' src='data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA=' onload='Profile.syncMail()'>";
+      + "<button class='pf-btn' onclick=\"showProfileModal(" + jsAttr(myUid()) + ")\">👁 Preview</button></div>";
   }
   /* "Verify my email" card: shown at the top of the profile until the email is verified (email + password sign-ups only). */
   function verifyCard() {
@@ -373,7 +366,7 @@
   }
 
   function paneMore() {
-    var uid = myUid();
+    var uid = myUid(), m = me();
     return "<div class='pf-list'>"
       + (window.__hiw && window.__hiw.on === false ? "" : "<button onclick='showHowItWorks()'>▶️ " + esc((window.__hiw && window.__hiw.label) || "How Whisper+Me works") + "</button>")
       + "<button onclick='showInfoModal(\"earn\")'>💰 Earn money &amp; grow your audience</button>"
@@ -383,7 +376,15 @@
       + "<button onclick=\"showEmbedCode(" + jsAttr(uid) + ",'profile')\">🧩 Put my profile on my website</button>"
       + "<button onclick=\"location.href='/partner/'\">🤝 Partner program: earn by sharing Whisper+Me</button>"
       + "</div>"
-      + "<div class='pf-card'><div class='pf-label' style='margin-top:0'>Message support</div>"
+      + "<div class='pf-label'>Settings</div>"
+      /* 💞 Matchmakers (Whisper+Me partners) can suggest you to someone who bought a date night. You always decide. */
+      + "<div class='pf-card pf-toggle' style='margin-top:0'><div><b>💞 Open to matchmaker intros</b><div class='pf-muted'>Whisper+Me matchmakers can suggest you to someone who bought a date night at a public place. They invite you; you say yes or no. 21+. Nobody pays you or asks you for money.</div></div>"
+      + "<button class='pf-switch" + (m.introOk ? " on" : "") + "' role='switch' aria-checked='" + !!m.introOk + "' aria-label='Open to matchmaker intros' onclick='Profile.toggleIntro(this)'></button></div>"
+      /* ✉️ Reminder and update emails can be turned off. Receipts, tickets, refunds and payouts always arrive. */
+      + "<div class='pf-card pf-toggle' style='margin-top:10px'><div><b>✉️ Reminder emails</b><div class='pf-muted'>Day-before reminders and updates. Receipts, tickets, refunds and payouts are always sent.</div></div>"
+      + "<button class='pf-switch on' id='pfMailSw' role='switch' aria-checked='true' aria-label='Reminder emails' onclick='Profile.toggleMail(this)'></button></div>"
+      + "<img alt='' width='0' height='0' style='display:none' src='data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA=' onload='Profile.syncMail()'>"
+      + "<div class='pf-card' style='margin-top:14px'><div class='pf-label' style='margin-top:0'>Message support</div>"
       + "<label class='pf-field'><input id='contact-subject' maxlength='100' placeholder='Subject' autocomplete='off'></label>"
       + "<label class='pf-field'><textarea id='contact-msg' maxlength='1200' rows='3' placeholder='How can we help?'></textarea></label>"
       + "<button class='pf-btn' style='width:100%' onclick='sendContactEmail()'>📨 Send</button></div>"

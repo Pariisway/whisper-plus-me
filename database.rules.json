@@ -338,7 +338,10 @@
       "$rid": {
         ".write": "auth != null && ((!data.exists() && newData.child('by').val() === auth.uid && auth.token.firebase.sign_in_provider !== 'anonymous') || auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2')",
         ".validate": "newData.hasChildren(['by','about','reason','ts']) || !newData.exists()"
-      }
+      },
+      ".indexOn": [
+        "ts"
+      ]
     },
     "userSrc": {
       ".read": "auth != null && auth.uid === 'v6aIXY12MDY9ci1wWJmCiLOAKoG2'",
