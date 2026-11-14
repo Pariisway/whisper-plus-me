@@ -201,6 +201,7 @@ body = f"""
 <p style="margin-top:16px">Still stuck? Email <a data-contact href="mailto:whisper.me.support@gmail.com">whisper.me.support@gmail.com</a>.</p>
 </section>
 
+<figure class="pg-pic"><img src="/img/people.jpg" width="862" height="500" loading="lazy" alt="Whisper+Me on a phone: live voice chat, private calls, fun chat rooms and real connections"></figure>
 <section class="pg-hero"><div class="pg-ctas"><a class="pg-btn" href="/">🎙️ Open Whisper+Me</a><a class="pg-btn ghost" href="/?dates=1">⭐ See what's on</a></div><p class="pg-note">Free · No download · 18+</p></section>
 """
 

@@ -8,6 +8,7 @@
   <link rel="canonical" href="https://whisperplusme.com/terms.html">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
   <meta name="theme-color" content="#0b0e23">
+  <link rel="stylesheet" href="/pages.css">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -158,21 +159,20 @@
     }
 
     hr { border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 48px 0; }
+    /* shared top bar, footer and picture frames come from /pages.css */
+    .pg-top, .pg-foot { position: relative; z-index: 2; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .pg-top { position: sticky; }
+    .pg-foot nav { margin-bottom: 8px; } .pg-foot p { margin: 4px 0; }
+    .pg-pic { margin: 0 auto 28px; } .pg-pic figcaption { font-size: 12px; }
   </style>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet" media="print" onload="this.media=\'all\'">
 </head>
 <body>
 
-<header class="site-header">
-  <a href="/" style="text-decoration:none;">
-    <span class="hdr-word">Whisper</span><span class="hdr-plus">+</span><span class="hdr-word">Me</span>
-  </a>
-</header>
+<header class="pg-top"><a class="pg-brand" href="/"><img src="/icon-192.png" alt="" width="34" height="34"><span>Whisper<b>+</b>Me</span></a><a class="pg-join" href="/">Join free</a></header>
 
 <div class="page-wrap">
-
-  <a href="/" class="back-btn">← Back to Whisper+Me</a>
 
   <!-- ═══ TERMS OF SERVICE ═══ -->
   <div class="section-block">
@@ -315,6 +315,11 @@
   </div>
 
 </div>
+<footer class="pg-foot">
+<nav aria-label="More from Whisper+Me"><a href="/meet/">Meet up</a><a href="/help/">How to use</a><a href="/rooms/">Voice chat rooms</a><a href="/connect">Date ideas</a><a href="/partner/">Partner program</a><a href="/about.html">About</a><a href="/terms.html">Terms</a><a href="/privacy.html">Privacy</a></nav>
+<p class="pg-contact">Questions? Email <a data-contact href="mailto:whisper.me.support@gmail.com">whisper.me.support@gmail.com</a></p>
+<p>© 2026 Whisper+Me · Real voices. Real moments. · 18+</p>
+</footer>
 <script src="/contact.js" defer></script>
 </body>
 </html>

@@ -227,6 +227,7 @@ def room_page(rid):
 <p>Besides live rooms, you can <b>call members 1-on-1</b> (creators set their own price), <b>host your own paid room</b>, and meet people in real life at <b>M&amp;G meet &amp; greets</b> and <a href="/connect">Connect Me date-night packages</a> at real, public places.</p></section>
 <section class="pg-card"><h2>Questions</h2>{''.join(f'<details class="pg-faq"><summary>{e(q)}</summary><p>{a}</p></details>' for q, a in faq)}</section>
 <section class="pg-card"><h2>Other rooms you might like</h2><div class="pg-chips">{rel}</div><p><a href="/rooms/">See all voice chat rooms →</a></p></section>
+<figure class="pg-pic"><img src="/img/community.jpg" width="822" height="380" loading="lazy" alt="A safe, fun and respectful community for everyone"></figure>
 <div class="pg-ctas pg-end"><a class="pg-btn" href="{join}">Join {e(r['name'])} now</a></div>"""
     ld = {"@context": "https://schema.org", "@graph": [
         {"@type": "WebPage", "@id": SITE + path, "url": SITE + path, "name": r["title"], "description": r["desc"], "inLanguage": "en", "isPartOf": {"@id": SITE + "/#website"}, "dateModified": TODAY,
@@ -245,11 +246,15 @@ def index_page():
         cards = "".join(f'<a class="pg-room" href="/rooms/{ROOMS[i]["slug"]}/"><span class="pg-room-e" aria-hidden="true">{ROOMS[i]["emoji"]}</span><span><b>{e(ROOMS[i]["name"])}</b><small>{e(SHORT[i])}</small></span></a>' for i in ids)
         secs += f'<section class="pg-card"><h2>{e(gname)}</h2><div class="pg-rooms">{cards}</div></section>'
     body = f"""<nav class="pg-crumbs" aria-label="Breadcrumb"><a href="/">Home</a> › <span>Voice chat rooms</span></nav>
-<section class="pg-hero"><h1>Free voice chat rooms, open 24/7</h1>
+<section class="pg-hero"><span class="pg-kicker">Live right now</span><h1>Free voice chat rooms, <em>open 24/7</em></h1>
 <p class="pg-lead">Pick a room, then talk or just listen. Every room has live text chat and an open mic, and it's full of real people (no bots) from around the world. Join free with any display name, right in your browser.</p>
 <div class="pg-ctas"><a class="pg-btn" href="/?room=general">💬 Jump into General</a><a class="pg-btn ghost" href="/connect">💞 Date ideas</a></div>
-<p class="pg-note">Free · No download · 18+</p></section>
+<p class="pg-note">Free · No download · 18+</p>
+<figure class="pg-pic"><img src="/img/people.jpg" width="862" height="500" alt="Whisper+Me on a phone: live voice chat, private calls, fun chat rooms and real connections"></figure></section>
+<div class="pg-feats"><div class="pg-feat"><i>🎙️</i><b>Talk or listen</b><span>Open mic and live text chat in every room</span></div><div class="pg-feat"><i>🕶️</i><b>Any name you like</b><span>No real name needed, photo optional</span></div><div class="pg-feat"><i>📱</i><b>Nothing to install</b><span>Works in your browser on any phone</span></div></div>
 {secs}
+<div class="pg-split"><figure class="pg-pic"><img src="/img/rooms-ui.jpg" width="788" height="510" loading="lazy" alt="Chat room cards with a Join button: join a chat room or create your own"></figure>
+<div><h2>Open <em>your own room</em></h2><p>Members can open a room for up to 10 people, set an entry price of 1 to 10 coins, and earn from everyone who joins. The main rooms are always free.</p><p><a href="/help/">See how rooms and coins work →</a></p></div></div>
 <aside class="pg-crisis" role="note"><b>Going through something heavy?</b> {CRISIS}</aside>"""
     ld = {"@context": "https://schema.org", "@graph": [
         {"@type": "CollectionPage", "@id": SITE + path, "url": SITE + path, "name": title, "description": desc, "isPartOf": {"@id": SITE + "/#website"}, "dateModified": TODAY},
