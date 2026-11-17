@@ -101,13 +101,27 @@ function startPresence(uid, isAnon){
   }catch(e){}
 }
 function updatePresenceRoom(roomId, isAnon){
-  if(!presenceRef) return;
+  var u = firebase.auth().currentUser;
+  if(!presenceRef || !u || u.uid !== presenceRef.key) return;   // signed out, or a different account now
   presenceRef.set({
     room: roomId,
     isAnonymous: !!isAnon,
     ts: firebase.database.ServerValue.TIMESTAMP
   }).catch(function(){});
 }
+
+/* Log out cleanly. Signing out keeps the same connection open, so "remove me when I disconnect"
+   never fires — take the presence dot (and the online flag) down first, while we still can. */
+window.wpmSignOut = function(after){
+  var u = firebase.auth().currentUser, jobs = [];
+  if(u){
+    jobs.push(firebase.database().ref("presence/" + u.uid).remove().catch(function(){}));
+    if(!u.isAnonymous) jobs.push(firebase.database().ref("users/" + u.uid).update({ online: false, lastSeen: firebase.database.ServerValue.TIMESTAMP }).catch(function(){}));
+  }
+  presenceRef = null;
+  var done = function(){ return firebase.auth().signOut().then(function(){ if(typeof after === "function") after(); }); };
+  return Promise.race([Promise.all(jobs), new Promise(function(r){ setTimeout(r, 1500); })]).then(done, done);
+};
 
 /* Opens a room from a shared deep link (?room=X). Preset rooms just
    switch normally. Member-created paid rooms ("mr_...") need the real
@@ -614,7 +628,7 @@ window.promptGuestUpgrade = function(feature){
 window.exitGuestToSignup = function(){
   if(window.closeProfileModal) window.closeProfileModal();
   window.__goSignupAfterSignout = true;
-  firebase.auth().signOut();
+  window.wpmSignOut();
 };
 
 /* ═══════════════════════════════════════════
@@ -2084,7 +2098,7 @@ window.endLiveMic = function(){
 
 function updateLiveMicBar(){
   var bar = document.getElementById("liveMicBar");
-  if(!bar) return;
+  if(!bar || !firebase.auth().currentUser || !activeRoom) return;   // nothing to read when signed out
   firebase.database().ref("liveMics/" + activeRoom).once("value").then(function(snap){
     var mics = [];
     var now  = Date.now();
@@ -2105,7 +2119,7 @@ function updateLiveMicBar(){
           + "<span style='color:#888;font-size:10px;margin-left:4px;'>(" + timeStr + ")</span>";
       }).join(" · ");
     }
-  });
+  }).catch(function(){});
 }
 
 setInterval(function(){ if(active === 1) updateLiveMicBar(); }, 20000);
@@ -3272,7 +3286,7 @@ function runDeleteAccount(targetUid, selfDelete, confirmLoss){
       if(!result.ok) throw new Error(result.data.error || "Delete failed");
       showToast("Account deleted","success");
       if(selfDelete){
-        setTimeout(function(){ firebase.auth().signOut(); }, 800);
+        setTimeout(function(){ firebase.auth().signOut(); }, 800);   // the account is gone already, nothing to tidy
       }
     })
     .catch(function(e){
@@ -3596,6 +3610,7 @@ firebase.auth().onAuthStateChanged(async function(user){
     }
   }catch(e){}
   if(!user){
+    presenceRef = null;
     /* A shared room or profile link should drop a brand-new visitor
        straight into guest mode instead of the landing page. */
     if((window.__deepLinkRoom || window.__deepLinkProfile) && !window.__goSignupAfterSignout){
@@ -3611,6 +3626,15 @@ firebase.auth().onAuthStateChanged(async function(user){
     return;
   }
 
+  /* A guest session can be cleared on our side (old guest accounts are tidied up every day).
+     If this browser is still holding one, start a fresh guest instead of failing with "permission denied". */
+  if(user.isAnonymous){
+    try{ await user.getIdToken(); }
+    catch(e){
+      firebase.auth().signOut().then(function(){ return firebase.auth().signInAnonymously(); }).catch(function(){ render(); });
+      return;
+    }
+  }
   if(user.isAnonymous){
     /* ── GUEST SESSION ──
        Chat-only: no Firebase profile document, lands on the Chat tab,

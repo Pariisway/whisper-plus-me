@@ -389,7 +389,7 @@
       + "<label class='pf-field'><textarea id='contact-msg' maxlength='1200' rows='3' placeholder='How can we help?'></textarea></label>"
       + "<button class='pf-btn' style='width:100%' onclick='sendContactEmail()'>📨 Send</button></div>"
       + (uid === ADMIN_UID ? "<a href='/admin.html' class='pf-primary' style='display:flex;align-items:center;justify-content:center;text-decoration:none;margin-bottom:12px'>⚡ Admin dashboard</a>" : "")
-      + "<button class='pf-btn' style='width:100%' onclick='firebase.auth().signOut()'>Log out</button>"
+      + "<button class='pf-btn' style='width:100%' onclick='wpmSignOut()'>Log out</button>"
       + "<button class='pf-danger' onclick='confirmDeleteOwnAccount()'>Delete my account</button>";
   }
 
